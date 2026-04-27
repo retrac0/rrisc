@@ -1,0 +1,1 @@
+/home/joel/rrisc/tests/err-addi-r7.s:1: addi cannot target r7 (use bt for branches)

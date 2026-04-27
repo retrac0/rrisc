@@ -1,0 +1,1 @@
+/home/joel/rrisc/tests/err-include-missing.s:1: cannot open included file 'no_such_file.inc': [Errno 2] No such file or directory: '/home/joel/rrisc/tests/no_such_file.inc'

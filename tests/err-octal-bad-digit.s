@@ -1,0 +1,2 @@
+.octal
+.word 89

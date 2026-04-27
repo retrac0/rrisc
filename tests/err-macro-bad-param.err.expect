@@ -1,0 +1,1 @@
+/home/joel/rrisc/tests/err-macro-bad-param.s:1: invalid parameter name '1bad' in %macro FOO

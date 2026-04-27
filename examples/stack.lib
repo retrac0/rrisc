@@ -1,0 +1,40 @@
+; stack.lib -- Stack and subroutine call macros for RRISC
+;
+; Register convention:
+;   r6  stack pointer (SP), full descending -- points to last pushed word
+;   r5  link register (LR) -- holds return address of current frame
+;   r7  hardwired -1 -- used by push for decrement
+;
+; Non-leaf functions must save/restore r5:
+;   push r5
+;   call other_func
+;   pop  r5
+;   ret
+
+; push reg -- pre-decrement SP, then store reg at new top
+%macro push reg
+    addi r6, -1
+    swr  reg, r6
+%endm
+
+; pop reg -- load from top of stack into reg, then post-increment SP
+%macro pop reg
+    lwr  reg, r6
+    addi r6, 1
+%endm
+
+; call target -- call subroutine at label; return address saved in r5
+%macro call target
+    li   r5, target
+    jalr r5, r5
+%endm
+
+; callr ra -- call subroutine whose address is in register ra; return address in r5
+%macro callr ra
+    jalr r5, ra
+%endm
+
+; ret -- return to caller (jump to r5, discard new link in r0)
+%macro ret
+    jalr r0, r5
+%endm

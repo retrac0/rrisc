@@ -1,0 +1,1 @@
+/home/joel/rrisc/tests/err-base-page.s:3: address 0o5001 not in page of r3 (base 0o4000, page 0o4000)
