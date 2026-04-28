@@ -28,7 +28,7 @@ Two formats share this layout:
 | Format | Fields | Used by |
 |--------|--------|---------|
 | **R3** | op \| rd \| ra \| rb | add, sub, and, jalr, ror, rol, lwr, swr |
-| **RI** | op \| rd \| imm[5:3] \| imm[2:0] | lw, sw, lui, addi, bz, bnz |
+| **RI** | op \| rd \| imm[5:3] \| imm[2:0] | lw, sw, lui, addi, bf, bt |
 
 In RI format the 6-bit immediate occupies bits 5-0 (the ra and rb fields combined).
 
@@ -36,36 +36,36 @@ In RI format the 6-bit immediate occupies bits 5-0 (the ra and rb fields combine
 
 | Op | Binary | Mnemonic | Format |
 |----|--------|----------|--------|
-| 0 | 000 | **add** | R3 |
+| 0 | 000 | **and** | R3 |
 | 1 | 001 | **sub** | R3 |
 | 2 | 010 | **sw** | RI |
 | 3 | 011 | **lw** | RI |
 | 4 | 100 | **lui** / **bf** | RI |
 | 5 | 101 | **addi** / **bt** | RI |
-| 6 | 110 | **and** | R3 |
+| 6 | 110 | **add / addc** | R3 |
 | 7 | 111 | **spec** | R3 |
 
 Encoding regularity: every op differs from its bit-2-complement by exactly 1 bit
-(000<->100, 001<->101, 010<->110, 011<->111), and adjacent pairs (add/sub, sw/lw, lui/addi,
-and/spec) also differ by 1 bit.
+(000<->100, 001<->101, 010<->110, 011<->111), and adjacent pairs (and/sub, sw/lw, lui/addi,
+addc/spec) also differ by 1 bit.
 
 ---
 
 ## ALU Instructions (R3 format)
 
-### add -- Add  `(op=0, 0b000)`
+### and -- Bitwise AND  `(op=0, 0b000)`
 
 ```
-add rd, ra, rb
+and rd, ra, rb
 ```
 
 ```
-Example: add r1, r2, r3
+Example: and r1, r2, r3
 Bits:  000 001 010 011
 Octal: 0   1   2   3  = 0o0123
 ```
 
-`rd = ra + rb` (12-bit wrapped). T is not affected.
+`rd = ra & rb` (masked to 12 bits). T is preserved.
 
 ---
 
@@ -89,20 +89,20 @@ giving a pure compare-and-branch idiom.
 
 ---
 
-### and -- Bitwise AND  `(op=6, 0b110)`
+### add / addc -- Add with Carry  `(op=6, 0b110)`
 
 ```
-and rd, ra, rb
+addc rd, ra, rb
 ```
 
 ```
-Example: and r1, r2, r3
+Example: addc r1, r2, r3
 Bits:  110 001 010 011
 Octal: 6   1   2   3  = 0o6123
 ```
 
-`rd = ra & rb` (masked to 12 bits). T = 1 if the result is zero, 0 otherwise.
-`and rd, ra, r0` gives 0.
+`rd = ra + rb + T` (12-bit wrapped). T = 1 if the full result carries out of bit 11.
+`add r0, r0, r0` and `addc r0, r0, r0` both clear T (CLRT).
 
 ---
 
@@ -180,7 +180,7 @@ lui  r1, 0o37    ; r1 = 0o3700
 addi r1, 0o56    ; r1 = 0o3756
 ```
 
-rd=0 is forbidden for lui; that encoding is reserved for **bz**.
+rd=0 is forbidden for lui; that encoding is reserved for **bf**.
 
 ---
 
@@ -199,7 +199,7 @@ Octal: 5   1   0   5  = 0o5105
 `rd = rd + sign_extend(imm6)`. The 6-bit immediate is sign-extended to 12 bits
 (range -32..31 as signed, 0..63 as unsigned). T is not affected.
 
-rd=0 is forbidden for addi; that encoding is reserved for **bnz**.
+rd=0 is forbidden for addi; that encoding is reserved for **bt**.
 
 ---
 
@@ -391,7 +391,7 @@ Consumes two consecutive instruction words.
 movement and bitwise instructions preserve it.
 
 - **sub** -- T = 1 on unsigned borrow (ra < rb). T = 0 otherwise.
-- **and** -- T = 1 if the result is zero. T = 0 otherwise.
+- **and** -- preserves T.
 - **ror** -- T = the bit shifted out of bit 0 (old bit 0 of ra).
 - **rol** -- T = the bit shifted out of bit 11 (old bit 11 of ra).
 
@@ -399,9 +399,9 @@ movement and bitwise instructions preserve it.
 - **bf / bt** -- branch on T=0 / T=1
 - **ror / rol** -- old T feeds into the vacated bit of the rotated result
 
-**Preserved by:** add, addi, lui, jalr, lw, sw, lwr, swr, nop, halt.
+**Preserved by:** addi, lui, jalr, lw, sw, lwr, swr, nop, halt.
 
-Design intent: because add preserves T, a carry computed by a sub comparison
+Design intent: because add uses T as carry-in, a carry computed by a sub comparison
 survives across subsequent add operations, enabling multi-word arithmetic carry
 chains without extra bookkeeping.
 
