@@ -40,22 +40,20 @@
         jalr d, r
 %endm        
 
-        .octal 
-
 ; --- octoa ---
 ; Builds a NUL-terminated ASCII string in memory
 
-.org 10
+.org 010
 
 pbuf:  .fill 4, 0
        .word 0
-        
-        .org 1000
+
+        .org 01000
 
 main:
-        li   r2, 1357
+        li   r2, 01357
         jal  r6, r1, print_oct
-        li   r3, 10             ; '\n'
+        li   r3, 010            ; '\n'
         jal  r4, r5, putchar
         halt
 
@@ -65,7 +63,7 @@ main:
 ; prints the MSB digit first.  ASCII conversion (add '0') happens at store
 ; time using r3 = 0o060 loaded once up front.
 print_oct:
-        li   r3, 60          ; r3 = '0' = 48
+        li   r3, 060         ; r3 = '0' = 48
         li   r4, 07          ; r4 = 3-bit mask
 
         sub  r0, r0, r0         ; clrt (T unknown at entry)
@@ -95,7 +93,7 @@ print_oct:
         sw   r0, pbuf           ; buffer[0]
 
         and  r1, r0, r0         ; r1 = 0
-        sw   r0, 24           ; buffer[4] = NUL
+        sw   r0, 024          ; buffer[4] = NUL
 
         li   r2, pbuf           ; r2 → start of buffer
         jal r0, r5, putstr            ; tail-call putstr; it returns via r6 to our caller

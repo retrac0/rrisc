@@ -18,8 +18,13 @@ Source format:
   .align n               advance address to next multiple of n
   .unicode "string"      emit UTF-8 bytes of string, one byte per word
   .org address           set current address counter
-  .octal                 set default number radix to 8 (bare literals parsed as octal)
-  .decimal               set default number radix to 10 (bare literals parsed as decimal)
+
+Number literals:
+  42        decimal
+  077       C-style octal (leading zero)
+  0xff      hex
+  0o77      Python-style octal
+  0b1010    binary
 """
 
 import argparse
@@ -35,7 +40,23 @@ from isa import (OP_ADDI, OP_LUI, OP_AND, OP_LW, OP_ADDC, OP_SUB, OP_SW, OP_SPEC
 from float48 import from_float
 from sixbit import encode_sixbit
 
+# -- intermediate data types --
+
+RawLine = namedtuple('RawLine', ['filename', 'lineno', 'text'])
+# Flat source line as read from disk (raw text, may have comments).
+# Used through include expansion and macro collection/expansion.
+# Stored in _flat_lines for listing.
+
 MacroDef = namedtuple('MacroDef', ['params', 'body', 'def_filename', 'def_lineno'])
+# body: list[RawLine]
+
+@dataclass(frozen=True)
+class SourceLine:
+    """A source line after comment stripping, flowing through the symbolic pipeline."""
+    filename:     str
+    lineno:       int
+    text:         str   # comment-stripped, whitespace-stripped; never blank
+    source_index: int   # index into _flat_lines for listing
 
 @dataclass
 class Statement:
@@ -71,11 +92,10 @@ def _reg(s, filename, lineno):
         return int(s[1])
     raise AsmError(filename, lineno, f"invalid register '{s}'")
 
-def _eval_expr(s, labels, filename, lineno, radix=10):
+def _eval_expr(s, labels, filename, lineno):
     """Evaluate an integer expression; supports + - * / % & | ^ ~ << >> and ().
     Label names resolve via labels dict.  Result is masked to WORD_MASK (12 bits).
-    radix sets the default base for bare integer literals; explicit 0x/0o/0b prefixes
-    always override it."""
+    Number literals: decimal, C-style leading-zero octal (077), 0x hex, 0o octal, 0b binary."""
     src = s.strip()
     pos = [0]
 
@@ -156,9 +176,11 @@ def _eval_expr(s, labels, filename, lineno, radix=10):
                 pos[0] += 1
             tok = src[i:pos[0]]
             try:
-                if len(tok) > 2 and tok[1:2].lower() in ('x', 'o', 'b'):
-                    return int(tok, 0)
-                return int(tok, radix)
+                if len(tok) >= 3 and tok[1:2].lower() in ('x', 'o', 'b'):
+                    return int(tok, 0)          # 0x, 0o, 0b explicit prefixes
+                if tok[0] == '0' and len(tok) > 1:
+                    return int(tok, 8)          # C-style leading-zero octal
+                return int(tok, 10)             # decimal
             except ValueError:
                 err(f"invalid number '{tok}'")
         if p.isalpha() or p == '_':
@@ -187,12 +209,7 @@ def _imm6(val, filename, lineno):
     return val & IMM6_MASK
 
 def _resolve_mem_operand(val, rd, bases, filename, lineno):
-    """Resolve a lw/sw address operand to a 6-bit offset.
-
-    If val fits in 6 bits (-32..63) it is used directly.  If val is a valid
-    12-bit address (64..0o7777) the assembler checks that rD has a declared base
-    whose page (upper 6 bits) matches and extracts the lower 6 bits as the offset.
-    """
+    """Resolve a lw/sw address operand to a 6-bit offset."""
     if -32 <= val <= 63:
         return val & IMM6_MASK
     if 0 <= val <= WORD_MASK:
@@ -228,6 +245,352 @@ def _tokenize_line(filename: str, lineno: int, text: str, source_index: int = 0)
                      parts[1].strip() if len(parts) > 1 else '',
                      source_index=source_index)
 
+def _parse_string_literal(s: str, filename: str, lineno: int) -> list:
+    """Parse a quoted string literal with \\n and \\\\ escapes."""
+    s = s.strip()
+    if len(s) < 2 or s[0] != '"' or s[-1] != '"':
+        raise AsmError(filename, lineno, "expected a quoted string literal")
+    inner = s[1:-1]
+    result = []
+    i = 0
+    while i < len(inner):
+        if inner[i] == '\\' and i + 1 < len(inner):
+            c = inner[i + 1]
+            if c == 'n':
+                result.append('\n')
+            elif c == '\\':
+                result.append('\\')
+            else:
+                raise AsmError(filename, lineno, f"unknown escape '\\{c}'")
+            i += 2
+        else:
+            result.append(inner[i])
+            i += 1
+    return result
+
+# -- pipeline stages --
+
+def expand_includes(source: str, src_path, seen=None) -> list:
+    """Stage 1: recursively splice %include directives.
+    Returns list[RawLine] including the %include lines themselves (kept for listing).
+    src_path is the path of the file containing source (None for stdin/string input).
+    seen is a frozenset of already-included absolute paths for cycle detection."""
+    src_path = os.path.normpath(os.path.abspath(src_path)) if src_path else None
+    src_dir  = os.path.dirname(src_path) if src_path else ''
+    if seen is None:
+        seen = frozenset({src_path}) if src_path else frozenset()
+    out = []
+    for lineno, raw in enumerate(source.splitlines(), 1):
+        line = _strip_comment(raw).strip()
+        m = re.match(r'%include\s+"([^"]+)"\s*$', line)
+        if m:
+            out.append(RawLine(src_path, lineno, raw))
+            inc_rel  = m.group(1)
+            inc_path = inc_rel if os.path.isabs(inc_rel) else os.path.join(src_dir, inc_rel)
+            inc_path = os.path.normpath(inc_path)
+            if inc_path in seen:
+                raise AsmError(src_path, lineno, f"circular %include of '{inc_rel}'")
+            try:
+                with open(inc_path, encoding='utf-8') as fh:
+                    inc_source = fh.read()
+            except OSError as e:
+                raise AsmError(src_path, lineno,
+                               f"cannot open included file '{inc_rel}': {e}")
+            out.extend(expand_includes(inc_source, inc_path, seen | {inc_path}))
+        else:
+            out.append(RawLine(src_path, lineno, raw))
+    return out
+
+
+def collect_macro_defs(lines: list) -> tuple:
+    """Stage 2: scan for %macro/%endm blocks.
+    Returns (all_lines, macro_table).
+    all_lines preserves every input RawLine (definition lines kept for listing).
+    macro_table maps name -> MacroDef; body is list[RawLine]."""
+    out = []
+    macro_table = {}
+    i = 0
+    while i < len(lines):
+        rl = lines[i]
+        line = _strip_comment(rl.text).strip()
+
+        if line.startswith('%macro'):
+            m = re.match(r'%macro\s+(\w+)\s*(.*)', line)
+            if not m:
+                raise AsmError(rl.filename, rl.lineno, "malformed %macro directive")
+            macro_name = m.group(1)
+            params_str = m.group(2).strip()
+            params = [p.strip() for p in params_str.split(',')] if params_str else []
+            for p in params:
+                if not re.fullmatch(r'[A-Za-z_]\w*', p):
+                    raise AsmError(rl.filename, rl.lineno,
+                                   f"invalid parameter name '{p}' in %macro {macro_name}")
+            if macro_name in macro_table:
+                raise AsmError(rl.filename, rl.lineno,
+                               f"redefinition of macro '{macro_name}'")
+            def_filename, def_lineno = rl.filename, rl.lineno
+            body = []
+            out.append(rl)
+            i += 1
+            while i < len(lines):
+                brl = lines[i]
+                bline = _strip_comment(brl.text).strip()
+                if bline.startswith('%macro'):
+                    raise AsmError(brl.filename, brl.lineno,
+                                   "nested %macro definition is not allowed")
+                if bline == '%endm':
+                    out.append(brl)
+                    break
+                body.append(brl)
+                out.append(brl)
+                i += 1
+            else:
+                raise AsmError(def_filename, def_lineno,
+                               f"unterminated %macro '{macro_name}': missing %endm")
+            macro_table[macro_name] = MacroDef(
+                params=params, body=body,
+                def_filename=def_filename, def_lineno=def_lineno)
+            i += 1
+
+        elif line == '%endm':
+            raise AsmError(rl.filename, rl.lineno,
+                           "unexpected %endm without matching %macro")
+        else:
+            out.append(rl)
+            i += 1
+
+    return out, macro_table
+
+
+def expand_macros(lines: list, macro_table: dict, _expanding=None) -> list:
+    """Stage 3: replace macro invocations with expanded bodies.
+    Recursively expands nested macro calls; detects recursive cycles via _expanding."""
+    if _expanding is None:
+        _expanding = frozenset()
+    out = []
+    for rl in lines:
+        line = _strip_comment(rl.text).strip()
+        if not line:
+            out.append(rl)
+            continue
+
+        tok = _tokenize_line(rl.filename, rl.lineno, line)
+        first_token = tok.mnemonic if tok else ''
+        if first_token not in macro_table:
+            out.append(rl)
+            continue
+
+        macro_name = first_token
+        mdef = macro_table[macro_name]
+
+        if macro_name in _expanding:
+            raise AsmError(rl.filename, rl.lineno,
+                           f"recursive macro expansion of '{macro_name}'")
+
+        args_str = tok.operands_str
+        label_prefix = (' '.join(f'{l}:' for l in tok.labels) + ' '
+                        if tok.labels else '')
+        args = [a.strip() for a in args_str.split(',')] if args_str else []
+        if len(args) != len(mdef.params):
+            raise AsmError(rl.filename, rl.lineno,
+                           f"macro '{macro_name}' expects {len(mdef.params)} "
+                           f"argument(s), got {len(args)}")
+
+        out.append(RawLine(rl.filename, rl.lineno, f"; %expand {line}"))
+
+        subst = dict(zip(mdef.params, args))
+        expanded_body = []
+        first_nonempty = True
+        for brl in mdef.body:
+            bline = _strip_comment(brl.text).strip()
+            if not bline:
+                expanded_body.append(RawLine(mdef.def_filename, brl.lineno, brl.text))
+                continue
+            expanded = bline
+            for param, arg in subst.items():
+                expanded = re.sub(r'\b' + re.escape(param) + r'\b', arg, expanded)
+            if first_nonempty and label_prefix:
+                expanded = label_prefix + ' ' + expanded
+                first_nonempty = False
+            elif first_nonempty:
+                first_nonempty = False
+            expanded_body.append(RawLine(mdef.def_filename, brl.lineno, expanded))
+
+        out.extend(expand_macros(expanded_body, macro_table, _expanding | {macro_name}))
+
+    return out
+
+
+def strip_lines(raw_lines: list) -> list:
+    """Transition stage: RawLine → SourceLine.
+    Strips comments, assigns source_index; skips blank lines, macro def blocks, %include lines.
+    %define lines pass through; collect_defines removes them in the next stage."""
+    out = []
+    in_macro_def = False
+    for source_index, rl in enumerate(raw_lines):
+        line = _strip_comment(rl.text).strip()
+        if line.startswith('%macro'):
+            in_macro_def = True
+            continue
+        if line == '%endm':
+            in_macro_def = False
+            continue
+        if in_macro_def:
+            continue
+        if re.match(r'%include\s+', line):
+            continue
+        if not line:
+            continue
+        out.append(SourceLine(rl.filename, rl.lineno, line, source_index))
+    return out
+
+
+def collect_defines(lines: list) -> tuple:
+    """Stage 4: extract %define directives.
+    Returns (remaining_lines, define_table).
+    %define lines are consumed; all other SourceLines pass through."""
+    out = []
+    define_table = {}
+    for sl in lines:
+        m = re.match(r'%define\s+(\w+)\s+(.*)', sl.text)
+        if m:
+            define_table[m.group(1)] = m.group(2).strip()
+        else:
+            out.append(sl)
+    return out, define_table
+
+
+def filter_conditionals(lines: list, define_table: dict) -> list:
+    """Stage 5: apply %ifdef/%ifeq/%ifneq/%endif conditional filtering.
+    Stack frames: (active: bool, open_filename: str, open_lineno: int)."""
+    out = []
+    stack = []
+
+    for sl in lines:
+        line = sl.text
+
+        if re.match(r'%ifdef\b', line):
+            m = re.match(r'%ifdef\s+(\w+)\s*$', line)
+            if not m:
+                raise AsmError(sl.filename, sl.lineno, "malformed %ifdef directive")
+            stack.append((m.group(1) in define_table, sl.filename, sl.lineno))
+            continue
+
+        bad = re.match(r'(%ifeq|%ifneq)\b(.*)', line)
+        if bad:
+            directive = bad.group(1)
+            operands = bad.group(2)
+            for name, val in define_table.items():
+                operands = re.sub(r'\b' + re.escape(name) + r'\b', val, operands)
+            tokens = operands.split()
+            if len(tokens) != 2:
+                raise AsmError(sl.filename, sl.lineno,
+                    f"{directive} requires exactly 2 operands, got {len(tokens)}")
+            a_val = _eval_expr(tokens[0], {}, sl.filename, sl.lineno)
+            b_val = _eval_expr(tokens[1], {}, sl.filename, sl.lineno)
+            result = (a_val == b_val) if directive == '%ifeq' else (a_val != b_val)
+            stack.append((result, sl.filename, sl.lineno))
+            continue
+
+        if re.match(r'%endif\s*$', line):
+            if not stack:
+                raise AsmError(sl.filename, sl.lineno,
+                    "%endif without matching %ifdef/%ifeq/%ifneq")
+            stack.pop()
+            continue
+
+        if all(frame[0] for frame in stack):
+            out.append(sl)
+
+    if stack:
+        open_fn, open_ln = stack[0][1], stack[0][2]
+        raise AsmError(open_fn, open_ln,
+            "unterminated %ifdef/%ifeq/%ifneq: missing %endif")
+
+    return out
+
+
+def substitute(lines: list, define_table: dict) -> list:
+    """Stage 6: whole-word text substitution of all %define names."""
+    out = []
+    for sl in lines:
+        text = sl.text
+        for name, val in define_table.items():
+            text = re.sub(r'\b' + re.escape(name) + r'\b', val, text)
+        out.append(SourceLine(sl.filename, sl.lineno, text, sl.source_index))
+    return out
+
+
+def assign_addresses(lines: list) -> tuple:
+    """Stage 7: tokenize SourceLines, collect labels, assign word addresses.
+    Returns (stmts, label_table)."""
+    addr = 0
+    stmts = []
+    labels = {}
+
+    for sl in lines:
+        stmt = _tokenize_line(sl.filename, sl.lineno, sl.text, sl.source_index)
+        if stmt is None:
+            continue
+
+        for label in stmt.labels:
+            if label in labels:
+                raise AsmError(sl.filename, sl.lineno, f"duplicate label '{label}'")
+            labels[label] = addr
+
+        if not stmt.mnemonic:
+            continue
+
+        stmt.addr = addr
+        mnem = stmt.mnemonic
+        ops  = stmt.operands_str
+
+        if mnem == '.org':
+            if not ops:
+                raise AsmError(sl.filename, sl.lineno, ".org requires an address")
+            addr = _eval_expr(ops, labels, sl.filename, sl.lineno)
+            if not 0 <= addr <= WORD_MASK:
+                raise AsmError(sl.filename, sl.lineno,
+                               f".org address {addr} out of range (0..{WORD_MASK})")
+            continue
+
+        stmts.append(stmt)
+
+        if mnem == 'li':
+            addr += 2
+        elif mnem == '.word':
+            addr += len(ops.split(',')) if ops else 1
+        elif mnem == '.float':
+            addr += (len(ops.split(',')) if ops else 1) * 4
+        elif mnem == '.sixbit':
+            addr += len(_parse_string_literal(ops, sl.filename, sl.lineno))
+        elif mnem == '.unicode':
+            s = _parse_string_literal(ops, sl.filename, sl.lineno)
+            addr += len(''.join(s).encode('utf-8'))
+        elif mnem == '.fill':
+            count_str = ops.split(',')[0].strip() if ops else ''
+            if not count_str:
+                raise AsmError(sl.filename, sl.lineno, ".fill requires a count")
+            count = _eval_expr(count_str, labels, sl.filename, sl.lineno)
+            if count < 0:
+                raise AsmError(sl.filename, sl.lineno,
+                               f".fill count {count} must be non-negative")
+            addr += count
+        elif mnem == '.align':
+            if not ops:
+                raise AsmError(sl.filename, sl.lineno, ".align requires an argument")
+            align = _eval_expr(ops, labels, sl.filename, sl.lineno)
+            if align < 1:
+                raise AsmError(sl.filename, sl.lineno,
+                               f".align argument {align} must be >= 1")
+            addr = (addr + align - 1) // align * align
+        elif mnem == '.base':
+            pass
+        else:
+            addr += 1
+
+    return stmts, labels
+
 # -- assembler --
 
 class Assembler:
@@ -237,333 +600,28 @@ class Assembler:
         self.param_macros = {}    # name -> MacroDef (%macro)
         self.labels = {}          # name -> word address
         self.listing_entries = [] # [(source_index, addr, word)]
-        self._flat_lines = []     # [(filename, lineno, raw)] -- full flattened source for listing
-        self.radix = 10           # default number base; changed by .octal / .decimal
+        self._flat_lines = []     # list[RawLine] -- full flattened source for listing
         self.bases = {0: 0, 7: 0o7777}  # reg -> declared base value; r0/r7 are hardwired
 
     def assemble(self, source):
-        stmts = self._preprocess(source)
+        raw = expand_includes(source, self.filename,
+                              frozenset({os.path.normpath(os.path.abspath(self.filename))})
+                              if self.filename else frozenset())
+        raw, self.param_macros = collect_macro_defs(raw)
+        raw = expand_macros(raw, self.param_macros)
+        self._flat_lines = raw
+
+        lines = strip_lines(raw)
+        lines, self.macros = collect_defines(lines)
+        lines = filter_conditionals(lines, self.macros)
+        lines = substitute(lines, self.macros)
+
+        stmts, self.labels = assign_addresses(lines)
         return self._encode_all(stmts)
-
-    # -- preprocessing: macros, labels, address assignment --
-
-    def _expand_includes(self, source, src_path, seen):
-        """Recursively splice %include "path" directives.
-        Returns list of (abs_filename, lineno, raw_line).
-        The %include directive line itself is preserved so it appears in the listing."""
-        src_path = os.path.normpath(os.path.abspath(src_path)) if src_path else self.filename
-        src_dir  = os.path.dirname(src_path)
-        out = []
-        for lineno, raw in enumerate(source.splitlines(), 1):
-            line = _strip_comment(raw).strip()
-            m = re.match(r'%include\s+"([^"]+)"\s*$', line)
-            if m:
-                out.append((src_path, lineno, raw))  # keep in listing, skipped by Pass A
-                inc_rel  = m.group(1)
-                inc_path = inc_rel if os.path.isabs(inc_rel) else os.path.join(src_dir, inc_rel)
-                inc_path = os.path.normpath(inc_path)
-                if inc_path in seen:
-                    raise AsmError(src_path, lineno, f"circular %include of '{inc_rel}'")
-                try:
-                    with open(inc_path, encoding='utf-8') as fh:
-                        inc_source = fh.read()
-                except OSError as e:
-                    raise AsmError(src_path, lineno,
-                                   f"cannot open included file '{inc_rel}': {e}")
-                out.extend(self._expand_includes(inc_source, inc_path, seen | {inc_path}))
-            else:
-                out.append((src_path, lineno, raw))
-        return out
-
-    def _collect_macro_defs(self, lines):
-        """Scan flattened lines for %macro/%endm blocks, store in self.param_macros.
-        Returns all lines; definition lines are kept for listing but skipped during assembly."""
-        out = []
-        i = 0
-        while i < len(lines):
-            filename, lineno, raw = lines[i]
-            line = _strip_comment(raw).strip()
-
-            if line.startswith('%macro'):
-                m = re.match(r'%macro\s+(\w+)\s*(.*)', line)
-                if not m:
-                    raise AsmError(filename, lineno, "malformed %macro directive")
-                macro_name = m.group(1)
-                params_str = m.group(2).strip()
-                params = [p.strip() for p in params_str.split(',')] if params_str else []
-                for p in params:
-                    if not re.fullmatch(r'[A-Za-z_]\w*', p):
-                        raise AsmError(filename, lineno,
-                                       f"invalid parameter name '{p}' in %macro {macro_name}")
-                if macro_name in self.param_macros:
-                    raise AsmError(filename, lineno, f"redefinition of macro '{macro_name}'")
-                def_filename, def_lineno = filename, lineno
-                body = []
-                out.append(lines[i])  # keep %macro line for listing
-                i += 1
-                while i < len(lines):
-                    bfn, bln, braw = lines[i]
-                    bline = _strip_comment(braw).strip()
-                    if bline.startswith('%macro'):
-                        raise AsmError(bfn, bln, "nested %macro definition is not allowed")
-                    if bline == '%endm':
-                        out.append(lines[i])  # keep %endm line for listing
-                        break
-                    body.append((bln, braw))
-                    out.append(lines[i])  # keep body line for listing
-                    i += 1
-                else:
-                    raise AsmError(def_filename, def_lineno,
-                                   f"unterminated %macro '{macro_name}': missing %endm")
-                self.param_macros[macro_name] = MacroDef(
-                    params=params, body=body,
-                    def_filename=def_filename, def_lineno=def_lineno)
-                i += 1  # skip past %endm (already appended above)
-
-            elif line == '%endm':
-                raise AsmError(filename, lineno, "unexpected %endm without matching %macro")
-
-            else:
-                out.append(lines[i])
-                i += 1
-
-        return out
-
-    def _expand_macros(self, lines, _expanding=None):
-        """Replace macro invocations with their expanded bodies.
-        Recursively expands nested macro calls; detects recursive cycles via _expanding."""
-        if _expanding is None:
-            _expanding = frozenset()
-        out = []
-        for filename, lineno, raw in lines:
-            line = _strip_comment(raw).strip()
-            if not line:
-                out.append((filename, lineno, raw))
-                continue
-
-            tok = _tokenize_line(filename, lineno, line)
-            first_token = tok.mnemonic if tok else ''
-            if first_token not in self.param_macros:
-                out.append((filename, lineno, raw))
-                continue
-
-            macro_name = first_token
-            mdef = self.param_macros[macro_name]
-
-            if macro_name in _expanding:
-                raise AsmError(filename, lineno,
-                               f"recursive macro expansion of '{macro_name}'")
-
-            args_str = tok.operands_str
-            label_prefix = (' '.join(f'{l}:' for l in tok.labels) + ' '
-                            if tok.labels else '')
-            args = [a.strip() for a in args_str.split(',')] if args_str else []
-            if len(args) != len(mdef.params):
-                raise AsmError(filename, lineno,
-                               f"macro '{macro_name}' expects {len(mdef.params)} "
-                               f"argument(s), got {len(args)}")
-
-            # Comment header shows the original invocation in the listing
-            out.append((filename, lineno, f"; %expand {line}"))
-
-            subst = dict(zip(mdef.params, args))
-            expanded_body = []
-            first_nonempty = True
-            for def_bln, braw in mdef.body:
-                bline = _strip_comment(braw).strip()
-                if not bline:
-                    expanded_body.append((mdef.def_filename, def_bln, braw))
-                    continue
-                expanded = bline
-                for param, arg in subst.items():
-                    expanded = re.sub(r'\b' + re.escape(param) + r'\b', arg, expanded)
-                if first_nonempty and label_prefix:
-                    expanded = label_prefix + ' ' + expanded
-                    first_nonempty = False
-                elif first_nonempty:
-                    first_nonempty = False
-                expanded_body.append((mdef.def_filename, def_bln, expanded))
-
-            # Recursively expand any nested macro calls in the body
-            out.extend(self._expand_macros(expanded_body, _expanding | {macro_name}))
-
-        return out
-
-    def _preprocess(self, source):
-        """Return [Statement] for each encodable statement."""
-        raw_lines = self._expand_includes(source, self.filename,
-                                          {os.path.normpath(os.path.abspath(self.filename))}
-                                          if self.filename else set())
-        raw_lines = self._collect_macro_defs(raw_lines)
-        raw_lines = self._expand_macros(raw_lines)
-        self._flat_lines = raw_lines
-
-        # Pass A: collect all %define macros; skip %include and macro-definition lines
-        no_defines = []
-        in_macro_def = False
-        for source_index, (filename, lineno, raw) in enumerate(raw_lines):
-            line = _strip_comment(raw).strip()
-            if line.startswith('%macro'):
-                in_macro_def = True
-                continue  # in _flat_lines for listing; not assembled
-            if line == '%endm':
-                in_macro_def = False
-                continue
-            if in_macro_def:
-                continue  # definition body: assembled only via expansion
-            m = re.match(r'%define\s+(\w+)\s+(.*)', line)
-            if m:
-                name, val = m.group(1), m.group(2).strip()
-                self.macros[name] = val
-            elif re.match(r'%include\s+', line):
-                pass  # already expanded; skip assembly
-            elif line:
-                no_defines.append((filename, lineno, line, source_index))
-
-        # Pass C: process conditionals before substitution so %ifdef sees raw names
-        no_defines = self._process_conditionals(no_defines)
-
-        # Pass B: macro substitution (whole-word replacement)
-        substituted = []
-        for filename, lineno, line, source_index in no_defines:
-            for name, val in self.macros.items():
-                line = re.sub(r'\b' + re.escape(name) + r'\b', val, line)
-            substituted.append((filename, lineno, line, source_index))
-
-        return self._assign_addresses(substituted)
-
-    def _process_conditionals(self, lines):
-        """Pass C: filter lines through %ifdef/%ifeq/%ifneq/%endif.
-        Called after Pass A (macros known) but before Pass B (substitution).
-        %ifdef checks names directly; %ifeq/%ifneq substitute operands internally.
-        lines is [(filename, lineno, text, source_index)].
-        Stack frames are (active: bool, open_filename: str, open_lineno: int)."""
-        out = []
-        stack = []  # (active, filename, lineno) per open conditional
-
-        for filename, lineno, line, source_index in lines:
-
-            # %ifdef NAME
-            if re.match(r'%ifdef\b', line):
-                m = re.match(r'%ifdef\s+(\w+)\s*$', line)
-                if not m:
-                    raise AsmError(filename, lineno, "malformed %ifdef directive")
-                stack.append((m.group(1) in self.macros, filename, lineno))
-                continue
-
-            # %ifeq / %ifneq — guard wrong operand count, then evaluate
-            bad = re.match(r'(%ifeq|%ifneq)\b(.*)', line)
-            if bad:
-                directive = bad.group(1)
-                operands = bad.group(2)
-                for name, val in self.macros.items():
-                    operands = re.sub(r'\b' + re.escape(name) + r'\b', val, operands)
-                tokens = operands.split()
-                if len(tokens) != 2:
-                    raise AsmError(filename, lineno,
-                        f"{directive} requires exactly 2 operands, got {len(tokens)}")
-                a_val = _eval_expr(tokens[0], {}, filename, lineno)
-                b_val = _eval_expr(tokens[1], {}, filename, lineno)
-                result = (a_val == b_val) if directive == '%ifeq' else (a_val != b_val)
-                stack.append((result, filename, lineno))
-                continue
-
-            # %endif
-            if re.match(r'%endif\s*$', line):
-                if not stack:
-                    raise AsmError(filename, lineno,
-                        "%endif without matching %ifdef/%ifeq/%ifneq")
-                stack.pop()
-                continue
-
-            # ordinary line: emit only when all frames are active
-            if all(frame[0] for frame in stack):
-                out.append((filename, lineno, line, source_index))
-
-        if stack:
-            open_fn, open_ln = stack[0][1], stack[0][2]
-            raise AsmError(open_fn, open_ln,
-                "unterminated %ifdef/%ifeq/%ifneq: missing %endif")
-
-        return out
-
-    def _assign_addresses(self, substituted):
-        """Tokenize lines, register labels, assign addresses. Returns [Statement]."""
-        self.radix = 10
-        addr = 0
-        stmts = []
-        for filename, lineno, line, source_index in substituted:
-            stmt = _tokenize_line(filename, lineno, line, source_index)
-            if stmt is None:
-                continue
-
-            for label in stmt.labels:
-                if label in self.labels:
-                    raise AsmError(filename, lineno, f"duplicate label '{label}'")
-                self.labels[label] = addr
-
-            if not stmt.mnemonic:
-                continue  # labels-only line
-
-            stmt.addr = addr
-            mnem = stmt.mnemonic
-            ops  = stmt.operands_str
-
-            if mnem == '.org':
-                if not ops:
-                    raise AsmError(filename, lineno, ".org requires an address")
-                addr = _eval_expr(ops, self.labels, filename, lineno, self.radix)
-                if not 0 <= addr <= WORD_MASK:
-                    raise AsmError(filename, lineno,
-                                   f".org address {addr} out of range (0..{WORD_MASK})")
-                continue  # .org emits no words
-
-            if mnem in ('.decimal', '.octal'):
-                self.radix = 10 if mnem == '.decimal' else 8
-                stmts.append(stmt)
-                continue  # emits no words, address unchanged
-
-            stmts.append(stmt)
-
-            if mnem == 'li':
-                addr += 2
-            elif mnem == '.word':
-                addr += len(ops.split(',')) if ops else 1
-            elif mnem == '.float':
-                addr += (len(ops.split(',')) if ops else 1) * 4
-            elif mnem == '.sixbit':
-                addr += len(self._parse_string_literal(ops, filename, lineno))
-            elif mnem == '.unicode':
-                s = self._parse_string_literal(ops, filename, lineno)
-                addr += len(''.join(s).encode('utf-8'))
-            elif mnem == '.fill':
-                count_str = ops.split(',')[0].strip() if ops else ''
-                if not count_str:
-                    raise AsmError(filename, lineno, ".fill requires a count")
-                count = _eval_expr(count_str, self.labels, filename, lineno, self.radix)
-                if count < 0:
-                    raise AsmError(filename, lineno,
-                                   f".fill count {count} must be non-negative")
-                addr += count
-            elif mnem == '.align':
-                if not ops:
-                    raise AsmError(filename, lineno, ".align requires an argument")
-                align = _eval_expr(ops, self.labels, filename, lineno, self.radix)
-                if align < 1:
-                    raise AsmError(filename, lineno,
-                                   f".align argument {align} must be >= 1")
-                addr = (addr + align - 1) // align * align
-            elif mnem == '.base':
-                pass  # emits no words; validated and recorded in encoding pass
-            else:
-                addr += 1
-
-        return stmts
 
     # -- encoding --
 
     def _encode_all(self, stmts):
-        self.radix = 10
         self.bases = {0: 0, 7: 0o7777}
         if not stmts:
             return []
@@ -601,16 +659,12 @@ class Assembler:
                 self._expect(ops, 0, mnem, f, n)
                 return 0o7777
 
-            case '.decimal' | '.octal':
-                self.radix = 10 if mnem == '.decimal' else 8
-                return []
-
             case '.base':
                 self._expect(ops, 2, mnem, f, n)
                 rd = _reg(ops[0], f, n)
                 if rd in (0, 7):
                     raise AsmError(f, n, f"cannot redeclare base for hardwired r{rd}")
-                val = _eval_expr(ops[1], self.labels, f, n, self.radix)
+                val = _eval_expr(ops[1], self.labels, f, n)
                 if not 0 <= val <= WORD_MASK:
                     raise AsmError(f, n, f"base value {val} out of 12-bit range")
                 self.bases[rd] = val
@@ -619,11 +673,11 @@ class Assembler:
             case '.word':
                 if not ops:
                     raise AsmError(f, n, ".word requires a value")
-                words = [_eval_expr(v, self.labels, f, n, self.radix) & WORD_MASK for v in ops]
+                words = [_eval_expr(v, self.labels, f, n) & WORD_MASK for v in ops]
                 return words[0] if len(words) == 1 else words
 
             case '.sixbit':
-                s = self._parse_string_literal(ops_str.strip(), f, n)
+                s = _parse_string_literal(ops_str.strip(), f, n)
                 result = []
                 for ch in s:
                     v = encode_sixbit(ch)
@@ -633,7 +687,7 @@ class Assembler:
                 return result if len(result) != 1 else result[0]
 
             case '.unicode':
-                s = self._parse_string_literal(ops_str.strip(), f, n)
+                s = _parse_string_literal(ops_str.strip(), f, n)
                 result = list(''.join(s).encode('utf-8'))
                 return result if len(result) != 1 else result[0]
 
@@ -653,16 +707,16 @@ class Assembler:
                     raise AsmError(f, n, ".fill requires a count")
                 if len(ops) > 2:
                     raise AsmError(f, n, f".fill takes at most 2 operands, got {len(ops)}")
-                count = _eval_expr(ops[0], self.labels, f, n, self.radix)
+                count = _eval_expr(ops[0], self.labels, f, n)
                 if count < 0:
                     raise AsmError(f, n, f".fill count {count} must be non-negative")
-                val = _eval_expr(ops[1], self.labels, f, n, self.radix) & WORD_MASK if len(ops) > 1 else 0
+                val = _eval_expr(ops[1], self.labels, f, n) & WORD_MASK if len(ops) > 1 else 0
                 return [val] * count
 
             case '.align':
                 if not ops_str.strip():
                     raise AsmError(f, n, ".align requires an argument")
-                align = _eval_expr(ops_str.strip(), self.labels, f, n, self.radix)
+                align = _eval_expr(ops_str.strip(), self.labels, f, n)
                 if align < 1:
                     raise AsmError(f, n, f".align argument {align} must be >= 1")
                 return [0] * ((-addr) % align)
@@ -684,7 +738,7 @@ class Assembler:
                     raise AsmError(f, n, "lui cannot target r0 (use bf for branches)")
                 if rd == 7:
                     raise AsmError(f, n, "lui cannot target r7 (use bf for branches)")
-                return encode_ri(OP_LUI, rd, _imm6(_eval_expr(ops[1], self.labels, f, n, self.radix), f, n))
+                return encode_ri(OP_LUI, rd, _imm6(_eval_expr(ops[1], self.labels, f, n), f, n))
 
             case 'addi':
                 self._expect(ops, 2, mnem, f, n)
@@ -693,7 +747,7 @@ class Assembler:
                     raise AsmError(f, n, "addi cannot target r0 (use bt for branches)")
                 if rd == 7:
                     raise AsmError(f, n, "addi cannot target r7 (use bt for branches)")
-                return encode_ri(OP_ADDI, rd, _imm6(_eval_expr(ops[1], self.labels, f, n, self.radix), f, n))
+                return encode_ri(OP_ADDI, rd, _imm6(_eval_expr(ops[1], self.labels, f, n), f, n))
 
             case 'bf':
                 self._expect(ops, 1, mnem, f, n)
@@ -717,7 +771,7 @@ class Assembler:
                 self._expect(ops, 2, mnem, f, n)
                 op = OP_LW if mnem == 'lw' else OP_SW
                 rd = _reg(ops[0], f, n)
-                val = _eval_expr(ops[1], self.labels, f, n, self.radix)
+                val = _eval_expr(ops[1], self.labels, f, n)
                 return encode_ri(op, rd, _resolve_mem_operand(val, rd, self.bases, f, n))
 
             case 'li':
@@ -725,7 +779,7 @@ class Assembler:
                 rd = _reg(ops[0], f, n)
                 if rd == 0:
                     raise AsmError(f, n, "li cannot target r0")
-                val = _eval_expr(ops[1], self.labels, f, n, self.radix)
+                val = _eval_expr(ops[1], self.labels, f, n)
                 if val < -2048 or val > WORD_MASK:
                     raise AsmError(f, n, f"li value {val} out of 12-bit range")
                 val &= WORD_MASK
@@ -746,35 +800,11 @@ class Assembler:
                 raise AsmError(filename, lineno, f"undefined label '{operand}'")
             offset = self.labels[operand] - instr_addr
         else:
-            offset = _eval_expr(operand, self.labels, filename, lineno, self.radix)
+            offset = _eval_expr(operand, self.labels, filename, lineno)
         if offset < -64 or offset > 63:
             raise AsmError(filename, lineno,
                 f"branch offset {offset:+d} out of range (-64..63)")
         return offset
-
-    @staticmethod
-    def _parse_string_literal(s, filename, lineno):
-        """Parse a quoted string literal with \\n and \\\\ escapes."""
-        s = s.strip()
-        if len(s) < 2 or s[0] != '"' or s[-1] != '"':
-            raise AsmError(filename, lineno, "expected a quoted string literal")
-        inner = s[1:-1]
-        result = []
-        i = 0
-        while i < len(inner):
-            if inner[i] == '\\' and i + 1 < len(inner):
-                c = inner[i + 1]
-                if c == 'n':
-                    result.append('\n')
-                elif c == '\\':
-                    result.append('\\')
-                else:
-                    raise AsmError(filename, lineno, f"unknown escape '\\{c}'")
-                i += 2
-            else:
-                result.append(inner[i])
-                i += 1
-        return result
 
     @staticmethod
     def _expect(ops, n, mnem, filename, lineno):

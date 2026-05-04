@@ -1,2 +1,1 @@
-.octal
-.word 89
+.word 089

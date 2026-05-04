@@ -16,13 +16,11 @@
 ;   r3  current character -- passed to putchar
 ;   r6  return address (input to putstr)
 ;
-        .octal
-
 ; I/O-page offsets -- base is r7 & 0o7700 = 0o7700
-%define TXRDY  7770             ; TX ready flag  (read)
-%define TXBUF  7772             ; TX data buffer (write)
+%define TXRDY  07770            ; TX ready flag  (read)
+%define TXBUF  07772            ; TX data buffer (write)
 
-        .org 1000
+        .org 01000
 
         li   r2, msg            ; r2 = pointer to first character
         li   r5, putstr         ; r5 = putstr address

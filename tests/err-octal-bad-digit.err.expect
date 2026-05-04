@@ -1,1 +1,1 @@
-/home/joel/rrisc/tests/err-octal-bad-digit.s:2: in '89': invalid number '89'
+/home/joel/rrisc/tests/err-octal-bad-digit.s:1: in '089': invalid number '089'
