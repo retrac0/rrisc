@@ -277,7 +277,7 @@ class Assembler:
 
     def _collect_macro_defs(self, lines):
         """Scan flattened lines for %macro/%endm blocks, store in self.param_macros.
-        Returns lines with all definition lines removed."""
+        Returns all lines; definition lines are kept for listing but skipped during assembly."""
         out = []
         i = 0
         while i < len(lines):
@@ -299,6 +299,7 @@ class Assembler:
                     raise AsmError(filename, lineno, f"redefinition of macro '{macro_name}'")
                 def_filename, def_lineno = filename, lineno
                 body = []
+                out.append(lines[i])  # keep %macro line for listing
                 i += 1
                 while i < len(lines):
                     bfn, bln, braw = lines[i]
@@ -306,8 +307,10 @@ class Assembler:
                     if bline.startswith('%macro'):
                         raise AsmError(bfn, bln, "nested %macro definition is not allowed")
                     if bline == '%endm':
+                        out.append(lines[i])  # keep %endm line for listing
                         break
                     body.append((bln, braw))
+                    out.append(lines[i])  # keep body line for listing
                     i += 1
                 else:
                     raise AsmError(def_filename, def_lineno,
@@ -315,7 +318,7 @@ class Assembler:
                 self.param_macros[macro_name] = MacroDef(
                     params=params, body=body,
                     def_filename=def_filename, def_lineno=def_lineno)
-                i += 1  # skip %endm
+                i += 1  # skip past %endm (already appended above)
 
             elif line == '%endm':
                 raise AsmError(filename, lineno, "unexpected %endm without matching %macro")
@@ -395,10 +398,19 @@ class Assembler:
         raw_lines = self._expand_macros(raw_lines)
         self._flat_lines = raw_lines
 
-        # Pass A: collect all %define macros; skip %include lines (already expanded)
+        # Pass A: collect all %define macros; skip %include and macro-definition lines
         no_defines = []
+        in_macro_def = False
         for source_index, (filename, lineno, raw) in enumerate(raw_lines):
             line = _strip_comment(raw).strip()
+            if line.startswith('%macro'):
+                in_macro_def = True
+                continue  # in _flat_lines for listing; not assembled
+            if line == '%endm':
+                in_macro_def = False
+                continue
+            if in_macro_def:
+                continue  # definition body: assembled only via expansion
             m = re.match(r'%define\s+(\w+)\s+(.*)', line)
             if m:
                 name, val = m.group(1), m.group(2).strip()
