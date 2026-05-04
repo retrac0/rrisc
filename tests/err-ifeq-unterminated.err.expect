@@ -1,0 +1,1 @@
+/home/joel/rrisc/tests/err-ifeq-unterminated.s:1: unterminated %ifdef/%ifeq/%ifneq: missing %endif

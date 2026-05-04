@@ -420,6 +420,9 @@ class Assembler:
             elif line:
                 no_defines.append((filename, lineno, line, source_index))
 
+        # Pass C: process conditionals before substitution so %ifdef sees raw names
+        no_defines = self._process_conditionals(no_defines)
+
         # Pass B: macro substitution (whole-word replacement)
         substituted = []
         for filename, lineno, line, source_index in no_defines:
@@ -428,6 +431,61 @@ class Assembler:
             substituted.append((filename, lineno, line, source_index))
 
         return self._assign_addresses(substituted)
+
+    def _process_conditionals(self, lines):
+        """Pass C: filter lines through %ifdef/%ifeq/%ifneq/%endif.
+        Called after Pass A (macros known) but before Pass B (substitution).
+        %ifdef checks names directly; %ifeq/%ifneq substitute operands internally.
+        lines is [(filename, lineno, text, source_index)].
+        Stack frames are (active: bool, open_filename: str, open_lineno: int)."""
+        out = []
+        stack = []  # (active, filename, lineno) per open conditional
+
+        for filename, lineno, line, source_index in lines:
+
+            # %ifdef NAME
+            if re.match(r'%ifdef\b', line):
+                m = re.match(r'%ifdef\s+(\w+)\s*$', line)
+                if not m:
+                    raise AsmError(filename, lineno, "malformed %ifdef directive")
+                stack.append((m.group(1) in self.macros, filename, lineno))
+                continue
+
+            # %ifeq / %ifneq — guard wrong operand count, then evaluate
+            bad = re.match(r'(%ifeq|%ifneq)\b(.*)', line)
+            if bad:
+                directive = bad.group(1)
+                operands = bad.group(2)
+                for name, val in self.macros.items():
+                    operands = re.sub(r'\b' + re.escape(name) + r'\b', val, operands)
+                tokens = operands.split()
+                if len(tokens) != 2:
+                    raise AsmError(filename, lineno,
+                        f"{directive} requires exactly 2 operands, got {len(tokens)}")
+                a_val = _eval_expr(tokens[0], {}, filename, lineno)
+                b_val = _eval_expr(tokens[1], {}, filename, lineno)
+                result = (a_val == b_val) if directive == '%ifeq' else (a_val != b_val)
+                stack.append((result, filename, lineno))
+                continue
+
+            # %endif
+            if re.match(r'%endif\s*$', line):
+                if not stack:
+                    raise AsmError(filename, lineno,
+                        "%endif without matching %ifdef/%ifeq/%ifneq")
+                stack.pop()
+                continue
+
+            # ordinary line: emit only when all frames are active
+            if all(frame[0] for frame in stack):
+                out.append((filename, lineno, line, source_index))
+
+        if stack:
+            open_fn, open_ln = stack[0][1], stack[0][2]
+            raise AsmError(open_fn, open_ln,
+                "unterminated %ifdef/%ifeq/%ifneq: missing %endif")
+
+        return out
 
     def _assign_addresses(self, substituted):
         """Tokenize lines, register labels, assign addresses. Returns [Statement]."""
