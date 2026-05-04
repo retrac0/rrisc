@@ -34,61 +34,72 @@
         ror  reg, reg
 %endm
 
-        .org 0o1000
+%macro jal d, r, l
+
+        li r, l 
+        jalr d, r
+%endm        
+
+        .octal 
+
+; --- octoa ---
+; Builds a NUL-terminated ASCII string in memory
+
+.org 10
+
+pbuf:  .fill 4, 0
+       .word 0
+        
+        .org 1000
 
 main:
-        li   r2, 0o1357
-        li   r5, print_oct
-        jalr r6, r5
+        li   r2, 1357
+        jal  r6, r1, print_oct
         li   r3, 10             ; '\n'
-        li   r5, putchar
-        jalr r4, r5
+        jal  r4, r5, putchar
         halt
 
-; --- print_oct ---
-; Builds a NUL-terminated ASCII string in zero-page words 0o20..0o24 and
-; tail-calls putstr to transmit it.
 ;
 ; Digits are extracted LSB-first but stored in descending address order
 ; (digit 0 at 0o23, digit 3 at 0o20) so putstr scanning upward from 0o20
 ; prints the MSB digit first.  ASCII conversion (add '0') happens at store
 ; time using r3 = 0o060 loaded once up front.
 print_oct:
-        li   r3, 0o060          ; r3 = '0' = 48
-        li   r4, 0o007          ; r4 = 3-bit mask
+        li   r3, 60          ; r3 = '0' = 48
+        li   r4, 07          ; r4 = 3-bit mask
 
         sub  r0, r0, r0         ; clrt (T unknown at entry)
         and  r1, r2, r4         ; digit 0 (LSB, bits 2:0)
         addc r1, r1, r3         ; → ASCII (T=0 from clrt)
-        sw   r0, 0o23           ; buffer[3]
+        sw   r0, pbuf+3           ; buffer[3]
 
         ror3 r2
 
         sub  r0, r0, r0         ; clrt (ror3 leaves T unpredictable)
         and  r1, r2, r4         ; digit 1 (bits 5:3)
         addc r1, r1, r3
-        sw   r0, 0o22           ; buffer[2]
+        sw   r0, pbuf+2           ; buffer[2]
 
         ror3 r2
 
         sub  r0, r0, r0         ; clrt
         and  r1, r2, r4         ; digit 2 (bits 8:6)
         addc r1, r1, r3
-        sw   r0, 0o21           ; buffer[1]
+        sw   r0, pbuf+1             ; buffer[1]
 
         ror3 r2
 
         sub  r0, r0, r0         ; clrt
         and  r1, r2, r4         ; digit 3 (MSB, bits 11:9)
         addc r1, r1, r3
-        sw   r0, 0o20           ; buffer[0]
+        sw   r0, pbuf           ; buffer[0]
 
         and  r1, r0, r0         ; r1 = 0
-        sw   r0, 0o24           ; buffer[4] = NUL
+        sw   r0, 24           ; buffer[4] = NUL
 
-        li   r2, 0o20           ; r2 → start of buffer
-        li   r5, putstr
-        jalr r0, r5             ; tail-call putstr; it returns via r6 to our caller
+        li   r2, pbuf           ; r2 → start of buffer
+        jal r0, r5, putstr            ; tail-call putstr; it returns via r6 to our caller
+
 
 ; --- putstr ---
 ; Print the NUL-terminated string of words starting at r2.
