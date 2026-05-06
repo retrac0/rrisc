@@ -5,7 +5,6 @@
 #include <string.h>
 
 #define WORD_MASK  0xFFFu
-#define MEM_SIZE   4096
 
 /* Opcodes (bits 11:9) */
 #define OP_AND  0
@@ -24,6 +23,19 @@
 #define RB_LWR  3
 #define RB_SWR  4
 
+/* Memory bank types */
+#define BANK_RAM 0
+#define BANK_ROM 1
+#define BANK_IO  2
+#define MAX_BANKS 16
+
+typedef struct {
+    int      type;
+    uint16_t base;
+    uint16_t size;
+    uint16_t *data;
+} Bank;
+
 /* SIXBIT decode table: index = 6-bit value, value = output char ('\0' = silent) */
 static const char sixbit_decode[64] = {
     '\0',
@@ -37,7 +49,8 @@ static const char sixbit_decode[64] = {
     ':',';','<','=','>','?'
 };
 
-static uint16_t mem[MEM_SIZE];
+static Bank     banks[MAX_BANKS];
+static int      num_banks  = 0;
 static uint16_t reg[8];
 static int      T  = 0;
 static uint16_t pc = 0;
@@ -51,6 +64,51 @@ static void wrreg(int r, int val) {
         reg[r] = (uint16_t)(val & WORD_MASK);
 }
 
+/* Parse an address string: handles 0o-prefixed octal, 0x-prefixed hex, or decimal. */
+static uint16_t parse_addr(const char *s) {
+    if (s[0] == '0' && (s[1] == 'o' || s[1] == 'O'))
+        return (uint16_t)(strtoul(s + 2, NULL, 8) & WORD_MASK);
+    return (uint16_t)(strtoul(s, NULL, 0) & WORD_MASK);
+}
+
+/* Parse "TYPE:BASE:SIZE" and append to the banks array. Returns 1 on success. */
+static int parse_bank_spec(const char *spec) {
+    if (num_banks >= MAX_BANKS) { fprintf(stderr, "too many --mem banks (max %d)\n", MAX_BANKS); return 0; }
+    char buf[64];
+    strncpy(buf, spec, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+    char *tok = strtok(buf, ":");
+    if (!tok) { fprintf(stderr, "--mem: missing type in %s\n", spec); return 0; }
+    int type;
+    if      (strcmp(tok, "ram") == 0) type = BANK_RAM;
+    else if (strcmp(tok, "rom") == 0) type = BANK_ROM;
+    else if (strcmp(tok, "io")  == 0) type = BANK_IO;
+    else { fprintf(stderr, "--mem: unknown bank type '%s'\n", tok); return 0; }
+    tok = strtok(NULL, ":");
+    if (!tok) { fprintf(stderr, "--mem: missing base in %s\n", spec); return 0; }
+    uint16_t base = parse_addr(tok);
+    tok = strtok(NULL, ":");
+    if (!tok) { fprintf(stderr, "--mem: missing size in %s\n", spec); return 0; }
+    uint16_t size = parse_addr(tok);
+    banks[num_banks++] = (Bank){type, base, size, NULL};
+    return 1;
+}
+
+static void add_default_banks(void) {
+    banks[num_banks++] = (Bank){BANK_RAM, 0,     0100,  NULL};  /* 64 words  */
+    banks[num_banks++] = (Bank){BANK_ROM, 01000, 02000, NULL};  /* 1024 words */
+}
+
+static void init_banks(void) {
+    for (int i = 0; i < num_banks; i++) {
+        if (banks[i].type == BANK_IO) { banks[i].data = NULL; continue; }
+        banks[i].data = (uint16_t *)malloc(banks[i].size * sizeof(uint16_t));
+        if (!banks[i].data) { perror("malloc"); exit(1); }
+        for (int j = 0; j < banks[i].size; j++)
+            banks[i].data[j] = WORD_MASK;
+    }
+}
+
 static uint16_t rdmem(uint16_t addr) {
     addr &= WORD_MASK;
     if (use_terminal) {
@@ -58,7 +116,14 @@ static uint16_t rdmem(uint16_t addr) {
         if (addr == 07771) return 0;  /* RX RDY: never ready  */
         if (addr == 07773) return 0;  /* RX BUF: empty        */
     }
-    return mem[addr];
+    for (int i = 0; i < num_banks; i++) {
+        uint16_t end = (uint16_t)(banks[i].base + banks[i].size);
+        if (addr >= banks[i].base && addr < end) {
+            if (banks[i].type == BANK_IO) return 0;
+            return banks[i].data[addr - banks[i].base];
+        }
+    }
+    return WORD_MASK;  /* floating */
 }
 
 static void wrmem(uint16_t addr, uint16_t val) {
@@ -73,8 +138,15 @@ static void wrmem(uint16_t addr, uint16_t val) {
         }
         return;
     }
-    if (addr >= 01000 && addr < 03000) return;  /* ROM: write-ignored */
-    mem[addr] = val;
+    for (int i = 0; i < num_banks; i++) {
+        uint16_t end = (uint16_t)(banks[i].base + banks[i].size);
+        if (addr >= banks[i].base && addr < end) {
+            if (banks[i].type == BANK_RAM)
+                banks[i].data[addr - banks[i].base] = val;
+            return;  /* ROM: write ignored; IO: no backing store */
+        }
+    }
+    /* unmapped: silently ignored */
 }
 
 static int sign_extend6(int n) {
@@ -91,8 +163,18 @@ static void load_bin(const char *filename) {
     if (!f) { perror(filename); exit(1); }
     uint16_t addr = 0;
     uint8_t  buf[2];
-    while (addr < MEM_SIZE && fread(buf, 1, 2, f) == 2)
-        mem[addr++] = (buf[0] | ((buf[1] & 0x0F) << 8)) & WORD_MASK;
+    while (fread(buf, 1, 2, f) == 2) {
+        uint16_t word = (buf[0] | ((buf[1] & 0x0F) << 8)) & WORD_MASK;
+        for (int i = 0; i < num_banks; i++) {
+            uint16_t end = (uint16_t)(banks[i].base + banks[i].size);
+            if (addr >= banks[i].base && addr < end) {
+                if (banks[i].data != NULL)
+                    banks[i].data[addr - banks[i].base] = word;
+                break;
+            }
+        }
+        addr = (addr + 1) & WORD_MASK;
+    }
     fclose(f);
 }
 
@@ -110,14 +192,17 @@ int main(int argc, char *argv[]) {
             start = (uint16_t)(strtoul(argv[++i], NULL, 8) & WORD_MASK);
         else if (strcmp(argv[i], "--maxcycle") == 0 && i + 1 < argc)
             max_cycles = strtol(argv[++i], NULL, 10);
+        else if (strcmp(argv[i], "--mem") == 0 && i + 1 < argc)
+            parse_bank_spec(argv[++i]);
         else filename = argv[i];
     }
     if (!filename) {
-        fprintf(stderr, "usage: sim2 [--summary] [--terminal] [--translate] [--start ADDR] <binary>\n");
+        fprintf(stderr, "usage: sim2 [--summary] [--terminal] [--translate] [--start ADDR] [--mem TYPE:BASE:SIZE] <binary>\n");
         return 1;
     }
 
-    for (int i = 0; i < MEM_SIZE; i++) mem[i] = WORD_MASK;
+    if (num_banks == 0) add_default_banks();
+    init_banks();
     memset(reg, 0, sizeof(reg));
     reg[7] = WORD_MASK;
 
@@ -151,7 +236,7 @@ int main(int argc, char *argv[]) {
         case OP_ADDC:
             val = (int)rdreg(ra) + (int)rdreg(rb) + T;
             wrreg(rd, val);
-            T = (val > WORD_MASK) ? 1 : 0;
+            T = (val > (int)WORD_MASK) ? 1 : 0;
             break;
         case OP_LUI:
             if (rd == 0 || rd == 7) { if (T == 0) pc = (uint16_t)((oldpc + branch_offset(rd, imm)) & WORD_MASK); }

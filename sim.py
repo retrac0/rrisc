@@ -124,21 +124,51 @@ def _load_binary_into_bus(filename, cpu, addr):
             a = (a + 1) & WORD_MASK
 
 
-def _build_default_bus():
-    """Build the default RRISC hardware bus:
-      0o0000-0o0077  64 words  RAM
-      0o1000-0o2777  1024 words ROM
-    Returns (bus, ram_data, rom_data).
-    """
+class MemBank:
+    """A single address-space bank: ram, rom, or io."""
+    __slots__ = ('type', 'base', 'size', 'data')
+    def __init__(self, type_, base, size, data):
+        self.type = type_
+        self.base = base
+        self.size = size
+        self.data = data  # list of words for ram/rom; None for io
+
+
+DEFAULT_BANK_SPECS = [('ram', 0o0000, 0o0100), ('rom', 0o1000, 0o2000)]
+
+
+def parse_mem_spec(spec):
+    """Parse 'TYPE:BASE:SIZE' into (type, base, size). BASE and SIZE accept 0o-prefixed octal."""
+    parts = spec.split(':')
+    if len(parts) != 3:
+        raise ValueError(f"--mem requires TYPE:BASE:SIZE, got: {spec!r}")
+    type_ = parts[0].lower()
+    if type_ not in ('ram', 'rom', 'io'):
+        raise ValueError(f"unknown bank type: {type_!r}")
+    return type_, int(parts[1], 0), int(parts[2], 0)
+
+
+def build_banks(specs):
+    """Create MemBank objects (data filled later by build_bus_from_banks)."""
+    return [MemBank(type_, base, size, None) for type_, base, size in specs]
+
+
+def build_bus_from_banks(banks):
+    """Register all banks on a fresh Bus; fills bank.data for ram/rom banks."""
     bus = Bus()
-
-    ram_data, ram_read, ram_write = make_ram(base=0o0000, size=64)
-    bus.register_range(0o0000, 0o0100, ram_read, ram_write)
-
-    rom_data, rom_read, _ = make_rom(base=0o1000, data=[0] * 1024)
-    bus.register_range(0o1000, 0o3000, rom_read, None)
-
-    return bus, ram_data, rom_data
+    for bank in banks:
+        if bank.type == 'ram':
+            data, r, w = make_ram(bank.base, bank.size)
+            bank.data = data
+            bus.register_range(bank.base, bank.base + bank.size, r, w)
+        elif bank.type == 'rom':
+            bank.data = [0] * bank.size
+            _, r, _ = make_rom(bank.base, bank.data)
+            bus.register_range(bank.base, bank.base + bank.size, r, None)
+        elif bank.type == 'io':
+            r, w = make_io_stub(bank.base, bank.size)
+            bus.register_range(bank.base, bank.base + bank.size, r, w)
+    return bus
 
 
 def load_binary(filename, mem):
@@ -155,7 +185,7 @@ def load_binary(filename, mem):
             addr += 1
 
 class CPU:
-    def __init__(self):
+    def __init__(self, specs=None):
         self.regfile = [0]*8  # 8 general purpose registers
         self.regfile[0] = 0  # r0 is always 0
         self.regfile[7] = 0o7777  # r7 is always -1
@@ -165,7 +195,8 @@ class CPU:
         self.trace = False
         self.instructions_retired = 0
         self.cycles = 0
-        self.bus, self._ram_data, self._rom_data = _build_default_bus()
+        self._banks = build_banks(specs if specs is not None else DEFAULT_BANK_SPECS)
+        self.bus = build_bus_from_banks(self._banks)
 
     def wrreg(self, rd, val):
         if rd != 0 and rd != 7:
@@ -181,16 +212,18 @@ class CPU:
         self.bus.write(addr, val & WORD_MASK)
 
     def randomize(self):
-        for i in range(len(self._ram_data)):
-            self._ram_data[i] = random.randint(0, 0o7777)
+        for bank in self._banks:
+            if bank.type == 'ram' and bank.data is not None:
+                for i in range(bank.size):
+                    bank.data[i] = random.randint(0, 0o7777)
         for i in range(1, 7):  # r0 and r7 stay hardwired
             self.regfile[i] = random.randint(0, 0o7777)
         self.T = random.randint(0, 1)
 
     def load_mem(self, filename, addr=0):
         """Load binary as memory image -- file word N lands at mem[addr+N].
-        Writes route to RAM/ROM backing stores directly; addresses outside any
-        backing region are silently dropped."""
+        Writes go directly to bank backing stores; addresses outside any bank
+        are silently dropped."""
         addr &= WORD_MASK
         with open(filename, "rb") as f:
             i = 0
@@ -202,10 +235,10 @@ class CPU:
                     b += b'\x00' * (2 - len(b))
                 word = (b[0] | ((b[1] & 0x0F) << 8)) & WORD_MASK
                 a = (addr + i) & WORD_MASK
-                if a < len(self._ram_data):
-                    self._ram_data[a] = word
-                elif 0o1000 <= a < 0o1000 + len(self._rom_data):
-                    self._rom_data[a - 0o1000] = word
+                for bank in self._banks:
+                    if bank.base <= a < bank.base + bank.size and bank.data is not None:
+                        bank.data[a - bank.base] = word
+                        break
                 i += 1
 
     def step(self):
@@ -362,8 +395,6 @@ def run(cpu, summary=False):
         print(f"Instructions retired: {cpu.instructions_retired} ({cpu.cycles} cycles)")
 
 def main():
-    cpu = CPU()
-
     parser = argparse.ArgumentParser(description='rr sim')
     parser.add_argument('binary_filename', type=str)
     parser.add_argument('--trace', action='store_true', help='enable instruction trace output')
@@ -376,7 +407,12 @@ def main():
     parser.add_argument('--start', default='0', metavar='ADDR', help='start address in octal (default 0)')
     parser.add_argument('--maxcycle', type=int, default=0, metavar='N',
                         help='halt with error after N cycles')
+    parser.add_argument('--mem', action='append', default=[], metavar='TYPE:BASE:SIZE',
+                        help='add a memory bank (repeatable); TYPE=ram|rom|io, BASE and SIZE in decimal or 0o-octal')
     args = parser.parse_args()
+
+    specs = [parse_mem_spec(s) for s in args.mem] if args.mem else DEFAULT_BANK_SPECS
+    cpu = CPU(specs)
 
     cpu.trace = args.trace
     cpu.bus.trace = args.bustrace
