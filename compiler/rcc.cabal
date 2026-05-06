@@ -1,0 +1,34 @@
+cabal-version:      3.0
+name:               rcc
+version:            0.1.0.0
+synopsis:           C-like compiler for the RRISC 12-bit word machine
+build-type:         Simple
+
+common rcc-common
+    default-language:   GHC2021
+    default-extensions: OverloadedStrings
+    ghc-options:        -Wall -Wno-unused-do-bind
+    build-depends:
+          base       >= 4.18 && < 5
+        , text       >= 2.0  && < 3
+        , megaparsec >= 9.0  && < 10
+        , containers >= 0.6  && < 1
+        , mtl        >= 2.3  && < 3
+
+library
+    import:          rcc-common
+    hs-source-dirs:  src
+    exposed-modules:
+        RCC.Error
+        RCC.Syntax
+        RCC.Parser
+        RCC.Sema
+        RCC.TAC
+        RCC.Optimize
+        RCC.Codegen
+
+executable rcc
+    import:          rcc-common
+    hs-source-dirs:  app
+    main-is:         Main.hs
+    build-depends:   rcc

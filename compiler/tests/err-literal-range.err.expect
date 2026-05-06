@@ -1,0 +1,1 @@
+tests/err-literal-range.c:2:13: error: integer literal 4096 out of range (0..4095)

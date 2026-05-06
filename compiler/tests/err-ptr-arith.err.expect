@@ -1,0 +1,1 @@
+tests/err-ptr-arith.c:7:14: error: invalid operands to '+': both operands are pointers

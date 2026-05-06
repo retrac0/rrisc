@@ -1,0 +1,1 @@
+tests/err-struct-undef.c:2:12: error: undefined struct 'Foo'

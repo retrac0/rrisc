@@ -1,0 +1,1 @@
+tests/err-redeclared.c:3:9: error: 'x' already declared in this scope

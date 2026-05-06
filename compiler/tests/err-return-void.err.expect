@@ -1,0 +1,1 @@
+tests/err-return-void.c:2:12: error: void function cannot return a value

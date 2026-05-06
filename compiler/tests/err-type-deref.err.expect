@@ -1,0 +1,1 @@
+tests/err-type-deref.c:3:12: error: cannot dereference non-pointer type 'int'

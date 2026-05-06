@@ -1,0 +1,2 @@
+tests/err-syntax.c:2:13: error: unexpected ';
+    ' expected '!', '&', '(', '*', '++', '-', '--', '0b', '0o', '0x', '_', 'false', 'sizeof', 'true', '{', '~', integer, letter
