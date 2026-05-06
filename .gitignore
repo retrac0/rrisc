@@ -6,3 +6,4 @@ TODO.md
 *.err
 
 examples/*.output 
+*/dist-newstyle/*
