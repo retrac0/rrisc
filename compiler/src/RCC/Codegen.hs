@@ -200,6 +200,13 @@ loadOpInto reg (TAC.OTemp t)   = do
   s <- slotOf t
   addrOfSlot s
   emitL ("lwr r" <> tshow reg <> ", r1")
+loadOpInto reg (TAC.OLocalAddr t) = do
+  -- Compute address of local variable's stack slot into reg.
+  -- addrOfSlot places r6+slot in r1; if target is r1 that's already done.
+  s <- slotOf t
+  emitL "and r1, r6, r7"
+  when (s /= 0) $ emitL ("addi r1, " <> tshow s)
+  when (reg /= 1) $ emitL ("and r" <> tshow reg <> ", r1, r7")
 
 -- Like loadOpInto but adds adj to the slot offset (compensates for r6 drift during arg pushes).
 loadOpIntoAdj :: Int -> TAC.Operand -> Int -> CG ()
@@ -209,6 +216,12 @@ loadOpIntoAdj reg (TAC.OTemp t) adj = do
   let s' = s + adj
   when (s' /= 0) $ emitL ("addi r1, " <> tshow s')
   emitL ("lwr r" <> tshow reg <> ", r1")
+loadOpIntoAdj reg (TAC.OLocalAddr t) adj = do
+  s <- slotOf t
+  emitL "and r1, r6, r7"
+  let s' = s + adj
+  when (s' /= 0) $ emitL ("addi r1, " <> tshow s')
+  when (reg /= 1) $ emitL ("and r" <> tshow reg <> ", r1, r7")
 loadOpIntoAdj reg op _ = loadOpInto reg op
 
 storeRegToTemp :: Int -> TAC.Temp -> CG ()
@@ -356,7 +369,13 @@ emitBinOp TAC.TMod = do
 emitBinOp TAC.TAnd = do
   -- Logical: should not appear (lowered to branches by TAC), but handle anyway.
   emitL "and r2, r3, r2"
-emitBinOp TAC.TOr  = emitL "and r2, r3, r2"  -- placeholder
+emitBinOp TAC.TOr = do
+  -- Logical: should not appear (lowered to branches by TAC), but handle anyway.
+  -- r3 | r2 = (r3 + r2) - (r3 & r2)
+  emitL "and r1, r3, r2"
+  emitL "clrt"
+  emitL "addc r2, r3, r2"
+  emitL "sub r2, r2, r1"
 
 -- Comparisons: result in r2 as 0 or 1.
 emitBinOp TAC.TEq = do

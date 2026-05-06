@@ -28,9 +28,10 @@ type Temp  = Text   -- temporary or named variable
 type Label = Text   -- branch target
 
 data Operand
-  = OTemp  Temp
-  | OConst Int
-  | OAddr  Label   -- address-of a global label
+  = OTemp      Temp
+  | OConst     Int
+  | OAddr      Label   -- address-of a global label
+  | OLocalAddr Temp    -- address of a local variable's stack slot
   deriving (Show, Eq)
 
 data BinOp
@@ -445,7 +446,7 @@ lowerAddr (Syn.EVar _ name) = do
   glb <- isGlobal name
   if glb
     then pure (OAddr name)
-    else pure (OAddr name)   -- locals don't have addresses; rare in our tests
+    else pure (OLocalAddr name)
 lowerAddr (Syn.EUnary _ Syn.UDeref e) = lowerExpr e
 lowerAddr (Syn.EIndex _ arr idx) = do
   baseAddr <- lowerExpr arr

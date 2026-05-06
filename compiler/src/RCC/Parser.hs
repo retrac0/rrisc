@@ -350,7 +350,7 @@ assignExpr = do
 
 assignOp :: Parser AssOp
 assignOp = choice
-  [ AEq   <$ symbol  "="
+  [ AEq   <$ lexeme (try (char '=' <* notFollowedBy (char '=')))
   , AAdd  <$ symbol "+="
   , ASub  <$ symbol "-="
   , AMul  <$ symbol "*="
@@ -366,12 +366,27 @@ assignOp = choice
 condExpr :: Parser Expr
 condExpr = lorExpr
 
-lorExpr, landExpr, borExpr, bxorExpr, bandExpr :: Parser Expr
+lorExpr, landExpr, borExpr, bxorExpr :: Parser Expr
 lorExpr  = leftAssoc landExpr  [("||", BOr)]
 landExpr = leftAssoc borExpr   [("&&", BAnd)]
 borExpr  = leftAssoc bxorExpr  [("|",  BBor)]
 bxorExpr = leftAssoc bandExpr  [("^",  BBxor)]
-bandExpr = leftAssoc eqExpr    [("&",  BBand)]
+
+-- bandExpr cannot use leftAssoc with symbol "&" because symbol "&" would
+-- match the first character of "&&", causing "a && b" to mis-parse as
+-- "(a) & (&b)" since unary & (address-of) is valid on the right side.
+-- Instead, require that & is not followed by another &.
+bandExpr :: Parser Expr
+bandExpr = do
+    x <- eqExpr
+    rest x
+  where
+    op    = BBand <$ lexeme (try (char '&' <* notFollowedBy (char '&')))
+    rest x = option x $ try $ do
+      (opSp, o) <- withSpan op
+      y         <- eqExpr
+      let sp = Span (spanStart opSp) (spanEnd (exprSpan y))
+      rest (EBinary sp o x y)
 
 eqExpr, relExpr, shiftExpr, addExpr, mulExpr :: Parser Expr
 eqExpr   = leftAssoc relExpr   [("==", BEq),  ("!=", BNe)]

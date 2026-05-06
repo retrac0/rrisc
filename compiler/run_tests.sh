@@ -1,23 +1,19 @@
 #!/usr/bin/env bash
 # Test runner for the rcc compiler.
-# Run from the compiler/ directory: bash tests/run_tests.sh
+# Run from the compiler/ directory: bash run_tests.sh
 #
 # Error tests  (err-*.c): compiler must exit non-zero; stderr must match .err.expect
 # Success tests (NNN-*.c): compiler -> asm.py -> sim.py; output must match .output.expect
-#                           Tests without .output.expect are skipped (run --update to generate).
 #
 # Options:
-#   --update   Regenerate all .output.expect files from current compiler output.
-#   --keep     Keep intermediate .s and .bin files after each test.
+#   --keep   Keep intermediate .s and .bin files after each test.
 
-set -euo pipefail
+set -uo pipefail
 
-UPDATE=0
 KEEP=0
 for arg in "$@"; do
     case $arg in
-        --update) UPDATE=1 ;;
-        --keep)   KEEP=1   ;;
+        --keep) KEEP=1 ;;
         *) echo "unknown option: $arg"; exit 1 ;;
     esac
 done
@@ -27,7 +23,7 @@ cabal build 2>&1 | grep -v "^Up to date" || true
 RCC=$(cabal list-bin rcc 2>/dev/null)
 ASM="python3 ../asm.py"
 SIM="python3 ../sim.py"
-SIM_FLAGS="--summary --start 0o1000"
+SIM_FLAGS="--summary --start 0o1000 --maxcycle 100000"
 
 TMPDIR_WORK=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
@@ -61,7 +57,7 @@ for src in tests/err-*.c; do
         pass=$((pass + 1))
     else
         echo "FAIL (error message mismatch)"
-        diff "$expect" "$errfile"
+        diff "$expect" "$errfile" || true
         fail=$((fail + 1))
     fi
     err_count=$((err_count + 1))
@@ -102,19 +98,15 @@ for src in tests/[0-9]*.c; do
     [ -f "tests/$base.simflags" ] && extra_flags=$(cat "tests/$base.simflags")
     $SIM $SIM_FLAGS $extra_flags "$bin_out" > "$actual" 2>&1
 
-    if [ "$UPDATE" -eq 1 ]; then
-        cp "$actual" "$expect"
-        echo "UPDATED"
-        pass=$((pass + 1))
-    elif [ ! -f "$expect" ]; then
-        echo "SKIP (no .output.expect; run with --update to generate)"
+    if [ ! -f "$expect" ]; then
+        echo "SKIP (no .output.expect)"
         skip=$((skip + 1))
     elif cmp -s "$actual" "$expect"; then
         echo "PASS"
         pass=$((pass + 1))
     else
         echo "FAIL (output mismatch)"
-        diff "$expect" "$actual"
+        diff "$expect" "$actual" || true
         fail=$((fail + 1))
     fi
 
