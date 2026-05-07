@@ -10,3 +10,4 @@ examples/*.output
 ras
 rcc
 demos/rpn.s
+demos/rpn.s

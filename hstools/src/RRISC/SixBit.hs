@@ -1,6 +1,7 @@
 -- | RRISC SIXBIT encoding (sixbit.py).
-module RRISC.SixBit (encodeSixbit) where
+module RRISC.SixBit (encodeSixbit, decodeSixbit) where
 
+import Data.Bits ((.&.))
 import Data.Char (chr, ord)
 import qualified Data.Map.Strict as M
 
@@ -29,3 +30,7 @@ table =
 
 encodeSixbit :: Char -> Maybe Int
 encodeSixbit c = M.lookup c table
+
+-- | Decode a 6-bit SIXBIT value to a string (empty for NUL), matching @decode_sixbit@ in sixbit.py.
+decodeSixbit :: Int -> String
+decodeSixbit v = sixbitDecode (v .&. 0x3F)

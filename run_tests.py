@@ -4,7 +4,7 @@ Unified RRISC test runner: RCC compiler tests, flat-assembler tests, and example
 
 Replaces compiler/run_tests.sh and runtests.sh with one subprocess-based harness:
   - Correct argv handling (no shell splitting bugs)
-  - Optional matrix over Python + Haskell assembler and Python + C simulator
+  - Optional matrix over Python + Haskell assembler and Python + C + Haskell simulators
   - Parallel execution via ThreadPoolExecutor
 
 Run from the repository root:
@@ -29,7 +29,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Iterable, Sequence, TextIO
 
 
 # --- paths -----------------------------------------------------------------
@@ -119,10 +119,20 @@ def resolve_hsasm(root: Path, override: str | None) -> Path | None:
     w = _usable_exe(which_or_path(override))
     if w:
         return w
-    built = _usable_exe(cabal_list_bin(root / "hsasm", "exe:hsasm"))
+    built = _usable_exe(cabal_list_bin(root / "hstools", "exe:hsasm"))
     if built:
         return built
     return _usable_exe(root / "ras")
+
+
+def resolve_hsim(root: Path, override: str | None) -> Path | None:
+    w = _usable_exe(which_or_path(override))
+    if w:
+        return w
+    built = _usable_exe(cabal_list_bin(root / "hstools", "exe:hsim"))
+    if built:
+        return built
+    return _usable_exe(root / "hsim")
 
 
 def resolve_sim2(root: Path, override: str | None) -> Path | None:
@@ -141,12 +151,20 @@ def run_capture(
     stdin_path: Path | None = None,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    stdin_f = open(stdin_path, "r", encoding="utf-8") if stdin_path else None
+    # Do not inherit the harness stdin (None): simulators with --terminal spawn a stdin
+    # reader thread; inheriting an interactive TTY blocks until the user types. DEVNULL
+    # gives immediate EOF so those threads exit and the child can finish cleanly.
+    if stdin_path:
+        stdin_f = open(stdin_path, "r", encoding="utf-8")
+        stdin_arg: int | TextIO = stdin_f
+    else:
+        stdin_f = None
+        stdin_arg = subprocess.DEVNULL
     try:
         return subprocess.run(
             list(argv),
             cwd=cwd,
-            stdin=stdin_f,
+            stdin=stdin_arg,
             capture_output=True,
             text=True,
             env=env,
@@ -196,13 +214,14 @@ class RunConfig:
     jobs: int
     filter_re: re.Pattern[str] | None
     assemblers: tuple[str, ...]  # "py", "hs"
-    simulators: tuple[str, ...]  # "py", "c"
+    simulators: tuple[str, ...]  # "py", "c", "hs"
     skip_unavailable: bool
     verbose: bool
     keep_temps: bool
     rcc_path: Path | None
     hsasm_path: Path | None
     sim2_path: Path | None
+    hsim_path: Path | None
     default_rcc_flags: list[str] = field(default_factory=lambda: ["--optimize"])
     compiler_sim_base: list[str] = field(
         default_factory=lambda: ["--summary", "--start", "0o1000", "--maxcycle", "500000"]
@@ -324,12 +343,26 @@ def run_rcc_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
                     continue
                 results.append(TResult(False, name, "sim2 not found", sub=f"{asm_id}/csim"))
                 continue
+            if sim_id == "hs" and not cfg.hsim_path:
+                if cfg.skip_unavailable:
+                    continue
+                results.append(TResult(False, name, "hsim not found", sub=f"{asm_id}/hsim"))
+                continue
 
             sim_argv: list[str]
             if sim_id == "py":
                 sim_argv = [
                     python_exe(),
                     str(cfg.root / "sim.py"),
+                    *cfg.compiler_sim_base,
+                    *sim_extra,
+                ]
+                if has_input:
+                    sim_argv.append("--terminal")
+                sim_argv.append(str(bin_path))
+            elif sim_id == "hs":
+                sim_argv = [
+                    str(cfg.hsim_path),
                     *cfg.compiler_sim_base,
                     *sim_extra,
                 ]
@@ -590,9 +623,16 @@ def run_asm_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
                 continue
             results.append(TResult(False, name, "sim2 not found", sub=f"*/csim"))
             continue
+        if sim_id == "hs" and not cfg.hsim_path:
+            if cfg.skip_unavailable:
+                continue
+            results.append(TResult(False, name, "hsim not found", sub=f"*/hssim"))
+            continue
 
         if sim_id == "py":
             sim_argv = [python_exe(), str(cfg.root / "sim.py"), *sim_base_py, *flags, str(primary_bin)]
+        elif sim_id == "hs":
+            sim_argv = [str(cfg.hsim_path), *sim_base_py, *flags, str(primary_bin)]
         else:
             sim_argv = [str(cfg.sim2_path), *sim_base_c, *flags, str(primary_bin)]
 
@@ -678,10 +718,26 @@ def run_example_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]
                 continue
             results.append(TResult(False, name, "sim2 not found", sub=f"{sim_id}sim"))
             continue
+        if sim_id == "hs" and not cfg.hsim_path:
+            if cfg.skip_unavailable:
+                continue
+            results.append(TResult(False, name, "hsim not found", sub=f"{sim_id}sim"))
+            continue
         if sim_id == "py":
             argv = [
                 python_exe(),
                 str(cfg.root / "sim.py"),
+                "--terminal",
+                "--summary",
+                "--start",
+                "0o1000",
+                "--maxcycle",
+                maxc,
+                str(bin_path),
+            ]
+        elif sim_id == "hs":
+            argv = [
+                str(cfg.hsim_path),
                 "--terminal",
                 "--summary",
                 "--start",
@@ -758,11 +814,12 @@ def main() -> int:
         action="store_true",
         help="rewrite compiler/tests/*.output.expect (rcc + pyasm + pysim)",
     )
-    ap.add_argument("--skip-unavailable", action="store_true", help="skip hsasm/sim2 if missing")
+    ap.add_argument("--skip-unavailable", action="store_true", help="skip hsasm/hsim/sim2 if missing")
     ap.add_argument("--keep", action="store_true", help="keep temp dirs (print path)")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--rcc", metavar="PATH", help="rcc executable")
     ap.add_argument("--hsasm", metavar="PATH", help="Haskell assembler (hsasm/ras)")
+    ap.add_argument("--hsim", metavar="PATH", help="Haskell simulator (hsim)")
     ap.add_argument("--sim2", metavar="PATH", help="C simulator binary")
     ap.add_argument(
         "--assemblers",
@@ -772,7 +829,7 @@ def main() -> int:
     ap.add_argument(
         "--simulators",
         default="py,c",
-        help="comma list: py, c (default py,c)",
+        help="comma list: py, c, hs (default py,c)",
     )
     ap.add_argument(
         "--no-optimize",
@@ -806,12 +863,13 @@ def main() -> int:
             print(f"unknown assembler {a!r}", file=sys.stderr)
             return 2
     for s in simulators:
-        if s not in ("py", "c"):
+        if s not in ("py", "c", "hs"):
             print(f"unknown simulator {s!r}", file=sys.stderr)
             return 2
 
     rcc_path = resolve_rcc(root, args.rcc)
     hsasm_path = resolve_hsasm(root, args.hsasm)
+    hsim_path = resolve_hsim(root, args.hsim)
     sim2_path = resolve_sim2(root, args.sim2)
 
     default_rcc = [] if args.no_optimize else ["--optimize"]
@@ -828,6 +886,7 @@ def main() -> int:
         rcc_path=rcc_path,
         hsasm_path=hsasm_path,
         sim2_path=sim2_path,
+        hsim_path=hsim_path,
         default_rcc_flags=default_rcc,
     )
 
@@ -839,7 +898,9 @@ def main() -> int:
     if not args.skip_unavailable:
         missing = []
         if "hs" in assemblers and not hsasm_path:
-            missing.append("hsasm (make ras, or cabal build exe:hsasm in hsasm/)")
+            missing.append("hsasm (make ras, or cabal build exe:hsasm in hstools/)")
+        if "hs" in simulators and not hsim_path:
+            missing.append("hsim (make hsim, or cabal build exe:hsim in hstools/)")
         if "c" in simulators and not sim2_path:
             missing.append("sim2 (make sim2)")
         if missing:

@@ -1,7 +1,7 @@
 cabal-version:      3.0
-name:               hsasm
+name:               hstools
 version:            0.1.0.0
-synopsis:           RRISC flat assembler (Haskell port of asm.py)
+synopsis:           RRISC assembler and simulator (Haskell tools)
 license:            MIT
 author:             rrisc
 build-type:         Simple
@@ -12,6 +12,11 @@ library
     RRISC.ISA
     RRISC.Float48
     RRISC.SixBit
+    RRISC.Disasm
+    RRISC.Sim.Bus
+    RRISC.Sim.Memory
+    RRISC.Sim.CPU
+    RRISC.Sim.Terminal
   other-modules:
     RRISC.Asm.Types
     RRISC.Asm.Expr
@@ -25,9 +30,12 @@ library
     base >= 4.16 && < 5,
     bytestring,
     containers,
+    stm,
     directory,
     filepath,
-    text
+    random,
+    text,
+    vector
 
 
 executable hsasm
@@ -39,5 +47,19 @@ executable hsasm
     base >= 4.16 && < 5,
     directory,
     filepath,
-    hsasm,
+    hstools,
     text
+
+
+executable hsim
+  main-is:          SimMain.hs
+  hs-source-dirs:   app
+  default-language: GHC2021
+  ghc-options:      -Wall -Wcompat -threaded
+  build-depends:
+    base >= 4.16 && < 5,
+    bytestring,
+    hstools,
+    optparse-applicative >= 0.17 && < 0.19,
+    random,
+    unix

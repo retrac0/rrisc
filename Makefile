@@ -4,17 +4,22 @@ CFLAGS  = -O2 -Wall
 
 CABAL  ?= cabal
 
-.PHONY: all sim2 ras rcc examples clean
+.PHONY: all sim2 ras hsim rcc examples clean
 
-all: sim2 ras rcc
+all: sim2 ras hsim rcc
 
 sim2: sim2.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 # Haskell assembler → ./ras (flat assembler, asm.py replacement)
 ras:
-	cd hsasm && $(CABAL) build exe:hsasm
-	ln -sf "$$(cd hsasm && $(CABAL) list-bin exe:hsasm)" "$(CURDIR)/ras"
+	cd hstools && $(CABAL) build exe:hsasm
+	ln -sf "$$(cd hstools && $(CABAL) list-bin exe:hsasm)" "$(CURDIR)/ras"
+
+# Haskell simulator → ./hsim (sim.py replacement)
+hsim:
+	cd hstools && $(CABAL) build exe:hsim
+	ln -sf "$$(cd hstools && $(CABAL) list-bin exe:hsim)" "$(CURDIR)/hsim"
 
 # RRISC C compiler → ./rcc
 rcc:
@@ -27,5 +32,5 @@ examples: ras
 	done
 
 clean:
-	-rm -f sim2 ras rcc *.bin tests/*.bin tests/*.output tests/*.sim2.output tests/*.err
+	-rm -f sim2 ras hsim rcc *.bin tests/*.bin tests/*.output tests/*.sim2.output tests/*.err
 	-rm -f examples/*.bin examples/*.output examples/*.sim2.output
