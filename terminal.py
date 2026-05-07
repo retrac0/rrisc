@@ -32,16 +32,20 @@ _RX_DEPTH = 16
 
 
 class Terminal:
-    def __init__(self, translate=False):
+    def __init__(self, translate=False, preload=None, read_stdin=True):
         self._rx: queue.Queue[int] = queue.Queue(maxsize=_RX_DEPTH)
         self._old_term = None
         self._translate = translate
 
-        if sys.stdin.isatty():
-            self._enter_cbreak()
+        if preload:
+            for b in preload:
+                self._rx.put(b & 0xFF)
 
-        t = threading.Thread(target=self._reader, name='terminal-rx', daemon=True)
-        t.start()
+        if read_stdin:
+            if sys.stdin.isatty():
+                self._enter_cbreak()
+            t = threading.Thread(target=self._reader, name='terminal-rx', daemon=True)
+            t.start()
 
     # -- terminal mode --
 

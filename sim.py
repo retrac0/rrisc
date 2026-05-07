@@ -6,6 +6,7 @@
 
 import argparse
 import random
+import time
 
 from terminal import Terminal
 from isa import (OP_ADDI, OP_LUI, OP_AND, OP_ADD, OP_ADDC, OP_SUB, OP_SUBI, OP_SPEC,
@@ -134,7 +135,9 @@ class MemBank:
         self.data = data  # list of words for ram/rom; None for io
 
 
-DEFAULT_BANK_SPECS = [('ram', 0o0000, 0o0100), ('rom', 0o1000, 0o2000)]
+# One contiguous RAM image [0, 0o7770): 4088 words.  Addresses 0o7770–0o7773 are
+# reserved for the UART when using --terminal (see terminal.py); they are not RAM.
+DEFAULT_BANK_SPECS = [('ram', 0o0000, 0o7770)]
 
 
 def parse_mem_spec(spec):
@@ -195,6 +198,7 @@ class CPU:
         self.trace = False
         self.instructions_retired = 0
         self.cycles = 0
+        self.uart_yield = False
         self._banks = build_banks(specs if specs is not None else DEFAULT_BANK_SPECS)
         self.bus = build_bus_from_banks(self._banks)
 
@@ -388,6 +392,8 @@ def test_sixbit():
 def run(cpu, summary=False):
     while cpu.running:
         cpu.step()
+        if cpu.uart_yield and (cpu.instructions_retired & 0x3F) == 0:
+            time.sleep(0)
 
         if hasattr(cpu, 'max_cycles') and cpu.max_cycles > 0 and cpu.cycles >= cpu.max_cycles:
             raise RuntimeError(f"maxcycle {cpu.max_cycles} reached")
@@ -404,6 +410,8 @@ def main():
     parser.add_argument('--summary', action='store_true', help='print final machine state and instruction count')
     parser.add_argument('--randomize', action='store_true', help='randomize registers and RAM before loading program')
     parser.add_argument('--terminal', action='store_true', help='attach UART terminal device')
+    parser.add_argument('--uart-preload', default=None, metavar='STR',
+                        help='UTF-8 string to push into the RX FIFO before run (disables stdin reader; for scripted runs)')
     parser.add_argument('--translate', action='store_true',
                         help='enable SIXBIT translation on the terminal (default: pass raw bytes)')
     parser.add_argument('--start', default='0', metavar='ADDR', help='start address in octal (default 0)')
@@ -420,7 +428,10 @@ def main():
     cpu.bus.trace = args.bustrace
 
     if args.terminal:
-        Terminal(translate=args.translate).register(cpu.bus)
+        pre = args.uart_preload.encode('utf-8') if args.uart_preload else None
+        read_stdin = args.uart_preload is None
+        Terminal(translate=args.translate, preload=pre, read_stdin=read_stdin).register(cpu.bus)
+        cpu.uart_yield = read_stdin
 
     if args.randomize:
         cpu.randomize()
