@@ -216,8 +216,8 @@ T is preserved.
 | `clrt` | `addc r0, r0, r0` | clear T flag |
 | `halt` | `0o7777` | stop execution |
 | `li rd, imm` | `lui rd, upper; addi rd, lower` | load 12-bit constant (2 words) |
-| `jmp label` | `li r4, label; jalr r0, r4` | unconditional jump (3 words) |
-| `call label` | `li r4, label; jalr r5, r4` | call, return address in r5 (3 words) |
+| `jmp label` | `li r1, label; jalr r0, r1` | unconditional jump (3 words); **r1** holds target so **r2–r4** stay free for data |
+| `call label` | `li r1, label; jalr r5, r1` | call; return address in **r5** (3 words); same **r1** convention as `jmp` |
 
 **li** encoding: `lower = imm & 0o77`, `upper = (imm >> 6) & 0o77`. Because `addi` is
 unsigned (0..63), no sign-extension compensation is needed.
@@ -301,20 +301,45 @@ ror rlo,  rlo
 
 ---
 
-## Calling Convention (rcc compiler)
+## Calling Convention (rcc / ABI)
+
+The architecture exposes only **r1–r4** as ordinary mutable registers once **r5** (link)
+and **r6** (stack) are reserved. The ABI fixes roles so calls stay uniform.
+
+### Register roles
 
 | Register | Role |
 |----------|------|
 | r0 | Zero (hardwired) |
-| r1 | Scratch / address scratch |
-| r2 | Arg 1 / return value |
-| r3 | Arg 2 |
-| r4 | Arg 3 |
-| r5 | Link register (callee-saved) |
-| r6 | Stack pointer (grows down) |
+| r1 | **Scratch only** — not used for argument passing. Holds `li` targets for `jmp`/`call`,
+     addresses for `lwr`/`swr` setup, and short compiler sequences. **Caller-saved** (clobbered
+     by any callee). |
+| r2 | **Argument 1** / **return value** (same slot; overlaps like typical RISC ABIs) |
+| r3 | **Argument 2** |
+| r4 | **Argument 3** |
+| r5 | **Link register** — `jalr r5, ra` places return address in **r5**. **Leaf** callees
+     return with `jalr r0, r5`. **Non-leaf** callees save the incoming **r5** on the stack
+     before making another call, then restore it before the final return. |
+| r6 | **Stack pointer** — full descending; points at the **last stored** word. Callee
+     epilogues must restore **r6** to the caller’s frame. |
 | r7 | −1 (hardwired) |
 
-Arguments beyond 3 are pushed right-to-left and popped by the callee's epilogue.
+### Volatility
+
+- **Caller-saved:** **r1, r2, r3, r4** — a caller must not assume these survive a call unless
+  it owns the contract (e.g. only **r2** is defined as the return value after a call).
+- **Callee-saved:** **r5** (when the callee performs a nested call — save/restore around
+  the inner call chain), and **r6** (frame must be balanced on return). There are **no**
+  callee-saved *data* registers beyond that; values that must survive across calls live in
+  stack slots or globals.
+
+### Arguments and stack
+
+- The **first three** arguments are passed in **r2, r3, r4** in order.
+- **Additional** arguments are pushed by the **caller**, **right-to-left**, before the
+  call. The **callee** removes them in its **epilogue** (caller does not pop them).
+- **Indirect call** pattern used by the compiler: `li r1, target; jalr r5, r1` so **r2–r4**
+  hold register arguments without being overwritten when loading the target address.
 
 ---
 
