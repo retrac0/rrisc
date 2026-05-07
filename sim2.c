@@ -6,14 +6,14 @@
 
 #define WORD_MASK  0xFFFu
 
-/* Opcodes (bits 11:9) */
+/* Opcodes (bits 11:9) — must match isa.py / Arch.md */
 #define OP_AND  0
 #define OP_SUB  1
-#define OP_SW   2
-#define OP_LW   3
+#define OP_ADD  2
+#define OP_ADDC 3
 #define OP_LUI  4
 #define OP_ADDI 5
-#define OP_ADDC 6
+#define OP_SUBI 6
 #define OP_SPEC 7
 
 /* SPEC sub-opcodes (bits 2:0) */
@@ -71,6 +71,13 @@ static uint16_t parse_addr(const char *s) {
     return (uint16_t)(strtoul(s, NULL, 0) & WORD_MASK);
 }
 
+/* Match sim.py: pc = int(args.start, 8) — bare digits are octal, not decimal. */
+static uint16_t parse_start_like_sim_py(const char *s) {
+    if (s[0] == '0' && (s[1] == 'o' || s[1] == 'O'))
+        return (uint16_t)(strtoul(s + 2, NULL, 8) & WORD_MASK);
+    return (uint16_t)(strtoul(s, NULL, 8) & WORD_MASK);
+}
+
 /* Parse "TYPE:BASE:SIZE" and append to the banks array. Returns 1 on success. */
 static int parse_bank_spec(const char *spec) {
     if (num_banks >= MAX_BANKS) { fprintf(stderr, "too many --mem banks (max %d)\n", MAX_BANKS); return 0; }
@@ -95,8 +102,8 @@ static int parse_bank_spec(const char *spec) {
 }
 
 static void add_default_banks(void) {
-    banks[num_banks++] = (Bank){BANK_RAM, 0,     0100,  NULL};  /* 64 words  */
-    banks[num_banks++] = (Bank){BANK_ROM, 01000, 02000, NULL};  /* 1024 words */
+    /* Match sim.py DEFAULT_BANK_SPECS: ('ram', 0, 0o7770) */
+    banks[num_banks++] = (Bank){BANK_RAM, 0, 07770, NULL};
 }
 
 static void init_banks(void) {
@@ -105,9 +112,10 @@ static void init_banks(void) {
         banks[i].data = (uint16_t *)malloc(banks[i].size * sizeof(uint16_t));
         if (!banks[i].data) { perror("malloc"); exit(1); }
         for (int j = 0; j < banks[i].size; j++)
-            banks[i].data[j] = WORD_MASK;
+            banks[i].data[j] = 0;
     }
 }
+
 
 static uint16_t rdmem(uint16_t addr) {
     addr &= WORD_MASK;
@@ -149,11 +157,6 @@ static void wrmem(uint16_t addr, uint16_t val) {
     /* unmapped: silently ignored */
 }
 
-static int sign_extend6(int n) {
-    n &= 0x3F;
-    return (n & 0x20) ? (n - 64) : n;
-}
-
 static int branch_offset(int rd, int imm6) {
     return (rd == 7) ? imm6 - 64 : imm6;
 }
@@ -189,7 +192,7 @@ int main(int argc, char *argv[]) {
         else if (strcmp(argv[i], "--terminal")  == 0) use_terminal  = 1;
         else if (strcmp(argv[i], "--translate") == 0) use_translate = 1;
         else if (strcmp(argv[i], "--start") == 0 && i + 1 < argc)
-            start = (uint16_t)(strtoul(argv[++i], NULL, 8) & WORD_MASK);
+            start = parse_start_like_sim_py(argv[++i]);
         else if (strcmp(argv[i], "--maxcycle") == 0 && i + 1 < argc)
             max_cycles = strtol(argv[++i], NULL, 10);
         else if (strcmp(argv[i], "--mem") == 0 && i + 1 < argc)
@@ -233,6 +236,11 @@ int main(int argc, char *argv[]) {
             wrreg(rd, val);
             T = (val & (1 << 12)) ? 1 : 0;
             break;
+        case OP_ADD:
+            val = (int)rdreg(ra) + (int)rdreg(rb);
+            wrreg(rd, val);
+            T = (val > (int)WORD_MASK) ? 1 : 0;
+            break;
         case OP_ADDC:
             val = (int)rdreg(ra) + (int)rdreg(rb) + T;
             wrreg(rd, val);
@@ -244,14 +252,13 @@ int main(int argc, char *argv[]) {
             break;
         case OP_ADDI:
             if (rd == 0 || rd == 7) { if (T != 0) pc = (uint16_t)((oldpc + branch_offset(rd, imm)) & WORD_MASK); }
-            else                    { wrreg(rd, (int)rdreg(rd) + sign_extend6(imm)); }
+            else                    { wrreg(rd, (int)rdreg(rd) + (imm & 0x3F)); }
             break;
-        case OP_LW:
-            wrreg(1, rdmem((rdreg(rd) & 0xFC0) | (uint16_t)imm));
-            mem_op = 1; break;
-        case OP_SW:
-            wrmem((rdreg(rd) & 0xFC0) | (uint16_t)imm, rdreg(1));
-            mem_op = 1; break;
+        case OP_SUBI:
+            val = (int)rdreg(rd) - (imm & 0x3F);
+            wrreg(rd, val);
+            T = (val & (1 << 12)) ? 1 : 0;
+            break;
         case OP_SPEC:
             switch (rb) {
             case RB_JALR: { uint16_t t = rdreg(ra); wrreg(rd, pc); pc = t; break; }
