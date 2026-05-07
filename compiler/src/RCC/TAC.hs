@@ -49,6 +49,11 @@ data Instr
   | ILoad    Temp Operand            -- t = *op
   | IStore   Operand Operand         -- *addr = val
   | IGoto    Label
+  -- Branch on comparison without materializing a boolean temp.
+  -- If the comparison evaluates true, jump to Label.
+  | IIfCmp   BinOp Operand Operand Label
+  -- If the comparison evaluates false, jump to Label.
+  | IIfNCmp  BinOp Operand Operand Label
   | IIfNZ    Operand Label
   | IIfZ     Operand Label
   | ICall    (Maybe Temp) Label [Operand]

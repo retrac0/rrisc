@@ -1,43 +1,58 @@
 ; rcc-generated assembly
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
 %include "crt0.s"
 
 
 main:
     subi r6, 1
     swr r5, r6
-    subi r6, 6
+    subi r6, 1
 ;; int x = ...
     li r2, 5
     and r1, r6, r7
     swr r2, r1
 ;; if (x>0)
-    li r2, 1
-    and r1, r6, r7
-    addi r1, 1
-    swr r2, r1
+    li r3, 5
+    and r2, r0, r0
+    li r1, 0o4000
+    add r3, r3, r1
+    add r2, r2, r1
+    sub r1, r2, r3
+    bf _L_endif_0
 ;; if (x>1)
+    li r3, 5
     li r2, 1
-    and r1, r6, r7
-    addi r1, 2
-    swr r2, r1
+    li r1, 0o4000
+    add r3, r3, r1
+    add r2, r2, r1
+    sub r1, r2, r3
+    bf _L_endif_1
 ;; if (x>2)
-    li r2, 1
-    and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
+    li r3, 5
+    li r2, 2
+    li r1, 0o4000
+    add r3, r3, r1
+    add r2, r2, r1
+    sub r1, r2, r3
+    bf _L_endif_2
 ;; if (x>3)
-    li r2, 1
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
+    li r3, 5
+    li r2, 3
+    li r1, 0o4000
+    add r3, r3, r1
+    add r2, r2, r1
+    sub r1, r2, r3
+    bf _L_endif_3
 ;; if (x>4)
-    li r2, 1
-    and r1, r6, r7
-    addi r1, 5
-    swr r2, r1
+    li r3, 5
+    li r2, 4
+    li r1, 0o4000
+    add r3, r3, r1
+    add r2, r2, r1
+    sub r1, r2, r3
+    bf _L_endif_4
 ;; return x
     li r2, 5
     li r1, _epi_main
@@ -52,7 +67,7 @@ _L_endif_0:
     li r1, _epi_main
     jalr r0, r1
 _epi_main:
-    addi r6, 6
+    addi r6, 1
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

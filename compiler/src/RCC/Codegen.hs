@@ -74,7 +74,6 @@ codegen opts (TAC.TACProg globals procs) = T.unlines $
   prelude
   ++ concatMap genProc procs
   ++ rodata
-  ++ data_
   where
     inc p = "%include \"" <> T.pack p <> "\""
 
@@ -95,23 +94,30 @@ codegen opts (TAC.TACProg globals procs) = T.unlines $
       , ("__itof",  "float/__itof.s")
       ]
 
-    prelude =
-      [ "; rcc-generated assembly"
-      , "%define RCC_CODE_BASE " <> octT (codeBase opts)
-      , "%define RCC_DATA_BASE " <> octT (dataBase opts)
-      , "%define RCC_STACK_TOP " <> octT (stackTop opts)
-      , inc "crt0.s"
-      ] ++ floatIncludes ++ [""]
-
     roGlobs = filter TAC.globalConst globals
     rwGlobs = filter (not . TAC.globalConst) globals
+    rwWords = sum $ map TAC.globalSize rwGlobs
+    -- Pack RW globals at dataBase, start code immediately after (reclaims gap below a
+    -- high default code base). With no RW globals, keep code at codeBase.
+    effectiveCodeBase
+      | null rwGlobs = codeBase opts
+      | otherwise    = dataBase opts + rwWords
+
+    prelude =
+      [ "; rcc-generated assembly"
+      , "%define RCC_CODE_BASE " <> octT effectiveCodeBase
+      , "%define RCC_DATA_BASE " <> octT (dataBase opts)
+      , "%define RCC_STACK_TOP " <> octT (stackTop opts)
+      ]
+      ++ ( if null rwGlobs
+             then []
+             else "" : ("    .org " <> octT (dataBase opts)) : concatMap genGlobal rwGlobs
+         )
+      ++ [inc "crt0.s"]
+      ++ floatIncludes ++ [""]
 
     rodata = if null roGlobs then [] else
       [""] ++ concatMap genGlobal roGlobs
-
-    data_ = if null rwGlobs then [] else
-      [ "", "    .org " <> octT (dataBase opts) ]
-      ++ concatMap genGlobal rwGlobs
 
 genGlobal :: TAC.Global -> [Text]
 genGlobal g =
@@ -129,6 +135,15 @@ genGlobal g =
 
 -- ---------------------------------------------------------------------------
 -- Procedure codegen
+--
+-- Calling convention (must match Arch.md / spec.md §8):
+--   r1  — scratch only (not an arg reg); clobbered across calls.
+--   r2  — arg 1 / return value
+--   r3  — arg 2
+--   r4  — arg 3
+--   r5  — link register; saved in prologue, restored in epilogue (non-leaf chain).
+--   r6  — stack pointer (full descending).
+-- Indirect call / branch: load target into r1, then jalr (preserves r2–r4 for args).
 
 genProc :: TAC.Proc -> [Text]
 genProc p =
@@ -146,26 +161,50 @@ genProc p =
         genEpilogue n numStack
   in reverse $ cgLines (execState action initSt)
 
--- Collect all unique Temp names used in a procedure (params + dest temps).
+-- Stack slot assignment order: parameters first, then temps in instruction order.
+-- Every temp that appears as a definition *or* as an operand (e.g. ILoad address)
+-- must get a slot; otherwise slotOf falls back to 0 and collides with arg slots.
 collectTemps :: TAC.Proc -> [TAC.Temp]
 collectTemps p =
-  let s0      = Set.fromList (TAC.procParams p)
-      (_, ts) = foldl step (s0, TAC.procParams p) (TAC.procInstrs p)
+  let params = TAC.procParams p
+      step (seen, acc) instr =
+        let ordered = instrDefTemps instr ++ instrOperandTemps instr
+            fresh   = filter (`Set.notMember` seen) ordered
+            seen'   = foldr Set.insert seen fresh
+        in (seen', acc ++ fresh)
+      (_, ts) = foldl step (Set.fromList params, params) (TAC.procInstrs p)
   in ts
-  where
-    step (seen, acc) instr =
-      let xs = instrTemps instr
-          new = filter (`Set.notMember` seen) xs
-      in (foldr Set.insert seen new, acc ++ new)
 
-instrTemps :: TAC.Instr -> [TAC.Temp]
-instrTemps (TAC.IAssign t _)        = [t]
-instrTemps (TAC.IBinOp  t _ _ _)    = [t]
-instrTemps (TAC.IUnOp   t _ _)      = [t]
-instrTemps (TAC.ILoad        t _)     = [t]
-instrTemps (TAC.ICall   (Just t) _ _) = [t]
-instrTemps (TAC.IAllocLocal  t)       = [t]
-instrTemps _ = []
+instrDefTemps :: TAC.Instr -> [TAC.Temp]
+instrDefTemps (TAC.IAssign t _)         = [t]
+instrDefTemps (TAC.IBinOp  t _ _ _)    = [t]
+instrDefTemps (TAC.IUnOp   t _ _)       = [t]
+instrDefTemps (TAC.ILoad   t _)         = [t]
+instrDefTemps (TAC.ICall (Just t) _ _)  = [t]
+instrDefTemps (TAC.IAllocLocal t)       = [t]
+instrDefTemps _                         = []
+
+instrOperandTemps :: TAC.Instr -> [TAC.Temp]
+instrOperandTemps = concatMap operandLocal . instrOperands
+
+operandLocal :: TAC.Operand -> [TAC.Temp]
+operandLocal (TAC.OTemp t)      = [t]
+operandLocal (TAC.OLocalAddr t)   = [t]
+operandLocal _                  = []
+
+instrOperands :: TAC.Instr -> [TAC.Operand]
+instrOperands (TAC.IAssign _ o)       = [o]
+instrOperands (TAC.IBinOp _ _ a b)    = [a, b]
+instrOperands (TAC.IUnOp _ _ a)       = [a]
+instrOperands (TAC.ILoad _ a)        = [a]
+instrOperands (TAC.IStore a b)      = [a, b]
+instrOperands (TAC.IIfZ o _)          = [o]
+instrOperands (TAC.IIfNZ o _)         = [o]
+instrOperands (TAC.IIfCmp _ a b _)   = [a, b]
+instrOperands (TAC.IIfNCmp _ a b _) = [a, b]
+instrOperands (TAC.ICall _ _ args)   = args
+instrOperands (TAC.IReturn (Just o)) = [o]
+instrOperands _                      = []
 
 -- Build slot map accounting for multi-word locals (arrays/structs).
 -- Each temp gets a base slot offset; multi-word locals consume consecutive slots.
@@ -177,8 +216,8 @@ buildSlotMap locSzs = go 0 []
       let sz = Map.findWithDefault 1 t locSzs
       in go (off + sz) ((t, off) : acc) ts
 
--- Prologue: save r5, allocate slots, save params to slots.
--- We never use r4 inside the body, so r4 needs no save (callee-saved trivially).
+-- Prologue: save r5, allocate slots, spill r2–r4 (and stack args) into frame slots.
+-- r1–r4 are caller-saved at calls; expression code may use them freely between calls.
 genPrologue :: TAC.Proc -> Int -> CG ()
 genPrologue p n = do
   -- Save r5
@@ -248,7 +287,7 @@ emitLoadConst reg n =
         | val .&. 0x3F == 0, reg /= 0, reg /= 7
                    -> "lui " <> rn <> ", " <> tshow (val `shiftR` 6)
         | otherwise
-                   -> "li "  <> rn <> ", " <> tshow n
+                   -> "li "  <> rn <> ", " <> tshow val
 
 -- Load operand into the given register (2, 3, or 4).
 loadOpInto :: Int -> TAC.Operand -> CG ()
@@ -335,25 +374,24 @@ genInstr (TAC.IGoto lbl) = do
   emitL ("li r1, " <> lbl)
   emitL "jalr r0, r1"
 
+genInstr (TAC.IIfCmp op a b lbl) = do
+  emitCmpToT op a b >>= \inv ->
+    if inv then jumpOnNotT lbl else jumpOnT lbl
+
+genInstr (TAC.IIfNCmp op a b lbl) = do
+  emitCmpToT op a b >>= \inv ->
+    if inv then jumpOnT lbl else jumpOnNotT lbl
+
 genInstr (TAC.IIfZ op lbl) = do
-  -- Branch to lbl when op == 0.  Long-form to avoid ±63 assembler limit.
+  -- T=1 iff op!=0; branch when op==0. Assembler relaxes bf if out of ±63 range.
   loadOpInto 2 op
-  emitL "sub r0, r0, r2"          -- T = 1 iff op != 0
-  lSkip <- freshLbl "ifz_skip"
-  emitL ("bt " <> lSkip)          -- skip jump when op != 0
-  emitL ("li r1, " <> lbl)
-  emitL "jalr r0, r1"
-  emit (lSkip <> ":")
+  emitL "sub r0, r0, r2"
+  emitL ("bf " <> lbl)
 
 genInstr (TAC.IIfNZ op lbl) = do
-  -- Branch to lbl when op != 0.  Long-form.
   loadOpInto 2 op
-  emitL "sub r0, r0, r2"          -- T = 1 iff op != 0
-  lSkip <- freshLbl "ifnz_skip"
-  emitL ("bf " <> lSkip)          -- skip jump when op == 0
-  emitL ("li r1, " <> lbl)
-  emitL "jalr r0, r1"
-  emit (lSkip <> ":")
+  emitL "sub r0, r0, r2"
+  emitL ("bt " <> lbl)
 
 genInstr (TAC.ICall mt fname args) = do
   let regArgs   = take 3 args
@@ -384,6 +422,66 @@ genInstr (TAC.IReturn (Just op)) = do
   epi <- gets cgEpiLabel
   emitL ("li r1, " <> epi)
   emitL "jalr r0, r1"
+
+-- ---------------------------------------------------------------------------
+-- Compare helpers for IIfCmp/IIfNCmp
+
+-- Emit compare for (a op b) and set T such that:
+-- - For most ops: T=1 means condition is true, return False (not inverted)
+-- - For ops where we naturally compute the opposite: return True to indicate inversion
+--   (i.e. condition is true when T=0).
+emitCmpToT :: TAC.BinOp -> TAC.Operand -> TAC.Operand -> CG Bool
+emitCmpToT op a b = do
+  loadOpInto 3 a
+  loadOpInto 2 b
+  case op of
+    TAC.TNe -> do
+      emitL "sub r1, r3, r2"
+      emitL "sub r0, r0, r1"      -- T=1 iff a!=b
+      pure False
+    TAC.TEq -> do
+      emitL "sub r1, r3, r2"
+      emitL "sub r0, r0, r1"      -- T=1 iff a!=b (inverted)
+      pure True
+    TAC.TULt -> do
+      emitL "sub r1, r3, r2"      -- T=1 iff a<b unsigned
+      pure False
+    TAC.TUGt -> do
+      emitL "sub r1, r2, r3"      -- T=1 iff b<a
+      pure False
+    TAC.TULe -> do
+      emitL "sub r1, r2, r3"      -- T=1 iff a>b (inverted)
+      pure True
+    TAC.TUGe -> do
+      emitL "sub r1, r3, r2"      -- T=1 iff a<b (inverted)
+      pure True
+    TAC.TLt -> do
+      emitSignedNorm
+      emitL "sub r1, r3, r2"      -- T=1 iff a<b signed
+      pure False
+    TAC.TGt -> do
+      emitSignedNorm
+      emitL "sub r1, r2, r3"      -- T=1 iff a>b signed
+      pure False
+    TAC.TLe -> do
+      emitSignedNorm
+      emitL "sub r1, r2, r3"      -- T=1 iff a>b (inverted)
+      pure True
+    TAC.TGe -> do
+      emitSignedNorm
+      emitL "sub r1, r3, r2"      -- T=1 iff a<b (inverted)
+      pure True
+    _ -> do
+      -- Not expected for IIfCmp/IIfNCmp; fall back to boolean materialization path.
+      emitBinOp op
+      emitL "sub r0, r0, r2"
+      pure False
+
+jumpOnT :: TAC.Label -> CG ()
+jumpOnT lbl = emitL ("bt " <> lbl)
+
+jumpOnNotT :: TAC.Label -> CG ()
+jumpOnNotT lbl = emitL ("bf " <> lbl)
 
 -- ---------------------------------------------------------------------------
 -- Binary operation codegen

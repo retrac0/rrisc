@@ -1,14 +1,14 @@
 ; rcc-generated assembly
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
 %include "crt0.s"
 
 
 isqrt:
     subi r6, 1
     swr r5, r6
-    subi r6, 8
+    subi r6, 7
     and r1, r6, r7
     swr r2, r1
 ;; int r = ...
@@ -62,27 +62,13 @@ _L_isqrt_mul_end_36:
     add r3, r3, r1
     add r2, r2, r1
     sub r1, r2, r3
-    li r2, 1
-    bf _L_isqrt_ne_58
-    li r2, 0
-_L_isqrt_ne_58:
-    and r1, r6, r7
-    addi r1, 5
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 5
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_isqrt_ifz_skip_69
-    li r1, _L_endwhile_1
-    jalr r0, r1
-_L_isqrt_ifz_skip_69:
+    bt _L_endwhile_1
 ;; r++
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 5
     swr r2, r1
     and r1, r6, r7
     addi r1, 1
@@ -90,10 +76,10 @@ _L_isqrt_ifz_skip_69:
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 6
     swr r2, r1
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 6
     lwr r2, r1
     and r1, r6, r7
     addi r1, 1
@@ -108,7 +94,7 @@ _L_endwhile_1:
     li r1, _epi_isqrt
     jalr r0, r1
 _epi_isqrt:
-    addi r6, 8
+    addi r6, 7
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

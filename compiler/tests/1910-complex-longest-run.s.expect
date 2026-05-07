@@ -1,14 +1,14 @@
 ; rcc-generated assembly
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
 %include "crt0.s"
 
 
 main:
     subi r6, 1
     swr r5, r6
-    subi r6, 34
+    subi r6, 31
 ;; int[10] a
 ;; a[0]=1
     and r1, r6, r7
@@ -165,18 +165,7 @@ _L_for_0:
     add r3, r3, r1
     add r2, r2, r1
     sub r1, r3, r2
-    rol r2, r0
-    and r1, r6, r7
-    addi r1, 23
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 23
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_169
-    li r1, _L_endfor_2
-    jalr r0, r1
-_L_main_ifz_skip_169:
+    bf _L_endfor_2
 ;; if (a[i]==a[i-1])
     and r1, r6, r7
     and r3, r1, r7
@@ -185,14 +174,14 @@ _L_main_ifz_skip_169:
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 24
+    addi r1, 23
     swr r2, r1
     and r1, r6, r7
-    addi r1, 24
+    addi r1, 23
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 25
+    addi r1, 24
     swr r2, r1
     and r1, r6, r7
     addi r1, 22
@@ -200,53 +189,39 @@ _L_main_ifz_skip_169:
     li r2, 1
     sub r2, r3, r2
     and r1, r6, r7
-    addi r1, 26
+    addi r1, 25
     swr r2, r1
     and r1, r6, r7
     and r3, r1, r7
     and r1, r6, r7
-    addi r1, 26
+    addi r1, 25
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 27
+    addi r1, 26
     swr r2, r1
     and r1, r6, r7
-    addi r1, 27
+    addi r1, 26
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 28
+    addi r1, 27
     swr r2, r1
     and r1, r6, r7
-    addi r1, 25
+    addi r1, 24
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 28
+    addi r1, 27
     lwr r2, r1
     sub r1, r3, r2
     sub r0, r0, r1
-    li r2, 1
-    bf _L_main_ne_222
-    li r2, 0
-_L_main_ne_222:
-    and r1, r6, r7
-    addi r1, 29
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 29
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_233
-    li r1, _L_else_3
-    jalr r0, r1
-_L_main_ifz_skip_233:
+    bt _L_else_3
 ;; cur++
     and r1, r6, r7
     addi r1, 21
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 30
+    addi r1, 28
     swr r2, r1
     and r1, r6, r7
     addi r1, 21
@@ -254,17 +229,17 @@ _L_main_ifz_skip_233:
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 31
+    addi r1, 29
     swr r2, r1
     and r1, r6, r7
-    addi r1, 31
+    addi r1, 29
     lwr r2, r1
     and r1, r6, r7
     addi r1, 21
     swr r2, r1
 ;; if (cur>best)
     and r1, r6, r7
-    addi r1, 21
+    addi r1, 29
     lwr r3, r1
     and r1, r6, r7
     addi r1, 20
@@ -273,21 +248,10 @@ _L_main_ifz_skip_233:
     add r3, r3, r1
     add r2, r2, r1
     sub r1, r2, r3
-    rol r2, r0
-    and r1, r6, r7
-    addi r1, 32
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 32
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_277
-    li r1, _L_endif_5
-    jalr r0, r1
-_L_main_ifz_skip_277:
+    bf _L_endif_5
 ;; best=cur
     and r1, r6, r7
-    addi r1, 21
+    addi r1, 29
     lwr r2, r1
     and r1, r6, r7
     addi r1, 20
@@ -309,10 +273,10 @@ _L_forcont_1:
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 33
+    addi r1, 30
     swr r2, r1
     and r1, r6, r7
-    addi r1, 33
+    addi r1, 30
     lwr r2, r1
     and r1, r6, r7
     addi r1, 22
@@ -327,7 +291,7 @@ _L_endfor_2:
     li r1, _epi_main
     jalr r0, r1
 _epi_main:
-    addi r6, 34
+    addi r6, 31
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

@@ -1,7 +1,11 @@
 ; rcc-generated assembly
-%define RCC_CODE_BASE 0o1000
+%define RCC_CODE_BASE 0o1
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
+
+    .org 0o0
+x:
+    .word 10
 %include "crt0.s"
 
 
@@ -27,28 +31,19 @@ _epi_f:
 main:
     subi r6, 1
     swr r5, r6
-    subi r6, 2
+    subi r6, 1
 ;; int x = ...
-    li r2, 20
-    and r1, r6, r7
-    swr r2, r1
 ;; return f()
     li r1, f
     jalr r5, r1
     and r1, r6, r7
-    addi r1, 1
     swr r2, r1
     and r1, r6, r7
-    addi r1, 1
     lwr r2, r1
     li r1, _epi_main
     jalr r0, r1
 _epi_main:
-    addi r6, 2
+    addi r6, 1
     lwr r5, r6
     addi r6, 1
     jalr r0, r5
-
-    .org 0o0
-x:
-    .word 10

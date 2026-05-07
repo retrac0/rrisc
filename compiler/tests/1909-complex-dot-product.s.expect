@@ -1,14 +1,14 @@
 ; rcc-generated assembly
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
 %include "crt0.s"
 
 
 main:
     subi r6, 1
     swr r5, r6
-    subi r6, 22
+    subi r6, 21
 ;; int[3] a
 ;; a[0]=1
     and r1, r6, r7
@@ -112,18 +112,7 @@ _L_for_0:
     add r3, r3, r1
     add r2, r2, r1
     sub r1, r3, r2
-    rol r2, r0
-    and r1, r6, r7
-    addi r1, 14
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 14
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_116
-    li r1, _L_endfor_2
-    jalr r0, r1
-_L_main_ifz_skip_116:
+    bf _L_endfor_2
 ;; s+=a[i]*b[i]
     and r1, r6, r7
     and r3, r1, r7
@@ -132,14 +121,14 @@ _L_main_ifz_skip_116:
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 15
+    addi r1, 14
     swr r2, r1
     and r1, r6, r7
-    addi r1, 15
+    addi r1, 14
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 16
+    addi r1, 15
     swr r2, r1
     and r1, r6, r7
     addi r1, 6
@@ -149,46 +138,46 @@ _L_main_ifz_skip_116:
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 17
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 17
-    lwr r1, r1
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 18
+    addi r1, 16
     swr r2, r1
     and r1, r6, r7
     addi r1, 16
+    lwr r1, r1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 17
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 15
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 18
+    addi r1, 17
     lwr r2, r1
     and r1, r0, r0
-_L_main_mul_loop_160:
+_L_main_mul_loop_149:
     sub r0, r0, r2
-    bf _L_main_mul_end_160
+    bf _L_main_mul_end_149
     add r1, r1, r3
     subi r2, 1
     sub r0, r0, r7
-    bt _L_main_mul_loop_160
-_L_main_mul_end_160:
+    bt _L_main_mul_loop_149
+_L_main_mul_end_149:
     and r2, r1, r7
     and r1, r6, r7
-    addi r1, 19
+    addi r1, 18
     swr r2, r1
     and r1, r6, r7
     addi r1, 12
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 19
+    addi r1, 18
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 20
+    addi r1, 19
     swr r2, r1
     and r1, r6, r7
-    addi r1, 20
+    addi r1, 19
     lwr r2, r1
     and r1, r6, r7
     addi r1, 12
@@ -200,10 +189,10 @@ _L_forcont_1:
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 21
+    addi r1, 20
     swr r2, r1
     and r1, r6, r7
-    addi r1, 21
+    addi r1, 20
     lwr r2, r1
     and r1, r6, r7
     addi r1, 13
@@ -218,7 +207,7 @@ _L_endfor_2:
     li r1, _epi_main
     jalr r0, r1
 _epi_main:
-    addi r6, 22
+    addi r6, 21
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

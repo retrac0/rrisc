@@ -1,7 +1,7 @@
 ; rcc-generated assembly
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
 %include "crt0.s"
 
 
@@ -69,7 +69,7 @@ main:
     addi r1, 8
     swr r2, r1
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 6
     lwr r3, r1
     and r2, r7, r7
     add r2, r3, r2

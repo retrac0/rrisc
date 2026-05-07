@@ -1,7 +1,11 @@
 ; rcc-generated assembly
-%define RCC_CODE_BASE 0o1000
+%define RCC_CODE_BASE 0o1
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
+
+    .org 0o0
+side_effect_called:
+    .word 0
 %include "crt0.s"
 
 
@@ -41,10 +45,7 @@ main:
     and r1, r6, r7
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_16
-    li r1, _L_and_false_0
-    jalr r0, r1
-_L_main_ifz_skip_16:
+    bf _L_and_false_0
     li r2, 1
     and r1, r6, r7
     addi r1, 1
@@ -61,10 +62,7 @@ _L_and_end_1:
     addi r1, 1
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_36
-    li r1, _L_endif_2
-    jalr r0, r1
-_L_main_ifz_skip_36:
+    bf _L_endif_2
 ;; side_effect_called=99
     li r2, 99
     li r1, side_effect_called
@@ -83,10 +81,7 @@ _L_endif_2:
     addi r1, 2
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_main_ifnz_skip_58
-    li r1, _L_or_true_3
-    jalr r0, r1
-_L_main_ifnz_skip_58:
+    bt _L_or_true_3
     and r2, r0, r0
     and r1, r6, r7
     addi r1, 3
@@ -103,10 +98,7 @@ _L_or_end_4:
     addi r1, 3
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_78
-    li r1, _L_endif_5
-    jalr r0, r1
-_L_main_ifz_skip_78:
+    bf _L_endif_5
 ;; side_effect_called=0
     and r2, r0, r0
     li r1, side_effect_called
@@ -128,7 +120,3 @@ _epi_main:
     lwr r5, r6
     addi r6, 1
     jalr r0, r5
-
-    .org 0o0
-side_effect_called:
-    .word 0

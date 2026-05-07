@@ -1,14 +1,14 @@
 ; rcc-generated assembly
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
 %include "crt0.s"
 
 
 main:
     subi r6, 1
     swr r5, r6
-    subi r6, 9
+    subi r6, 6
 ;; int x = ...
     and r2, r0, r0
     and r1, r6, r7
@@ -28,67 +28,31 @@ _L_while_0:
     add r3, r3, r1
     add r2, r2, r1
     sub r1, r3, r2
-    rol r2, r0
-    and r1, r6, r7
-    addi r1, 2
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 2
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_32
-    li r1, _L_endwhile_1
-    jalr r0, r1
-_L_main_ifz_skip_32:
+    bf _L_endwhile_1
 ;; int j = ...
     and r2, r0, r0
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 2
     swr r2, r1
 ;; while (j<5)
 _L_while_2:
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 2
     lwr r3, r1
     li r2, 5
     li r1, 0o4000
     add r3, r3, r1
     add r2, r2, r1
     sub r1, r3, r2
-    rol r2, r0
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 4
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_59
-    li r1, _L_endwhile_3
-    jalr r0, r1
-_L_main_ifz_skip_59:
+    bf _L_endwhile_3
 ;; if (j==3)
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 2
     lwr r3, r1
     li r2, 3
     sub r1, r3, r2
     sub r0, r0, r1
-    li r2, 1
-    bf _L_main_ne_70
-    li r2, 0
-_L_main_ne_70:
-    and r1, r6, r7
-    addi r1, 5
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 5
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_81
-    li r1, _L_endif_4
-    jalr r0, r1
-_L_main_ifz_skip_81:
+    bt _L_endif_4
 ;; break
     li r1, _L_endwhile_3
     jalr r0, r1
@@ -99,27 +63,27 @@ _L_endif_4:
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 3
     swr r2, r1
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 3
     lwr r2, r1
     and r1, r6, r7
     swr r2, r1
 ;; j=j+1
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 2
     lwr r3, r1
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 4
     swr r2, r1
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 4
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 2
     swr r2, r1
     li r1, _L_while_2
     jalr r0, r1
@@ -131,10 +95,10 @@ _L_endwhile_3:
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 5
     swr r2, r1
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 5
     lwr r2, r1
     and r1, r6, r7
     addi r1, 1
@@ -148,7 +112,7 @@ _L_endwhile_1:
     li r1, _epi_main
     jalr r0, r1
 _epi_main:
-    addi r6, 9
+    addi r6, 6
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

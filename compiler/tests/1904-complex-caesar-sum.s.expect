@@ -1,14 +1,14 @@
 ; rcc-generated assembly
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
 %include "crt0.s"
 
 
 main:
     subi r6, 1
     swr r5, r6
-    subi r6, 21
+    subi r6, 20
 ;; int[5] msg
 ;; msg[0]=72
     and r1, r6, r7
@@ -100,18 +100,7 @@ _L_for_0:
     add r3, r3, r1
     add r2, r2, r1
     sub r1, r3, r2
-    rol r2, r0
-    and r1, r6, r7
-    addi r1, 13
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 13
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_104
-    li r1, _L_endfor_2
-    jalr r0, r1
-_L_main_ifz_skip_104:
+    bf _L_endfor_2
 ;; s+=msg[i]+shift%128
     and r1, r6, r7
     and r3, r1, r7
@@ -120,79 +109,79 @@ _L_main_ifz_skip_104:
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 14
+    addi r1, 13
     swr r2, r1
     and r1, r6, r7
-    addi r1, 14
+    addi r1, 13
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 15
+    addi r1, 14
     swr r2, r1
     and r1, r6, r7
-    addi r1, 15
+    addi r1, 14
     lwr r3, r1
     and r1, r6, r7
     addi r1, 10
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 16
+    addi r1, 15
     swr r2, r1
     and r1, r6, r7
-    addi r1, 16
+    addi r1, 15
     lwr r3, r1
     lui r2, 2
     sub r0, r0, r2
-    bf _L_main_mod_done_139
+    bf _L_main_mod_done_128
     and r1, r3, r7
     rol r1, r1
     rol r4, r0
     subi r6, 1
     swr r4, r6
     sub r0, r0, r4
-    bf _L_main_mod_npos_139
+    bf _L_main_mod_npos_128
     sub r3, r0, r3
-_L_main_mod_npos_139:
+_L_main_mod_npos_128:
     and r1, r2, r7
     rol r1, r1
-    bf _L_main_mod_dpos_139
+    bf _L_main_mod_dpos_128
     sub r2, r0, r2
-_L_main_mod_dpos_139:
+_L_main_mod_dpos_128:
     and r4, r3, r7
     and r1, r0, r0
-_L_main_udiv_loop_155:
+_L_main_udiv_loop_144:
     sub r0, r4, r2
-    bt _L_main_udiv_end_155
+    bt _L_main_udiv_end_144
     sub r4, r4, r2
     addi r1, 1
     sub r0, r0, r7
-    bt _L_main_udiv_loop_155
-_L_main_udiv_end_155:
+    bt _L_main_udiv_loop_144
+_L_main_udiv_end_144:
     and r1, r6, r7
     lwr r1, r1
     addi r6, 1
     sub r0, r0, r1
-    bf _L_main_mod_rpos_139
+    bf _L_main_mod_rpos_128
     sub r4, r0, r4
-_L_main_mod_rpos_139:
+_L_main_mod_rpos_128:
     and r2, r4, r7
-_L_main_mod_done_139:
+_L_main_mod_done_128:
     and r1, r6, r7
-    addi r1, 17
+    addi r1, 16
     swr r2, r1
     and r1, r6, r7
     addi r1, 11
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 17
+    addi r1, 16
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 18
+    addi r1, 17
     swr r2, r1
     and r1, r6, r7
-    addi r1, 18
+    addi r1, 17
     lwr r2, r1
     and r1, r6, r7
     addi r1, 11
@@ -204,10 +193,10 @@ _L_forcont_1:
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 19
+    addi r1, 18
     swr r2, r1
     and r1, r6, r7
-    addi r1, 19
+    addi r1, 18
     lwr r2, r1
     and r1, r6, r7
     addi r1, 12
@@ -221,50 +210,50 @@ _L_endfor_2:
     lwr r3, r1
     lui r2, 4
     sub r0, r0, r2
-    bf _L_main_mod_done_216
+    bf _L_main_mod_done_205
     and r1, r3, r7
     rol r1, r1
     rol r4, r0
     subi r6, 1
     swr r4, r6
     sub r0, r0, r4
-    bf _L_main_mod_npos_216
+    bf _L_main_mod_npos_205
     sub r3, r0, r3
-_L_main_mod_npos_216:
+_L_main_mod_npos_205:
     and r1, r2, r7
     rol r1, r1
-    bf _L_main_mod_dpos_216
+    bf _L_main_mod_dpos_205
     sub r2, r0, r2
-_L_main_mod_dpos_216:
+_L_main_mod_dpos_205:
     and r4, r3, r7
     and r1, r0, r0
-_L_main_udiv_loop_232:
+_L_main_udiv_loop_221:
     sub r0, r4, r2
-    bt _L_main_udiv_end_232
+    bt _L_main_udiv_end_221
     sub r4, r4, r2
     addi r1, 1
     sub r0, r0, r7
-    bt _L_main_udiv_loop_232
-_L_main_udiv_end_232:
+    bt _L_main_udiv_loop_221
+_L_main_udiv_end_221:
     and r1, r6, r7
     lwr r1, r1
     addi r6, 1
     sub r0, r0, r1
-    bf _L_main_mod_rpos_216
+    bf _L_main_mod_rpos_205
     sub r4, r0, r4
-_L_main_mod_rpos_216:
+_L_main_mod_rpos_205:
     and r2, r4, r7
-_L_main_mod_done_216:
+_L_main_mod_done_205:
     and r1, r6, r7
-    addi r1, 20
+    addi r1, 19
     swr r2, r1
     and r1, r6, r7
-    addi r1, 20
+    addi r1, 19
     lwr r2, r1
     li r1, _epi_main
     jalr r0, r1
 _epi_main:
-    addi r6, 21
+    addi r6, 20
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

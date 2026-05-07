@@ -1,5 +1,6 @@
 module RCC.Optimize
   ( optimize
+  , optimizeWhen
   ) where
 
 import Data.Bits
@@ -9,7 +10,289 @@ import qualified Data.Set as Set
 import qualified RCC.TAC as TAC
 
 optimize :: TAC.TACProg -> TAC.TACProg
-optimize = foldBranches . foldConstants . elimFloatCopies . eliminateDeadCode
+optimize =
+    foldBranches
+  . foldConstants
+  . cmpBranchPeephole
+  . eliminateDeadTemps
+  . uniqConstSubst
+  . copyPropagate
+  . elimFloatCopies
+  . eliminateDeadCode
+
+-- | Apply the full 'optimize' pipeline when True; identity when False.
+-- Granular / per-pass control can extend this later (e.g. record of flags).
+optimizeWhen :: Bool -> TAC.TACProg -> TAC.TACProg
+optimizeWhen True  = optimize
+optimizeWhen False = id
+
+-- ---------------------------------------------------------------------------
+-- Unique const assignment inlining
+--
+-- Any temp defined exactly once as IAssign t (OConst n) is substituted on all
+-- uses.  This fixes UART-style locals after copyPropagate (which clears its
+-- map across labels/goto) and before DTE removes the now-redundant IAssign.
+
+uniqConstSubst :: TAC.TACProg -> TAC.TACProg
+uniqConstSubst prog = prog { TAC.tacProcs = map ucProc (TAC.tacProcs prog) }
+  where
+    ucProc p =
+      let is = TAC.procInstrs p
+          m  = uniqConstMap is
+      in if Map.null m then p
+         else p { TAC.procInstrs = map (substInstr m) is }
+
+defTempsOnce :: TAC.Instr -> [TAC.Temp]
+defTempsOnce (TAC.IAssign t _)         = [t]
+defTempsOnce (TAC.IBinOp t _ _ _)      = [t]
+defTempsOnce (TAC.IUnOp t _ _)         = [t]
+defTempsOnce (TAC.ILoad t _)           = [t]
+defTempsOnce (TAC.ICall (Just t) _ _)  = [t]
+defTempsOnce (TAC.IAllocLocal t)       = [t]
+defTempsOnce _                         = []
+
+uniqConstMap :: [TAC.Instr] -> ConstMap
+uniqConstMap instrs =
+  let defCnt :: Map TAC.Temp Int
+      defCnt = foldr (\i m -> foldr (\t -> Map.insertWith (+) t (1 :: Int)) m (defTempsOnce i))
+                     Map.empty
+                     instrs
+  in Map.fromList
+       [ (t, n)
+       | TAC.IAssign t (TAC.OConst n) <- instrs
+       , Map.lookup t defCnt == Just 1
+       ]
+
+-- ---------------------------------------------------------------------------
+-- Compare+branch peephole (TAC level)
+--
+-- Pattern:
+--   t = (a <cmp> b)
+--   ifz t goto L      ==> if !(a <cmp> b) goto L
+--   ifnz t goto L     ==> if  (a <cmp> b) goto L
+--
+-- This avoids materializing a 0/1 boolean temp that only feeds the branch,
+-- which in turn removes lots of redundant load/store in the backend.
+
+cmpBranchPeephole :: TAC.TACProg -> TAC.TACProg
+cmpBranchPeephole prog = prog { TAC.tacProcs = map goProc (TAC.tacProcs prog) }
+  where
+    goProc p = p { TAC.procInstrs = go (TAC.procInstrs p) }
+
+    go [] = []
+    go (TAC.IBinOp t op a b : TAC.IIfZ (TAC.OTemp t2) lbl : rest)
+      | t == t2, isCmpOp op
+      , not (tempUsedIn t rest) =
+          TAC.IIfNCmp op a b lbl : go rest
+    go (TAC.IBinOp t op a b : TAC.IIfNZ (TAC.OTemp t2) lbl : rest)
+      | t == t2, isCmpOp op
+      , not (tempUsedIn t rest) =
+          TAC.IIfCmp op a b lbl : go rest
+    go (i:rest) = i : go rest
+
+    isCmpOp o = o `elem`
+      [ TAC.TEq, TAC.TNe
+      , TAC.TLt, TAC.TLe, TAC.TGt, TAC.TGe
+      , TAC.TULt, TAC.TULe, TAC.TUGt, TAC.TUGe
+      ]
+
+    tempUsedIn x = any (usesTemp x)
+
+    usesTemp x instr = any isUse (ops instr)
+      where
+        isUse (TAC.OTemp u)      = u == x
+        isUse (TAC.OLocalAddr u) = u == x
+        isUse _                  = False
+    ops (TAC.IAssign _ o)       = [o]
+    ops (TAC.IBinOp _ _ a b)    = [a,b]
+    ops (TAC.IUnOp _ _ a)       = [a]
+    ops (TAC.ILoad _ o)         = [o]
+    ops (TAC.IStore a b)        = [a,b]
+    ops (TAC.IIfNZ o _)         = [o]
+    ops (TAC.IIfZ  o _)         = [o]
+    ops (TAC.ICall _ _ args)    = args
+    ops (TAC.IReturn (Just o))  = [o]
+    ops _                       = []
+
+-- ---------------------------------------------------------------------------
+-- Copy propagation (within straight-line code)
+--
+-- This shrinks TAC substantially by removing chains like:
+--   t1 = ...
+--   t2 = t1
+--   use t2
+-- which otherwise forces redundant stack load/store in the backend.
+
+operandMentionsTemp :: TAC.Temp -> TAC.Operand -> Bool
+operandMentionsTemp t (TAC.OTemp u)      = t == u
+operandMentionsTemp t (TAC.OLocalAddr u) = t == u
+operandMentionsTemp _ (TAC.OConst _)   = False
+operandMentionsTemp _ (TAC.OAddr _)    = False
+
+-- When t is redefined, drop copy facts that still mention the old value of t
+-- (e.g. *p++ = ch lowers to orig=p; p=p+1; IStore orig ch — substituting
+-- orig -> p after p is updated stores at the wrong address).
+killStaleCopiesOf :: TAC.Temp -> Map TAC.Temp TAC.Operand -> Map TAC.Temp TAC.Operand
+killStaleCopiesOf t =
+  Map.filterWithKey (\k v -> k /= t && not (operandMentionsTemp t v))
+
+copyPropagate :: TAC.TACProg -> TAC.TACProg
+copyPropagate prog = prog { TAC.tacProcs = map cpProc (TAC.tacProcs prog) }
+  where
+    cpProc p = p { TAC.procInstrs = go Map.empty (TAC.procInstrs p) }
+
+    go _  [] = []
+    go env (TAC.ILabel l : xs) =
+      TAC.ILabel l : go Map.empty xs
+    go env (TAC.IComment c : xs) =
+      TAC.IComment c : go env xs
+    go env (TAC.IAsmInline a : xs) =
+      TAC.IAsmInline a : go Map.empty xs
+    go env (TAC.IGoto l : xs) =
+      TAC.IGoto l : go Map.empty xs
+    -- Conditional branches have a fall-through path; facts about temps (e.g. a
+    -- local copy of the last call result) stay valid until a label/goto/return
+    -- merges paths or clobbers them.
+    go env (TAC.IIfZ o l : xs) =
+      TAC.IIfZ (substOp env o) l : go env xs
+    go env (TAC.IIfNZ o l : xs) =
+      TAC.IIfNZ (substOp env o) l : go env xs
+    go env (TAC.IIfCmp op a b l : xs) =
+      TAC.IIfCmp op (substOp env a) (substOp env b) l : go env xs
+    go env (TAC.IIfNCmp op a b l : xs) =
+      TAC.IIfNCmp op (substOp env a) (substOp env b) l : go env xs
+    go env (TAC.IReturn mo : xs) =
+      TAC.IReturn (substMaybe env mo) : go Map.empty xs
+    go env (TAC.IStore a b : xs) =
+      TAC.IStore (substOp env a) (substOp env b) : go Map.empty xs
+    go env (TAC.ILoad t a : xs) =
+      let a' = substOp env a
+          env' = killStaleCopiesOf t env
+      in TAC.ILoad t a' : go env' xs
+    go env (TAC.IAssign t o : xs) =
+      let o' = substOp env o
+          env0 = killStaleCopiesOf t env
+          env' = case o' of
+            TAC.OTemp u    -> Map.insert t (TAC.OTemp u) env0
+            TAC.OConst n   -> Map.insert t (TAC.OConst n) env0
+            _              -> env0
+      in TAC.IAssign t o' : go env' xs
+    go env (TAC.IUnOp t op a : xs) =
+      let a' = substOp env a
+      in TAC.IUnOp t op a' : go (killStaleCopiesOf t env) xs
+    go env (TAC.IBinOp t op a b : xs) =
+      let a' = substOp env a
+          b' = substOp env b
+      in TAC.IBinOp t op a' b' : go (killStaleCopiesOf t env) xs
+    go env (TAC.ICall mt f args : xs) =
+      let args' = map (substOp env) args
+          env'  = case mt of
+            Nothing -> Map.empty
+            Just t  -> killStaleCopiesOf t env
+      in TAC.ICall mt f args' : go env' xs
+    go env (TAC.IAllocLocal t : xs) =
+      TAC.IAllocLocal t : go (killStaleCopiesOf t env) xs
+
+    substMaybe _   Nothing  = Nothing
+    substMaybe env (Just o) = Just (substOp env o)
+
+    substOp env (TAC.OTemp t) =
+      case Map.lookup t env of
+        Just (TAC.OTemp u) | u /= t -> TAC.OTemp u
+        Just (TAC.OConst n)         -> TAC.OConst n
+        _                           -> TAC.OTemp t
+    substOp _   op = op
+
+-- ---------------------------------------------------------------------------
+-- Dead temp elimination (per-procedure liveness)
+
+eliminateDeadTemps :: TAC.TACProg -> TAC.TACProg
+eliminateDeadTemps prog = prog { TAC.tacProcs = map dteProc (TAC.tacProcs prog) }
+  where
+    dteProc p = p { TAC.procInstrs = snd (foldr step (Set.empty, []) (TAC.procInstrs p)) }
+
+    -- In backward order, acc is the forward suffix after `instr`.  Short-circuit
+    -- && / || end arms with `IAssign phiTemp …` then either `IGoto merge` or (on
+    -- the false arm) fall-through to `ILabel merge`.  Naive backward DTE drops
+    -- these assigns because `live` was emptied on the other path.
+    -- True when this instruction sits in a straight-line suffix (fall-through
+    -- of compares included) that reaches goto / label / return — so a dead-on-
+    -- exit IAssign may still be needed for the next loop iteration (e.g. i=i+1
+    -- before if (...) continue; goto loop).
+    followedByPhiMerge :: [TAC.Instr] -> Bool
+    followedByPhiMerge xs =
+      case dropWhile isNoOp xs of
+        (TAC.IGoto _ : _)   -> True
+        (TAC.ILabel _ : _)  -> True
+        (TAC.IReturn _ : _) -> True
+        (TAC.IAssign _ _ : rest) -> followedByPhiMerge rest
+        (TAC.IBinOp _ _ _ _ : rest) -> followedByPhiMerge rest
+        (TAC.IUnOp _ _ _ : rest) -> followedByPhiMerge rest
+        (TAC.ILoad _ _ : rest) -> followedByPhiMerge rest
+        (TAC.IIfCmp _ _ _ _ : rest) -> followedByPhiMerge rest
+        (TAC.IIfNCmp _ _ _ _ : rest) -> followedByPhiMerge rest
+        (TAC.IIfZ _ _ : rest) -> followedByPhiMerge rest
+        (TAC.IIfNZ _ _ : rest) -> followedByPhiMerge rest
+        _                   -> False
+      where
+        isNoOp (TAC.IComment _) = True
+        isNoOp _                = False
+
+    step instr (live, acc) =
+      case instr of
+        -- Control-flow / side effects: keep, but update liveness from used operands.
+        -- Labels and unconditional gotos do not *kill* temps by themselves; resetting
+        -- liveness here caused single-pass backward DTE to drop defs (e.g. IAssign ch
+        -- after getchar) that are only used on paths that re-enter straight-line code
+        -- after a label.
+        TAC.ILabel _        -> (live, instr : acc)
+        TAC.IComment _      -> (live, instr : acc)
+        TAC.IAsmInline _    -> (Set.empty, instr : acc)
+        TAC.IGoto _         -> (live, instr : acc)
+        TAC.IIfZ o _        -> (addUses live [o], instr : acc)
+        TAC.IIfNZ o _       -> (addUses live [o], instr : acc)
+        TAC.IIfCmp _ a b _  -> (addUses live [a,b], instr : acc)
+        TAC.IIfNCmp _ a b _ -> (addUses live [a,b], instr : acc)
+        TAC.IReturn mo      -> (addUses live (maybe [] (:[]) mo), instr : acc)
+        TAC.IStore a b      -> (addUses live [a,b], instr : acc)
+
+        -- Pure computations: drop if the defined temp is not live.
+        TAC.IAssign t o
+          | Set.member t live -> (addUses (Set.delete t live) [o], instr : acc)
+          | followedByPhiMerge acc ->
+              -- Must record uses of o even when t is not live on the exit path;
+              -- otherwise we keep this assign (for merge/back-edge) but drop the
+              -- instruction that defines temps in o (e.g. i=i+1 after while).
+              (addUses (Set.delete t live) [o], instr : acc)
+          | otherwise         -> (live, acc)
+        TAC.IUnOp t _ a
+          | Set.member t live -> (addUses (Set.delete t live) [a], instr : acc)
+          | otherwise         -> (live, acc)
+        TAC.IBinOp t _ a b
+          | Set.member t live -> (addUses (Set.delete t live) [a,b], instr : acc)
+          | otherwise         -> (live, acc)
+        TAC.ILoad t a
+          | Set.member t live -> (addUses (Set.delete t live) [a], instr : acc)
+          | otherwise         -> (live, acc)
+
+        -- Calls are side-effecting: keep the call, but drop unused return capture.
+        TAC.ICall (Just t) f args
+          | Set.member t live ->
+              (addUses (Set.delete t live) args, instr : acc)
+          | otherwise ->
+              (addUses live args, TAC.ICall Nothing f args : acc)
+        TAC.ICall Nothing _ args ->
+              (addUses live args, instr : acc)
+
+        -- Local allocations are only needed if their address temp is used.
+        TAC.IAllocLocal t
+          | Set.member t live -> (Set.delete t live, instr : acc)
+          | otherwise         -> (live, acc)
+
+    addUses s ops = foldr addUse s ops
+    addUse (TAC.OTemp t)      s = Set.insert t s
+    addUse (TAC.OLocalAddr t) s = Set.insert t s
+    addUse _                  s = s
 
 -- ---------------------------------------------------------------------------
 -- Float copy elimination
@@ -107,6 +390,8 @@ substInstr cm (TAC.IIfNZ op lbl)      = TAC.IIfNZ (substOp cm op) lbl
 substInstr cm (TAC.IIfZ op lbl)       = TAC.IIfZ (substOp cm op) lbl
 substInstr cm (TAC.IReturn (Just op)) = TAC.IReturn (Just (substOp cm op))
 substInstr cm (TAC.ICall mt f args)   = TAC.ICall mt f (map (substOp cm) args)
+substInstr cm (TAC.IIfCmp op a b l)   = TAC.IIfCmp op (substOp cm a) (substOp cm b) l
+substInstr cm (TAC.IIfNCmp op a b l)  = TAC.IIfNCmp op (substOp cm a) (substOp cm b) l
 substInstr _  instr                   = instr
 
 invalidate :: TAC.Instr -> ConstMap -> ConstMap

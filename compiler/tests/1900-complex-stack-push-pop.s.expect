@@ -1,14 +1,20 @@
 ; rcc-generated assembly
-%define RCC_CODE_BASE 0o1000
+%define RCC_CODE_BASE 0o21
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
+
+    .org 0o0
+stk:
+    .fill 16
+top:
+    .word 0
 %include "crt0.s"
 
 
 push:
     subi r6, 1
     swr r5, r6
-    subi r6, 6
+    subi r6, 5
     and r1, r6, r7
     swr r2, r1
 ;; stk[top]=v
@@ -39,27 +45,21 @@ push:
     swr r2, r1
     and r1, r6, r7
     addi r1, 3
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 3
     lwr r3, r1
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 4
     swr r2, r1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 4
     lwr r2, r1
     li r1, top
     swr r2, r1
     li r1, _epi_push
     jalr r0, r1
 _epi_push:
-    addi r6, 6
+    addi r6, 5
     lwr r5, r6
     addi r6, 1
     jalr r0, r5
@@ -67,26 +67,21 @@ _epi_push:
 pop:
     subi r6, 1
     swr r5, r6
-    subi r6, 6
+    subi r6, 5
 ;; top--
     li r1, top
     lwr r2, r1
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 1
-    swr r2, r1
-    and r1, r6, r7
     lwr r3, r1
     li r2, 1
     sub r2, r3, r2
     and r1, r6, r7
-    addi r1, 2
+    addi r1, 1
     swr r2, r1
     and r1, r6, r7
-    addi r1, 2
+    addi r1, 1
     lwr r2, r1
     li r1, top
     swr r2, r1
@@ -94,30 +89,30 @@ pop:
     li r1, top
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 2
     swr r2, r1
     li r3, stk
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 2
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 3
     swr r2, r1
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 3
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 4
     swr r2, r1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 4
     lwr r2, r1
     li r1, _epi_pop
     jalr r0, r1
 _epi_pop:
-    addi r6, 6
+    addi r6, 5
     lwr r5, r6
     addi r6, 1
     jalr r0, r5
@@ -125,131 +120,103 @@ _epi_pop:
 main:
     subi r6, 1
     swr r5, r6
-    subi r6, 13
+    subi r6, 8
 ;; push(1)
     li r2, 1
     li r1, push
     jalr r5, r1
-    and r1, r6, r7
-    swr r2, r1
 ;; push(2)
     li r2, 2
     li r1, push
     jalr r5, r1
-    and r1, r6, r7
-    addi r1, 1
-    swr r2, r1
 ;; push(3)
     li r2, 3
     li r1, push
     jalr r5, r1
-    and r1, r6, r7
-    addi r1, 2
-    swr r2, r1
 ;; int a = ...
     li r1, pop
     jalr r5, r1
     and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 3
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 4
     swr r2, r1
 ;; int b = ...
     li r1, pop
     jalr r5, r1
     and r1, r6, r7
-    addi r1, 5
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 5
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 6
+    addi r1, 1
     swr r2, r1
 ;; int c = ...
     li r1, pop
     jalr r5, r1
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 2
     swr r2, r1
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 2
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 3
     swr r2, r1
 ;; return a+b*10+c*100
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 1
     lwr r3, r1
     li r2, 10
     and r1, r0, r0
-_L_main_mul_loop_66:
+_L_main_mul_loop_45:
     sub r0, r0, r2
-    bf _L_main_mul_end_66
+    bf _L_main_mul_end_45
     add r1, r1, r3
     subi r2, 1
     sub r0, r0, r7
-    bt _L_main_mul_loop_66
-_L_main_mul_end_66:
+    bt _L_main_mul_loop_45
+_L_main_mul_end_45:
     and r2, r1, r7
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 4
     swr r2, r1
     and r1, r6, r7
-    addi r1, 4
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 4
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 10
+    addi r1, 5
     swr r2, r1
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 2
     lwr r3, r1
     li r2, 100
     and r1, r0, r0
-_L_main_mul_loop_93:
+_L_main_mul_loop_71:
     sub r0, r0, r2
-    bf _L_main_mul_end_93
+    bf _L_main_mul_end_71
     add r1, r1, r3
     subi r2, 1
     sub r0, r0, r7
-    bt _L_main_mul_loop_93
-_L_main_mul_end_93:
+    bt _L_main_mul_loop_71
+_L_main_mul_end_71:
     and r2, r1, r7
     and r1, r6, r7
-    addi r1, 11
+    addi r1, 6
     swr r2, r1
     and r1, r6, r7
-    addi r1, 10
+    addi r1, 5
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 11
+    addi r1, 6
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 12
+    addi r1, 7
     swr r2, r1
     and r1, r6, r7
-    addi r1, 12
+    addi r1, 7
     lwr r2, r1
     li r1, _epi_main
     jalr r0, r1
 _epi_main:
-    addi r6, 13
+    addi r6, 8
     lwr r5, r6
     addi r6, 1
     jalr r0, r5
-
-    .org 0o0
-stk:
-    .fill 16
-top:
-    .word 0

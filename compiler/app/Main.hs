@@ -2,6 +2,7 @@ module Main where
 
 import Control.Monad (when)
 import Data.Char (isDigit)
+import Data.List (intercalate)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import System.Environment (getArgs, getProgName, getExecutablePath)
@@ -28,6 +29,7 @@ data Options = Options
   , optStackTop     :: Maybe Int
   , optPreprocessor :: Maybe String
   , optLibDir       :: Maybe FilePath
+  , optOptimize     :: Bool
   , optDumpAst      :: Bool
   , optDumpTac      :: Bool
   } deriving (Show)
@@ -38,9 +40,10 @@ defaultOptions = Options
   , optOutput       = Nothing
   , optCodeBase     = 0o1000
   , optDataBase     = 0o0000
-  , optStackTop     = Just 0o0100
+  , optStackTop     = Just 0o7770
   , optPreprocessor = Nothing
   , optLibDir       = Nothing
+  , optOptimize     = False
   , optDumpAst      = False
   , optDumpTac      = False
   }
@@ -60,20 +63,25 @@ parseArgs = go defaultOptions
     go opts ("--lib-dir"      : d : rest) = go opts{ optLibDir       = Just d }        rest
     go opts ("--dump-ast"         : rest) = go opts{ optDumpAst      = True }          rest
     go opts ("--dump-tac"         : rest) = go opts{ optDumpTac      = True }          rest
+    go opts ("--optimize"         : rest) = go opts{ optOptimize     = True }          rest
     go _    (('-' : flag)         : _   ) = Left ("unknown flag: -" <> flag)
     go opts (f                :     rest) = go opts{ optInput = f }                    rest
 
 usage :: String -> String
-usage prog = unlines
-  [ "Usage: " <> prog <> " [options] <input.c>"
-  , "  -o <file>             output file (default: stdout)"
-  , "  --code-base <n>       code section base address (default: 0o1000)"
-  , "  --data-base <n>       data section base address (default: 0o3000)"
-  , "  --stack-top <n>       initial stack pointer     (default: data-base)"
-  , "  --preprocessor <cmd>  run <cmd> on source before compiling (e.g. 'cpp -P')"
-  , "  --dump-ast            print lexical AST and exit"
-  , "  --dump-tac            print TAC and exit"
-  ]
+usage prog =
+  intercalate
+    "\n"
+    [ "Usage: " <> prog <> " [options] <input.c>"
+    , "  -o <file>             output file (default: stdout)"
+    , "  --code-base <n>       code section base when no RW globals (default: 0o1000)"
+    , "  --data-base <n>       RW globals base address (default: 0o0000)"
+    , "  --stack-top <n>       initial stack pointer     (default: 0o7770)"
+    , "  --preprocessor <cmd>  run <cmd> on source before compiling (e.g. 'cpp -P')"
+    , "  --lib-dir <path>      directory for rlibc headers (default: ../lib next to rcc)"
+    , "  --optimize            run the TAC optimization pipeline (off by default)"
+    , "  --dump-ast            print lexical AST and exit"
+    , "  --dump-tac            print TAC and exit"
+    ]
 
 -- ---------------------------------------------------------------------------
 -- Preprocessor
@@ -119,7 +127,7 @@ main = do
     Right p -> return p
 
   let tac  = Lower.lower checked
-  let tac' = Opt.optimize tac
+  let tac' = Opt.optimizeWhen (optOptimize opts) tac
 
   when (optDumpTac opts) $ print tac' >> exitSuccess
 

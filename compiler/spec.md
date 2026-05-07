@@ -249,22 +249,31 @@ _start:
 
 ## 8. Calling Convention
 
-| Role           | Register | Notes                                         |
-|----------------|----------|-----------------------------------------------|
-| Arg 1          | r2       |                                               |
-| Arg 2          | r3       |                                               |
-| Arg 3          | r4       |                                               |
-| Return value   | r2       | Overlaps arg 1                                |
-| Link register  | r5       | Holds return address; callee must save/restore in non-leaf functions |
-| Stack pointer  | r6       | Full descending; points to last pushed word   |
-| Scratch        | r1       | Implicit target of `lwr`-via-`li`; caller-saved |
-| Hardwired zero | r0       | Read-only constant 0                          |
-| Hardwired −1   | r7       | Read-only constant −1 (0o7777)                |
+Fixed roles (see **Arch.md** for the full ABI):
 
-**Caller-saved:** r1, r2, r3 (may be clobbered by a call)  
-**Callee-saved:** r4, r5 (non-leaf callees must preserve these)
+| Role           | Register | Notes |
+|----------------|----------|--------|
+| Arg 1          | r2       | |
+| Arg 2          | r3       | |
+| Arg 3          | r4       | |
+| Return value   | r2       | Overlaps arg 1 |
+| Scratch        | r1       | **Not** used for arguments. Address/`li` temp, short sequences; **caller-saved** |
+| Link register  | r5       | Return address from `jalr r5, …`. **Non-leaf** callees save/restore **r5** on the stack |
+| Stack pointer  | r6       | Full descending; points to last pushed word |
+| Hardwired zero | r0       | |
+| Hardwired −1   | r7       | |
 
-Args beyond r4 are pushed right-to-left by the caller; the callee pops them in its epilogue.
+**Caller-saved:** r1, r2, r3, r4 — assume clobbered across a call except the defined return
+value in **r2**.
+
+**Callee-saved:** **r5** (when making nested calls) and **r6** (stack must be balanced on
+return). There is no separate callee-saved *data* register; long-lived values use stack slots.
+
+**Indirect calls** use **r1** for the target address (`li r1, f; jalr r5, r1`) so **r2–r4**
+remain available for the first three arguments.
+
+Args beyond three are pushed **right-to-left** by the caller; the **callee** pops them in its
+epilogue.
 
 Only pointers to structs may be passed or returned.
 

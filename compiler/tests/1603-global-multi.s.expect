@@ -1,7 +1,15 @@
 ; rcc-generated assembly
-%define RCC_CODE_BASE 0o1000
+%define RCC_CODE_BASE 0o3
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
+
+    .org 0o0
+a:
+    .word 1
+b:
+    .word 2
+c:
+    .word 3
 %include "crt0.s"
 
 
@@ -53,11 +61,3 @@ _epi_main:
     lwr r5, r6
     addi r6, 1
     jalr r0, r5
-
-    .org 0o0
-a:
-    .word 1
-b:
-    .word 2
-c:
-    .word 3

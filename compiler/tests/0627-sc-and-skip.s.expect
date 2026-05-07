@@ -1,7 +1,11 @@
 ; rcc-generated assembly
-%define RCC_CODE_BASE 0o1000
+%define RCC_CODE_BASE 0o1
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
+
+    .org 0o0
+flag:
+    .word 0
 %include "crt0.s"
 
 
@@ -35,10 +39,7 @@ main:
     and r1, r6, r7
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_15
-    li r1, _L_and_false_0
-    jalr r0, r1
-_L_main_ifz_skip_15:
+    bf _L_and_false_0
     li r2, 1
     and r1, r6, r7
     addi r1, 1
@@ -67,7 +68,3 @@ _epi_main:
     lwr r5, r6
     addi r6, 1
     jalr r0, r5
-
-    .org 0o0
-flag:
-    .word 0

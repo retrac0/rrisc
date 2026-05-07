@@ -1,7 +1,7 @@
 ; rcc-generated assembly
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
 %include "crt0.s"
 
 
@@ -23,10 +23,7 @@ _L_or_end_3:
     and r1, r6, r7
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_main_ifnz_skip_19
-    li r1, _L_or_true_0
-    jalr r0, r1
-_L_main_ifnz_skip_19:
+    bt _L_or_true_0
     and r2, r0, r0
     and r1, r6, r7
     addi r1, 1

@@ -1,14 +1,18 @@
 ; rcc-generated assembly
-%define RCC_CODE_BASE 0o1000
+%define RCC_CODE_BASE 0o10
 %define RCC_DATA_BASE 0o0
-%define RCC_STACK_TOP 0o100
+%define RCC_STACK_TOP 0o7770
+
+    .org 0o0
+a:
+    .fill 8
 %include "crt0.s"
 
 
 bsrch:
     subi r6, 1
     swr r5, r6
-    subi r6, 19
+    subi r6, 16
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
@@ -49,21 +53,7 @@ _L_while_0:
     add r3, r3, r1
     add r2, r2, r1
     sub r1, r2, r3
-    li r2, 1
-    bf _L_bsrch_ne_45
-    li r2, 0
-_L_bsrch_ne_45:
-    and r1, r6, r7
-    addi r1, 6
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 6
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_bsrch_ifz_skip_56
-    li r1, _L_endwhile_1
-    jalr r0, r1
-_L_bsrch_ifz_skip_56:
+    bt _L_endwhile_1
 ;; int mid = ...
     and r1, r6, r7
     addi r1, 3
@@ -73,14 +63,14 @@ _L_bsrch_ifz_skip_56:
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 6
     swr r2, r1
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 6
     lwr r3, r1
     li r2, 2
     sub r0, r0, r2
-    bf _L_bsrch_div_done_75
+    bf _L_bsrch_div_done_61
     and r1, r3, r7
     rol r1, r1
     rol r4, r0
@@ -95,25 +85,25 @@ _L_bsrch_ifz_skip_56:
     addi r1, 1
     lwr r4, r1
     sub r0, r0, r4
-    bf _L_bsrch_div_npos_75
+    bf _L_bsrch_div_npos_61
     sub r3, r0, r3
-_L_bsrch_div_npos_75:
+_L_bsrch_div_npos_61:
     and r1, r6, r7
     lwr r4, r1
     sub r0, r0, r4
-    bf _L_bsrch_div_dpos_75
+    bf _L_bsrch_div_dpos_61
     sub r2, r0, r2
-_L_bsrch_div_dpos_75:
+_L_bsrch_div_dpos_61:
     and r4, r3, r7
     and r1, r0, r0
-_L_bsrch_udiv_loop_100:
+_L_bsrch_udiv_loop_86:
     sub r0, r4, r2
-    bt _L_bsrch_udiv_end_100
+    bt _L_bsrch_udiv_end_86
     sub r4, r4, r2
     addi r1, 1
     sub r0, r0, r7
-    bt _L_bsrch_udiv_loop_100
-_L_bsrch_udiv_end_100:
+    bt _L_bsrch_udiv_loop_86
+_L_bsrch_udiv_end_86:
     and r2, r1, r7
     and r1, r6, r7
     lwr r1, r1
@@ -124,61 +114,47 @@ _L_bsrch_udiv_end_100:
     add r1, r1, r4
     subi r1, 1
     sub r0, r0, r1
-    bt _L_bsrch_div_done_75
+    bt _L_bsrch_div_done_61
     sub r2, r0, r2
-_L_bsrch_div_done_75:
+_L_bsrch_div_done_61:
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 7
     swr r2, r1
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 7
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 8
     swr r2, r1
 ;; if (arr[mid]==v)
     and r1, r6, r7
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 7
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 10
+    addi r1, 9
     swr r2, r1
     and r1, r6, r7
-    addi r1, 10
+    addi r1, 9
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 11
+    addi r1, 10
     swr r2, r1
     and r1, r6, r7
-    addi r1, 11
+    addi r1, 10
     lwr r3, r1
     and r1, r6, r7
     addi r1, 2
     lwr r2, r1
     sub r1, r3, r2
     sub r0, r0, r1
-    li r2, 1
-    bf _L_bsrch_ne_157
-    li r2, 0
-_L_bsrch_ne_157:
-    and r1, r6, r7
-    addi r1, 12
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 12
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_bsrch_ifz_skip_168
-    li r1, _L_endif_2
-    jalr r0, r1
-_L_bsrch_ifz_skip_168:
+    bt _L_endif_2
 ;; return mid
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 7
     lwr r2, r1
     li r1, _epi_bsrch
     jalr r0, r1
@@ -187,21 +163,21 @@ _L_endif_2:
     and r1, r6, r7
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 8
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 13
+    addi r1, 11
     swr r2, r1
     and r1, r6, r7
-    addi r1, 13
+    addi r1, 11
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 14
+    addi r1, 12
     swr r2, r1
     and r1, r6, r7
-    addi r1, 14
+    addi r1, 12
     lwr r3, r1
     and r1, r6, r7
     addi r1, 2
@@ -210,29 +186,18 @@ _L_endif_2:
     add r3, r3, r1
     add r2, r2, r1
     sub r1, r3, r2
-    rol r2, r0
-    and r1, r6, r7
-    addi r1, 15
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 15
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_bsrch_ifz_skip_214
-    li r1, _L_else_3
-    jalr r0, r1
-_L_bsrch_ifz_skip_214:
+    bf _L_else_3
 ;; lo=mid+1
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 8
     lwr r3, r1
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 16
+    addi r1, 13
     swr r2, r1
     and r1, r6, r7
-    addi r1, 16
+    addi r1, 13
     lwr r2, r1
     and r1, r6, r7
     addi r1, 3
@@ -242,15 +207,15 @@ _L_bsrch_ifz_skip_214:
 _L_else_3:
 ;; hi=mid-1
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 8
     lwr r3, r1
     li r2, 1
     sub r2, r3, r2
     and r1, r6, r7
-    addi r1, 17
+    addi r1, 14
     swr r2, r1
     and r1, r6, r7
-    addi r1, 17
+    addi r1, 14
     lwr r2, r1
     and r1, r6, r7
     addi r1, 5
@@ -262,13 +227,13 @@ _L_endwhile_1:
 ;; return -1
     and r2, r7, r7
     and r1, r6, r7
-    addi r1, 18
+    addi r1, 15
     swr r2, r1
     and r2, r7, r7
     li r1, _epi_bsrch
     jalr r0, r1
 _epi_bsrch:
-    addi r6, 19
+    addi r6, 16
     lwr r5, r6
     addi r6, 1
     jalr r0, r5
@@ -390,7 +355,3 @@ _epi_main:
     lwr r5, r6
     addi r6, 1
     jalr r0, r5
-
-    .org 0o0
-a:
-    .fill 8
