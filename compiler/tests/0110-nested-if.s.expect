@@ -1,0 +1,219 @@
+; rcc-generated assembly
+    .org 0o1000
+_start:
+    li r6, 0o100
+    li r1, main
+    jalr r5, r1
+    halt
+
+
+main:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -12
+;; int a = ...
+    li r2, 3
+    and r1, r6, r7
+    swr r2, r1
+;; int b = ...
+    li r2, 5
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+;; int result = ...
+    li r2, 0
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+;; if (a<b&&b>2)
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    li r2, 1
+    sub r0, r0, r2
+    bt _L_main_ifz_skip_26
+    li r1, _L_and_false_0
+    jalr r0, r1
+_L_main_ifz_skip_26:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    li r2, 1
+    sub r0, r0, r2
+    bt _L_main_ifz_skip_36
+    li r1, _L_and_false_0
+    jalr r0, r1
+_L_main_ifz_skip_36:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+    li r1, _L_and_end_1
+    jalr r0, r1
+_L_and_false_0:
+    li r2, 0
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+_L_and_end_1:
+    and r1, r6, r7
+    addi r1, 5
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _L_main_ifz_skip_56
+    li r1, _L_endif_2
+    jalr r0, r1
+_L_main_ifz_skip_56:
+;; if (a==3||b==10)
+    and r1, r6, r7
+    lwr r3, r1
+    li r2, 3
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_main_ne_66
+    li r2, 0
+_L_main_ne_66:
+    and r1, r6, r7
+    addi r1, 6
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 6
+    lwr r2, r1
+    sub r0, r0, r2
+    bf _L_main_ifnz_skip_77
+    li r1, _L_or_true_3
+    jalr r0, r1
+_L_main_ifnz_skip_77:
+    and r1, r6, r7
+    addi r1, 1
+    lwr r3, r1
+    li r2, 10
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_main_ne_87
+    li r2, 0
+_L_main_ne_87:
+    and r1, r6, r7
+    addi r1, 7
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 7
+    lwr r2, r1
+    sub r0, r0, r2
+    bf _L_main_ifnz_skip_98
+    li r1, _L_or_true_3
+    jalr r0, r1
+_L_main_ifnz_skip_98:
+    li r2, 0
+    and r1, r6, r7
+    addi r1, 8
+    swr r2, r1
+    li r1, _L_or_end_4
+    jalr r0, r1
+_L_or_true_3:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 8
+    swr r2, r1
+_L_or_end_4:
+    and r1, r6, r7
+    addi r1, 8
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _L_main_ifz_skip_118
+    li r1, _L_endif_5
+    jalr r0, r1
+_L_main_ifz_skip_118:
+;; result=1
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+_L_endif_5:
+_L_endif_2:
+;; if (a>b||b==0)
+    and r1, r6, r7
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    li r1, 0o4000
+    clrt
+    addc r3, r3, r1
+    clrt
+    addc r2, r2, r1
+    sub r1, r2, r3
+    rol r2, r0
+    and r1, r6, r7
+    addi r1, 9
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 9
+    lwr r2, r1
+    sub r0, r0, r2
+    bf _L_main_ifnz_skip_149
+    li r1, _L_or_true_6
+    jalr r0, r1
+_L_main_ifnz_skip_149:
+    and r1, r6, r7
+    addi r1, 1
+    lwr r3, r1
+    li r2, 0
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_main_ne_159
+    li r2, 0
+_L_main_ne_159:
+    and r1, r6, r7
+    addi r1, 10
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 10
+    lwr r2, r1
+    sub r0, r0, r2
+    bf _L_main_ifnz_skip_170
+    li r1, _L_or_true_6
+    jalr r0, r1
+_L_main_ifnz_skip_170:
+    li r2, 0
+    and r1, r6, r7
+    addi r1, 11
+    swr r2, r1
+    li r1, _L_or_end_7
+    jalr r0, r1
+_L_or_true_6:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 11
+    swr r2, r1
+_L_or_end_7:
+    and r1, r6, r7
+    addi r1, 11
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _L_main_ifz_skip_190
+    li r1, _L_endif_8
+    jalr r0, r1
+_L_main_ifz_skip_190:
+;; result=99
+    li r2, 99
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+_L_endif_8:
+;; return result
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    li r1, _epi_main
+    jalr r0, r1
+_epi_main:
+    addi r6, 12
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

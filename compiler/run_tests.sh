@@ -85,7 +85,18 @@ for src in tests/[0-9]*.c; do
         continue
     fi
 
-    # Stage 2: assemble
+    # Stage 2: check assembly against .s.expect if present
+    s_expect="tests/$base.s.expect"
+    if [ -f "$s_expect" ]; then
+        if ! cmp -s "$asm_out" "$s_expect"; then
+            echo "FAIL (assembly mismatch)"
+            diff "$s_expect" "$asm_out" || true
+            fail=$((fail + 1))
+            continue
+        fi
+    fi
+
+    # Stage 3: assemble
     if ! $ASM "$asm_out" 2>"$TMPDIR_WORK/$base.asm.err"; then
         echo "FAIL (assembler error)"
         cat "$TMPDIR_WORK/$base.asm.err"
@@ -93,7 +104,7 @@ for src in tests/[0-9]*.c; do
         continue
     fi
 
-    # Stage 3: simulate
+    # Stage 4: simulate
     extra_flags=""
     [ -f "tests/$base.simflags" ] && extra_flags=$(cat "tests/$base.simflags")
     $SIM $SIM_FLAGS $extra_flags "$bin_out" > "$actual" 2>&1

@@ -235,7 +235,8 @@ storeRegToTemp reg t = do
 
 genInstr :: TAC.Instr -> CG ()
 
-genInstr (TAC.ILabel lbl) = emit (lbl <> ":")
+genInstr (TAC.ILabel   lbl) = emit (lbl <> ":")
+genInstr (TAC.IComment txt) = emit (";; " <> txt)
 
 genInstr (TAC.IAssign t op) = do
   loadOpInto 2 op
@@ -320,14 +321,14 @@ genInstr (TAC.ICall mt fname args) = do
 
 genInstr (TAC.IReturn Nothing) = do
   epi <- gets cgEpiLabel
-  emitL "sub r0, r0, r7"          -- T = 1
-  emitL ("bt " <> epi)
+  emitL ("li r1, " <> epi)
+  emitL "jalr r0, r1"
 
 genInstr (TAC.IReturn (Just op)) = do
   loadOpInto 2 op                 -- return value in r2
   epi <- gets cgEpiLabel
-  emitL "sub r0, r0, r7"          -- T = 1
-  emitL ("bt " <> epi)
+  emitL ("li r1, " <> epi)
+  emitL "jalr r0, r1"
 
 -- ---------------------------------------------------------------------------
 -- Binary operation codegen
@@ -359,13 +360,96 @@ emitBinOp TAC.TShl  = emitShift True  True   -- logical left
 emitBinOp TAC.TShr  = emitShift False False  -- arithmetic right (sign-extending)
 emitBinOp TAC.TUShr = emitShift False True   -- logical right (unsigned)
 emitBinOp TAC.TMul = do
-  -- Software multiply via __mul; not implemented in runtime, so use loop.
   emitMul
 emitBinOp TAC.TDiv = do
-  -- Not supported; emit zero.
-  emitL "and r2, r0, r0"
+  lDivDone <- freshLbl "div_done"
+  lNPos    <- freshLbl "div_npos"
+  lDPos    <- freshLbl "div_dpos"
+  -- Divide by zero returns 0 (r2=0 already when d=0).
+  emitL "sub r0, r0, r2"
+  emitL ("bf " <> lDivDone)
+  -- Extract and push sign_n.
+  emitL "and r1, r3, r7"
+  emitL "rol r1, r1"
+  emitL "rol r4, r0"              -- r4 = sign_n (0 or 1)
+  emitL "addi r6, -1"
+  emitL "swr r4, r6"
+  -- Extract and push sign_d.
+  emitL "and r1, r2, r7"
+  emitL "rol r1, r1"
+  emitL "rol r4, r0"              -- r4 = sign_d
+  emitL "addi r6, -1"
+  emitL "swr r4, r6"
+  -- Abs(n): sign_n is at [r6+1].
+  emitL "and r1, r6, r7"
+  emitL "addi r1, 1"
+  emitL "lwr r4, r1"
+  emitL "sub r0, r0, r4"
+  emitL ("bf " <> lNPos)
+  emitL "sub r3, r0, r3"
+  emit (lNPos <> ":")
+  -- Abs(d): sign_d is at [r6+0].
+  emitL "and r1, r6, r7"
+  emitL "lwr r4, r1"
+  emitL "sub r0, r0, r4"
+  emitL ("bf " <> lDPos)
+  emitL "sub r2, r0, r2"
+  emit (lDPos <> ":")
+  emitUDiv                        -- r1=|quotient|, r4=|remainder|
+  emitL "and r2, r1, r7"          -- r2 = |quotient|
+  -- Pop sign_d into r1.
+  emitL "and r1, r6, r7"
+  emitL "lwr r1, r1"
+  emitL "addi r6, 1"
+  -- Pop sign_n into r4.
+  emitL "and r4, r6, r7"
+  emitL "lwr r4, r4"
+  emitL "addi r6, 1"
+  -- Negate quotient when exactly one operand was negative (sum==1).
+  emitL "clrt"
+  emitL "addc r1, r1, r4"
+  emitL "addi r1, -1"
+  emitL "sub r0, r0, r1"          -- T=1 iff sum!=1
+  emitL ("bt " <> lDivDone)
+  emitL "sub r2, r0, r2"
+  emit (lDivDone <> ":")
 emitBinOp TAC.TMod = do
-  emitL "and r2, r0, r0"
+  lModDone <- freshLbl "mod_done"
+  lNPos    <- freshLbl "mod_npos"
+  lDPos    <- freshLbl "mod_dpos"
+  lRemPos  <- freshLbl "mod_rpos"
+  -- Mod by zero returns 0.
+  emitL "sub r0, r0, r2"
+  emitL ("bf " <> lModDone)
+  -- Extract and push sign_n; r4 retains it for the abs(n) test below.
+  emitL "and r1, r3, r7"
+  emitL "rol r1, r1"
+  emitL "rol r4, r0"              -- r4 = sign_n
+  emitL "addi r6, -1"
+  emitL "swr r4, r6"
+  -- Abs(n): r4 still holds sign_n.
+  emitL "sub r0, r0, r4"
+  emitL ("bf " <> lNPos)
+  emitL "sub r3, r0, r3"
+  emit (lNPos <> ":")
+  -- Abs(d): use T from sign_d; sign_d not needed later.
+  emitL "and r1, r2, r7"
+  emitL "rol r1, r1"
+  emitL ("bf " <> lDPos)
+  emitL "sub r2, r0, r2"
+  emit (lDPos <> ":")
+  emitUDiv                        -- r1=|quotient|, r4=|remainder|
+  -- Pop sign_n into r1.
+  emitL "and r1, r6, r7"
+  emitL "lwr r1, r1"
+  emitL "addi r6, 1"
+  -- Negate remainder if n was negative.
+  emitL "sub r0, r0, r1"
+  emitL ("bf " <> lRemPos)
+  emitL "sub r4, r0, r4"
+  emit (lRemPos <> ":")
+  emitL "and r2, r4, r7"          -- r2 = remainder
+  emit (lModDone <> ":")
 emitBinOp TAC.TAnd = do
   -- Logical: should not appear (lowered to branches by TAC), but handle anyway.
   emitL "and r2, r3, r2"
@@ -485,6 +569,23 @@ emitMul = do
   emitL ("bt " <> lLoop)
   emit (lEnd <> ":")
   emitL "and r2, r1, r7"            -- r2 = acc
+
+-- Unsigned division: r3=|n|, r2=|d| → r1=quotient, r4=remainder.
+-- r2 and r3 are unchanged by this routine.
+emitUDiv :: CG ()
+emitUDiv = do
+  lLoop <- freshLbl "udiv_loop"
+  lEnd  <- freshLbl "udiv_end"
+  emitL "and r4, r3, r7"            -- r4 = |n| (working remainder)
+  emitL "and r1, r0, r0"            -- r1 = 0  (quotient)
+  emit (lLoop <> ":")
+  emitL "sub r0, r4, r2"            -- T=1 iff r4 < r2 (done)
+  emitL ("bt " <> lEnd)
+  emitL "sub r4, r4, r2"            -- r4 -= |d|
+  emitL "addi r1, 1"
+  emitL "sub r0, r0, r7"            -- T=1 unconditionally
+  emitL ("bt " <> lLoop)
+  emit (lEnd <> ":")
 
 -- Fresh local label within a procedure (uses cgFuncName for uniqueness).
 freshLbl :: Text -> CG Text

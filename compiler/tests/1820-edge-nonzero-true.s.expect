@@ -1,0 +1,32 @@
+; rcc-generated assembly
+    .org 0o1000
+_start:
+    li r6, 0o100
+    li r1, main
+    jalr r5, r1
+    halt
+
+
+main:
+    addi r6, -1
+    swr r5, r6
+;; if (4095)
+    li r2, 4095
+    sub r0, r0, r2
+    bt _L_main_ifz_skip_7
+    li r1, _L_endif_0
+    jalr r0, r1
+_L_main_ifz_skip_7:
+;; return 1
+    li r2, 1
+    li r1, _epi_main
+    jalr r0, r1
+_L_endif_0:
+;; return 0
+    li r2, 0
+    li r1, _epi_main
+    jalr r0, r1
+_epi_main:
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

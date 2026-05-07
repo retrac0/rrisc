@@ -1,0 +1,34 @@
+; rcc-generated assembly
+    .org 0o1000
+_start:
+    li r6, 0o100
+    li r1, main
+    jalr r5, r1
+    halt
+
+
+main:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -2
+;; int x = ...
+    li r2, 10
+    and r1, r6, r7
+    swr r2, r1
+;; x+=5
+    li r2, 15
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    li r2, 15
+    and r1, r6, r7
+    swr r2, r1
+;; return x
+    li r2, 15
+    li r1, _epi_main
+    jalr r0, r1
+_epi_main:
+    addi r6, 2
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

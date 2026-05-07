@@ -1,0 +1,415 @@
+; rcc-generated assembly
+    .org 0o1000
+_start:
+    li r6, 0o100
+    li r1, main
+    jalr r5, r1
+    halt
+
+
+bsrch:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -19
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    swr r3, r1
+    and r1, r6, r7
+    addi r1, 2
+    swr r4, r1
+;; int lo = ...
+    li r2, 0
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+;; int hi = ...
+    and r1, r6, r7
+    addi r1, 1
+    lwr r3, r1
+    li r2, 1
+    sub r2, r3, r2
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+;; while (lo<=hi)
+_L_while_0:
+    and r1, r6, r7
+    addi r1, 3
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 5
+    lwr r2, r1
+    li r1, 0o4000
+    clrt
+    addc r3, r3, r1
+    clrt
+    addc r2, r2, r1
+    sub r1, r2, r3
+    li r2, 1
+    bf _L_bsrch_ne_47
+    li r2, 0
+_L_bsrch_ne_47:
+    and r1, r6, r7
+    addi r1, 6
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 6
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _L_bsrch_ifz_skip_58
+    li r1, _L_endwhile_1
+    jalr r0, r1
+_L_bsrch_ifz_skip_58:
+;; int mid = ...
+    and r1, r6, r7
+    addi r1, 3
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 5
+    lwr r2, r1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 7
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 7
+    lwr r3, r1
+    li r2, 2
+    sub r0, r0, r2
+    bf _L_bsrch_div_done_78
+    and r1, r3, r7
+    rol r1, r1
+    rol r4, r0
+    addi r6, -1
+    swr r4, r6
+    and r1, r2, r7
+    rol r1, r1
+    rol r4, r0
+    addi r6, -1
+    swr r4, r6
+    and r1, r6, r7
+    addi r1, 1
+    lwr r4, r1
+    sub r0, r0, r4
+    bf _L_bsrch_div_npos_78
+    sub r3, r0, r3
+_L_bsrch_div_npos_78:
+    and r1, r6, r7
+    lwr r4, r1
+    sub r0, r0, r4
+    bf _L_bsrch_div_dpos_78
+    sub r2, r0, r2
+_L_bsrch_div_dpos_78:
+    and r4, r3, r7
+    and r1, r0, r0
+_L_bsrch_udiv_loop_103:
+    sub r0, r4, r2
+    bt _L_bsrch_udiv_end_103
+    sub r4, r4, r2
+    addi r1, 1
+    sub r0, r0, r7
+    bt _L_bsrch_udiv_loop_103
+_L_bsrch_udiv_end_103:
+    and r2, r1, r7
+    and r1, r6, r7
+    lwr r1, r1
+    addi r6, 1
+    and r4, r6, r7
+    lwr r4, r4
+    addi r6, 1
+    clrt
+    addc r1, r1, r4
+    addi r1, -1
+    sub r0, r0, r1
+    bt _L_bsrch_div_done_78
+    sub r2, r0, r2
+_L_bsrch_div_done_78:
+    and r1, r6, r7
+    addi r1, 8
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 8
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 9
+    swr r2, r1
+;; if (arr[mid]==v)
+    and r1, r6, r7
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 9
+    lwr r2, r1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 10
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 10
+    lwr r1, r1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 11
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 11
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_bsrch_ne_162
+    li r2, 0
+_L_bsrch_ne_162:
+    and r1, r6, r7
+    addi r1, 12
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 12
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _L_bsrch_ifz_skip_173
+    li r1, _L_endif_2
+    jalr r0, r1
+_L_bsrch_ifz_skip_173:
+;; return mid
+    and r1, r6, r7
+    addi r1, 9
+    lwr r2, r1
+    li r1, _epi_bsrch
+    jalr r0, r1
+_L_endif_2:
+;; if (arr[mid]<v)
+    and r1, r6, r7
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 9
+    lwr r2, r1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 13
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 13
+    lwr r1, r1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 14
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 14
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    li r1, 0o4000
+    clrt
+    addc r3, r3, r1
+    clrt
+    addc r2, r2, r1
+    sub r1, r3, r2
+    rol r2, r0
+    and r1, r6, r7
+    addi r1, 15
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 15
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _L_bsrch_ifz_skip_222
+    li r1, _L_else_3
+    jalr r0, r1
+_L_bsrch_ifz_skip_222:
+;; lo=mid+1
+    and r1, r6, r7
+    addi r1, 9
+    lwr r3, r1
+    li r2, 1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 16
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 16
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    li r1, _L_endif_4
+    jalr r0, r1
+_L_else_3:
+;; hi=mid-1
+    and r1, r6, r7
+    addi r1, 9
+    lwr r3, r1
+    li r2, 1
+    sub r2, r3, r2
+    and r1, r6, r7
+    addi r1, 17
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 17
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+_L_endif_4:
+    li r1, _L_while_0
+    jalr r0, r1
+_L_endwhile_1:
+;; return -1
+    li r2, 4095
+    and r1, r6, r7
+    addi r1, 18
+    swr r2, r1
+    li r2, 4095
+    li r1, _epi_bsrch
+    jalr r0, r1
+_epi_bsrch:
+    addi r6, 19
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5
+
+main:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -9
+;; a[0]=1
+    li r3, a
+    li r2, 0
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    swr r2, r1
+    li r2, 1
+    and r1, r6, r7
+    lwr r1, r1
+    swr r2, r1
+;; a[1]=3
+    li r3, a
+    li r2, 1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    li r2, 3
+    and r1, r6, r7
+    addi r1, 1
+    lwr r1, r1
+    swr r2, r1
+;; a[2]=5
+    li r3, a
+    li r2, 2
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    li r2, 5
+    and r1, r6, r7
+    addi r1, 2
+    lwr r1, r1
+    swr r2, r1
+;; a[3]=7
+    li r3, a
+    li r2, 3
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    li r2, 7
+    and r1, r6, r7
+    addi r1, 3
+    lwr r1, r1
+    swr r2, r1
+;; a[4]=9
+    li r3, a
+    li r2, 4
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    li r2, 9
+    and r1, r6, r7
+    addi r1, 4
+    lwr r1, r1
+    swr r2, r1
+;; a[5]=11
+    li r3, a
+    li r2, 5
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+    li r2, 11
+    and r1, r6, r7
+    addi r1, 5
+    lwr r1, r1
+    swr r2, r1
+;; a[6]=13
+    li r3, a
+    li r2, 6
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 6
+    swr r2, r1
+    li r2, 13
+    and r1, r6, r7
+    addi r1, 6
+    lwr r1, r1
+    swr r2, r1
+;; a[7]=15
+    li r3, a
+    li r2, 7
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 7
+    swr r2, r1
+    li r2, 15
+    and r1, r6, r7
+    addi r1, 7
+    lwr r1, r1
+    swr r2, r1
+;; return bsrch(a,8,7)
+    li r2, a
+    li r3, 8
+    li r4, 7
+    li r1, bsrch
+    jalr r5, r1
+    and r1, r6, r7
+    addi r1, 8
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 8
+    lwr r2, r1
+    li r1, _epi_main
+    jalr r0, r1
+_epi_main:
+    addi r6, 9
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5
+
+    .org 0o0
+a:
+    .fill 8

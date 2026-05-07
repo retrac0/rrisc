@@ -49,17 +49,18 @@ data UnOp
   deriving (Show, Eq)
 
 data Instr
-  = ILabel  Label
-  | IAssign Temp Operand
-  | IBinOp  Temp BinOp Operand Operand
-  | IUnOp   Temp UnOp  Operand
-  | ILoad   Temp Operand            -- t = *op
-  | IStore  Operand Operand         -- *addr = val
-  | IGoto   Label
-  | IIfNZ   Operand Label
-  | IIfZ    Operand Label
-  | ICall   (Maybe Temp) Label [Operand]
-  | IReturn (Maybe Operand)
+  = ILabel   Label
+  | IComment Text                    -- source-level annotation (emitted as ;; in asm)
+  | IAssign  Temp Operand
+  | IBinOp   Temp BinOp Operand Operand
+  | IUnOp    Temp UnOp  Operand
+  | ILoad    Temp Operand            -- t = *op
+  | IStore   Operand Operand         -- *addr = val
+  | IGoto    Label
+  | IIfNZ    Operand Label
+  | IIfZ     Operand Label
+  | ICall    (Maybe Temp) Label [Operand]
+  | IReturn  (Maybe Operand)
   deriving (Show)
 
 data Global = Global
@@ -209,7 +210,8 @@ lowerTop _ = pure ()
 
 lowerStmt :: Syn.Stmt -> L ()
 lowerStmt (Syn.SBlock _ ss)   = mapM_ lowerStmt ss
-lowerStmt (Syn.SVarDecl vd)   = do
+lowerStmt s@(Syn.SVarDecl vd) = do
+  emit (IComment (prettyStmt s))
   let name = Syn.vdName vd
       ty   = Syn.vdTy vd
   addLocal name ty
@@ -219,8 +221,11 @@ lowerStmt (Syn.SVarDecl vd)   = do
       v <- lowerExpr e
       emit (IAssign name v)
     Just (Syn.IList _) -> pure ()  -- array initializers not supported for locals
-lowerStmt (Syn.SExpr _ e)     = () <$ lowerExpr e
-lowerStmt (Syn.SIf _ c t me)  = do
+lowerStmt s@(Syn.SExpr _ e)   = do
+  emit (IComment (prettyStmt s))
+  () <$ lowerExpr e
+lowerStmt s@(Syn.SIf _ c t me) = do
+  emit (IComment (prettyStmt s))
   cv <- lowerExpr c
   case me of
     Nothing -> do
@@ -237,7 +242,8 @@ lowerStmt (Syn.SIf _ c t me)  = do
       emit (ILabel lElse)
       lowerStmt el
       emit (ILabel lEnd)
-lowerStmt (Syn.SWhile _ c body) = do
+lowerStmt s@(Syn.SWhile _ c body) = do
+  emit (IComment (prettyStmt s))
   lHead <- freshLabel "while"
   lEnd  <- freshLabel "endwhile"
   emit (ILabel lHead)
@@ -248,7 +254,8 @@ lowerStmt (Syn.SWhile _ c body) = do
   popLoop
   emit (IGoto lHead)
   emit (ILabel lEnd)
-lowerStmt (Syn.SFor _ ini c step body) = do
+lowerStmt s@(Syn.SFor _ ini c step body) = do
+  emit (IComment (prettyStmt s))
   case ini of
     Syn.FIDecl vd -> lowerStmt (Syn.SVarDecl vd)
     Syn.FIExpr Nothing -> pure ()
@@ -271,27 +278,121 @@ lowerStmt (Syn.SFor _ ini c step body) = do
     Just se -> () <$ lowerExpr se
   emit (IGoto lHead)
   emit (ILabel lEnd)
-lowerStmt (Syn.SReturn _ Nothing) = emit (IReturn Nothing)
-lowerStmt (Syn.SReturn _ (Just e)) = do
+lowerStmt s@(Syn.SReturn _ Nothing) = do
+  emit (IComment (prettyStmt s))
+  emit (IReturn Nothing)
+lowerStmt s@(Syn.SReturn _ (Just e)) = do
+  emit (IComment (prettyStmt s))
   v <- lowerExpr e
   emit (IReturn (Just v))
-lowerStmt (Syn.SBreak _)          = do
+lowerStmt s@(Syn.SBreak _) = do
+  emit (IComment (prettyStmt s))
   ls <- gets lsLoopStack
   case ls of
     ((_, lEnd):_) -> emit (IGoto lEnd)
     []            -> pure ()
-lowerStmt (Syn.SContinue _)       = do
+lowerStmt s@(Syn.SContinue _) = do
+  emit (IComment (prettyStmt s))
   ls <- gets lsLoopStack
   case ls of
     ((lCont, _):_) -> emit (IGoto lCont)
     []             -> pure ()
-lowerStmt (Syn.SAsmInline _ _)    = pure ()  -- not yet supported
+lowerStmt (Syn.SAsmInline _ _) = pure ()  -- not yet supported
 
 pushLoop :: (Label, Label) -> L ()
 pushLoop pair = modify $ \s -> s { lsLoopStack = pair : lsLoopStack s }
 
 popLoop :: L ()
 popLoop = modify $ \s -> s { lsLoopStack = drop 1 (lsLoopStack s) }
+
+-- ---------------------------------------------------------------------------
+-- Source-level pretty-printing (for IComment annotations)
+
+trunc60 :: Text -> Text
+trunc60 t = if T.length t > 60 then T.take 57 t <> "..." else t
+
+prettyTy :: Syn.Ty -> Text
+prettyTy Syn.TyInt           = "int"
+prettyTy Syn.TyUint          = "unsigned"
+prettyTy Syn.TyVoid          = "void"
+prettyTy (Syn.TyPtr t)       = prettyTy t <> "*"
+prettyTy (Syn.TyArray t n)   = prettyTy t <> "[" <> T.pack (show n) <> "]"
+prettyTy (Syn.TyStruct _ n)  = "struct " <> n
+
+prettyExpr :: Syn.Expr -> Text
+prettyExpr (Syn.ELit _ n)          = T.pack (show n)
+prettyExpr (Syn.EVar _ v)          = v
+prettyExpr (Syn.EUnary _ op e)     = prettyUnOp op <> prettyExpr e
+prettyExpr (Syn.EBinary _ op l r)  = prettyExpr l <> prettyBinOp op <> prettyExpr r
+prettyExpr (Syn.EAssign _ op l r)  = prettyExpr l <> prettyAssOp op <> prettyExpr r
+prettyExpr (Syn.EIndex _ e i)      = prettyExpr e <> "[" <> prettyExpr i <> "]"
+prettyExpr (Syn.EField _ e f)      = prettyExpr e <> "." <> f
+prettyExpr (Syn.EArrow _ e f)      = prettyExpr e <> "->" <> f
+prettyExpr (Syn.ECall _ f args)    = f <> "(" <> T.intercalate "," (map prettyExpr args) <> ")"
+prettyExpr (Syn.ECast _ ty e)      = "(" <> prettyTy ty <> ")" <> prettyExpr e
+prettyExpr (Syn.ESizeof _ _)       = "sizeof(...)"
+prettyExpr (Syn.EPostfix _ op e)   = prettyExpr e <> prettyPostOp op
+
+prettyUnOp :: Syn.UnOp -> Text
+prettyUnOp Syn.UNeg    = "-"
+prettyUnOp Syn.UNot    = "!"
+prettyUnOp Syn.UBNot   = "~"
+prettyUnOp Syn.UDeref  = "*"
+prettyUnOp Syn.UAddrOf = "&"
+prettyUnOp Syn.UPreInc = "++"
+prettyUnOp Syn.UPreDec = "--"
+
+prettyPostOp :: Syn.PostOp -> Text
+prettyPostOp Syn.PostInc = "++"
+prettyPostOp Syn.PostDec = "--"
+
+prettyBinOp :: Syn.BinOp -> Text
+prettyBinOp Syn.BAdd  = "+"
+prettyBinOp Syn.BSub  = "-"
+prettyBinOp Syn.BMul  = "*"
+prettyBinOp Syn.BDiv  = "/"
+prettyBinOp Syn.BMod  = "%"
+prettyBinOp Syn.BAnd  = "&&"
+prettyBinOp Syn.BOr   = "||"
+prettyBinOp Syn.BBand = "&"
+prettyBinOp Syn.BBor  = "|"
+prettyBinOp Syn.BBxor = "^"
+prettyBinOp Syn.BShl  = "<<"
+prettyBinOp Syn.BShr  = ">>"
+prettyBinOp Syn.BEq   = "=="
+prettyBinOp Syn.BNe   = "!="
+prettyBinOp Syn.BLt   = "<"
+prettyBinOp Syn.BLe   = "<="
+prettyBinOp Syn.BGt   = ">"
+prettyBinOp Syn.BGe   = ">="
+
+prettyAssOp :: Syn.AssOp -> Text
+prettyAssOp Syn.AEq   = "="
+prettyAssOp Syn.AAdd  = "+="
+prettyAssOp Syn.ASub  = "-="
+prettyAssOp Syn.AMul  = "*="
+prettyAssOp Syn.ADiv  = "/="
+prettyAssOp Syn.AMod  = "%="
+prettyAssOp Syn.ABand = "&="
+prettyAssOp Syn.ABor  = "|="
+prettyAssOp Syn.ABxor = "^="
+prettyAssOp Syn.AShl  = "<<="
+prettyAssOp Syn.AShr  = ">>="
+
+prettyStmt :: Syn.Stmt -> Text
+prettyStmt (Syn.SExpr _ e)          = trunc60 (prettyExpr e)
+prettyStmt (Syn.SReturn _ Nothing)   = "return"
+prettyStmt (Syn.SReturn _ (Just e))  = trunc60 ("return " <> prettyExpr e)
+prettyStmt (Syn.SIf _ c _ _)        = trunc60 ("if (" <> prettyExpr c <> ")")
+prettyStmt (Syn.SWhile _ c _)       = trunc60 ("while (" <> prettyExpr c <> ")")
+prettyStmt (Syn.SFor _ _ c _ _)     = trunc60 ("for (...; " <> maybe "" prettyExpr c <> "; ...)")
+prettyStmt (Syn.SVarDecl vd)        =
+  trunc60 (prettyTy (Syn.vdTy vd) <> " " <> Syn.vdName vd <>
+           (case Syn.vdInit vd of { Nothing -> ""; Just _ -> " = ..." }))
+prettyStmt (Syn.SBreak _)           = "break"
+prettyStmt (Syn.SContinue _)        = "continue"
+prettyStmt (Syn.SAsmInline _ _)     = "asm(...)"
+prettyStmt (Syn.SBlock _ _)         = ""
 
 -- ---------------------------------------------------------------------------
 -- Expressions

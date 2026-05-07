@@ -1,0 +1,144 @@
+; rcc-generated assembly
+    .org 0o1000
+_start:
+    li r6, 0o100
+    li r1, main
+    jalr r5, r1
+    halt
+
+
+set_flag:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -1
+    and r1, r6, r7
+    swr r2, r1
+;; side_effect_called=1
+    li r2, 1
+    li r1, side_effect_called
+    swr r2, r1
+;; return val
+    and r1, r6, r7
+    lwr r2, r1
+    li r1, _epi_set_flag
+    jalr r0, r1
+_epi_set_flag:
+    addi r6, 1
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5
+
+main:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -5
+;; if (0&&set_flag(1))
+    li r2, 0
+    sub r0, r0, r2
+    bt _L_main_ifz_skip_8
+    li r1, _L_and_false_0
+    jalr r0, r1
+_L_main_ifz_skip_8:
+    li r2, 1
+    li r1, set_flag
+    jalr r5, r1
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _L_main_ifz_skip_20
+    li r1, _L_and_false_0
+    jalr r0, r1
+_L_main_ifz_skip_20:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    li r1, _L_and_end_1
+    jalr r0, r1
+_L_and_false_0:
+    li r2, 0
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+_L_and_end_1:
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _L_main_ifz_skip_40
+    li r1, _L_endif_2
+    jalr r0, r1
+_L_main_ifz_skip_40:
+;; side_effect_called=99
+    li r2, 99
+    li r1, side_effect_called
+    swr r2, r1
+_L_endif_2:
+;; if (1||set_flag(0))
+    li r2, 1
+    sub r0, r0, r2
+    bf _L_main_ifnz_skip_52
+    li r1, _L_or_true_3
+    jalr r0, r1
+_L_main_ifnz_skip_52:
+    li r2, 0
+    li r1, set_flag
+    jalr r5, r1
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    sub r0, r0, r2
+    bf _L_main_ifnz_skip_66
+    li r1, _L_or_true_3
+    jalr r0, r1
+_L_main_ifnz_skip_66:
+    li r2, 0
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    li r1, _L_or_end_4
+    jalr r0, r1
+_L_or_true_3:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+_L_or_end_4:
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _L_main_ifz_skip_86
+    li r1, _L_endif_5
+    jalr r0, r1
+_L_main_ifz_skip_86:
+;; side_effect_called=0
+    li r2, 0
+    li r1, side_effect_called
+    swr r2, r1
+_L_endif_5:
+;; return side_effect_called
+    li r1, side_effect_called
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    lwr r2, r1
+    li r1, _epi_main
+    jalr r0, r1
+_epi_main:
+    addi r6, 5
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5
+
+    .org 0o0
+side_effect_called:
+    .word 0

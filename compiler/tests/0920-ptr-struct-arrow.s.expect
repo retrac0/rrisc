@@ -1,0 +1,87 @@
+; rcc-generated assembly
+    .org 0o1000
+_start:
+    li r6, 0o100
+    li r1, main
+    jalr r5, r1
+    halt
+
+
+main:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -7
+;; struct P p
+;; p.x=3
+    li r2, 3
+    and r1, r6, r7
+    swr r2, r1
+;; p.y=4
+    and r1, r6, r7
+    and r3, r1, r7
+    li r2, 1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    swr r2, r1
+    li r2, 4
+    and r1, r6, r7
+    lwr r1, r1
+    swr r2, r1
+;; struct P* q = ...
+    and r1, r6, r7
+    and r2, r1, r7
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+;; return q->x+q->y
+    and r1, r6, r7
+    addi r1, 2
+    lwr r1, r1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r3, r1
+    li r2, 1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    lwr r1, r1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 5
+    lwr r2, r1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 6
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 6
+    lwr r2, r1
+    li r1, _epi_main
+    jalr r0, r1
+_epi_main:
+    addi r6, 7
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

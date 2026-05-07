@@ -1,0 +1,37 @@
+; rcc-generated assembly
+    .org 0o1000
+_start:
+    li r6, 0o100
+    li r1, main
+    jalr r5, r1
+    halt
+
+
+noop:
+    addi r6, -1
+    swr r5, r6
+    li r1, _epi_noop
+    jalr r0, r1
+_epi_noop:
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5
+
+main:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -1
+;; noop()
+    li r1, noop
+    jalr r5, r1
+    and r1, r6, r7
+    swr r2, r1
+;; return 42
+    li r2, 42
+    li r1, _epi_main
+    jalr r0, r1
+_epi_main:
+    addi r6, 1
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

@@ -1,0 +1,106 @@
+; rcc-generated assembly
+    .org 0o1000
+_start:
+    li r6, 0o100
+    li r1, main
+    jalr r5, r1
+    halt
+
+
+area:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -5
+    and r1, r6, r7
+    swr r2, r1
+;; return r.w*r.h
+    and r1, r6, r7
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    and r3, r1, r7
+    li r2, 1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r1, r1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    and r1, r0, r0
+_L_area_mul_loop_34:
+    sub r0, r0, r2
+    bf _L_area_mul_end_34
+    clrt
+    addc r1, r1, r3
+    addi r2, -1
+    sub r0, r0, r7
+    bt _L_area_mul_loop_34
+_L_area_mul_end_34:
+    and r2, r1, r7
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    lwr r2, r1
+    li r1, _epi_area
+    jalr r0, r1
+_epi_area:
+    addi r6, 5
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5
+
+main:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -2
+;; struct R r
+;; r.w=6
+    li r2, 6
+    and r1, r6, r7
+    swr r2, r1
+;; r.h=7
+    and r1, r6, r7
+    and r3, r1, r7
+    li r2, 1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    swr r2, r1
+    li r2, 7
+    and r1, r6, r7
+    lwr r1, r1
+    swr r2, r1
+;; return area(r)
+    and r1, r6, r7
+    lwr r2, r1
+    li r1, area
+    jalr r5, r1
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    li r1, _epi_main
+    jalr r0, r1
+_epi_main:
+    addi r6, 2
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

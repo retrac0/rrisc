@@ -538,10 +538,12 @@ def assign_addresses(lines: list) -> tuple:
                 raise AsmError(sl.filename, sl.lineno, f"duplicate label '{label}'")
             labels[label] = addr
 
+        stmt.addr = addr
+
         if not stmt.mnemonic:
+            stmts.append(stmt)  # keep so _labels_from_stmts can find standalone labels
             continue
 
-        stmt.addr = addr
         mnem = stmt.mnemonic
         ops  = stmt.operands_str
 
@@ -586,6 +588,12 @@ def assign_addresses(lines: list) -> tuple:
             addr = (addr + align - 1) // align * align
         elif mnem == '.base':
             pass
+        elif mnem in ('jmp', 'call'):
+            addr += 3
+        elif mnem == 'or':
+            addr += 4
+        elif mnem == 'xor':
+            addr += 5
         else:
             addr += 1
 
@@ -617,7 +625,87 @@ class Assembler:
         lines = substitute(lines, self.macros)
 
         stmts, self.labels = assign_addresses(lines)
+        stmts, self.labels = self._relax_branches(stmts)
         return self._encode_all(stmts)
+
+    # -- branch relaxation --
+
+    def _stmt_size(self, stmt) -> int:
+        mnem = stmt.mnemonic
+        ops  = stmt.operands_str
+        f, n = stmt.filename, stmt.lineno
+        if mnem in ('', '.base', '.align'):
+            return 0
+        if mnem == 'li':
+            return 2
+        if mnem == '.word':
+            return len(ops.split(',')) if ops else 1
+        if mnem == '.float':
+            return (len(ops.split(',')) if ops else 1) * 4
+        if mnem == '.sixbit':
+            try: return len(_parse_string_literal(ops, f, n))
+            except Exception: return 0
+        if mnem == '.unicode':
+            try:
+                s = _parse_string_literal(ops, f, n)
+                return len(''.join(s).encode('utf-8'))
+            except Exception: return 0
+        if mnem == '.fill':
+            count_str = ops.split(',')[0].strip() if ops else ''
+            if not count_str: return 0
+            try: return max(0, _eval_expr(count_str, {}, f, n))
+            except Exception: return 0
+        if mnem in ('jmp', 'call'):
+            return 3
+        if mnem == 'or':
+            return 4
+        if mnem == 'xor':
+            return 5
+        return 1
+
+    def _labels_from_stmts(self, stmts) -> dict:
+        labels = {}
+        for stmt in stmts:
+            for label in stmt.labels:
+                labels[label] = stmt.addr
+        return labels
+
+    def _recompute_stmt_addrs(self, stmts):
+        addr = 0
+        for stmt in stmts:
+            if stmt.addr != -1 and abs(stmt.addr - addr) > 100:
+                addr = stmt.addr  # snap to .org section boundary
+            stmt.addr = addr
+            addr += self._stmt_size(stmt)
+
+    def _relax_branches(self, stmts):
+        skip_n = 0
+        for _iteration in range(20):
+            labels = self._labels_from_stmts(stmts)
+            violations = [
+                i for i, s in enumerate(stmts)
+                if s.mnemonic in ('bt', 'bf')
+                and re.fullmatch(r'[A-Za-z_]\w*', s.operands_str.strip())
+                and s.operands_str.strip() in labels
+                and not (-64 <= labels[s.operands_str.strip()] - s.addr <= 63)
+            ]
+            if not violations:
+                break
+            for i in reversed(violations):
+                stmt = stmts[i]
+                target = stmt.operands_str.strip()
+                skip_lbl = f'__br_{skip_n}'
+                skip_n += 1
+                inv = 'bf' if stmt.mnemonic == 'bt' else 'bt'
+                f, ln, si = stmt.filename, stmt.lineno, stmt.source_index
+                stmts[i:i+1] = [
+                    Statement(f, ln, list(stmt.labels), inv,    skip_lbl,        addr=-1, source_index=si),
+                    Statement(f, ln, [],                'li',   f'r4, {target}', addr=-1, source_index=si),
+                    Statement(f, ln, [],                'jalr', 'r0, r4',        addr=-1, source_index=si),
+                    Statement(f, ln, [skip_lbl],        '',     '',              addr=-1, source_index=si),
+                ]
+            self._recompute_stmt_addrs(stmts)
+        return stmts, self._labels_from_stmts(stmts)
 
     # -- encoding --
 
@@ -789,6 +877,94 @@ class Assembler:
                 if lower >= 32:
                     upper = (upper + 1) & IMM6_MASK
                 return [encode_ri(OP_LUI, rd, upper), encode_ri(OP_ADDI, rd, lower)]
+
+            case '':
+                return []
+
+            # -- synthetic instructions --
+
+            case 'mov':
+                self._expect(ops, 2, mnem, f, n)
+                return encode_r3(OP_AND, _reg(ops[0],f,n), _reg(ops[1],f,n), 7)
+
+            case 'clr':
+                self._expect(ops, 1, mnem, f, n)
+                return encode_r3(OP_AND, _reg(ops[0],f,n), 0, 0)
+
+            case 'neg':
+                self._expect(ops, 2, mnem, f, n)
+                return encode_r3(OP_SUB, _reg(ops[0],f,n), 0, _reg(ops[1],f,n))
+
+            case 'not':
+                self._expect(ops, 2, mnem, f, n)
+                return encode_r3(OP_SUB, _reg(ops[0],f,n), 7, _reg(ops[1],f,n))
+
+            case 'ret':
+                self._expect(ops, 0, mnem, f, n)
+                return encode_r3(OP_SPEC, 0, 5, RB_JALR)
+
+            case 'test':
+                self._expect(ops, 1, mnem, f, n)
+                return encode_r3(OP_SUB, 0, 0, _reg(ops[0],f,n))
+
+            case 'set':
+                self._expect(ops, 0, mnem, f, n)
+                return encode_r3(OP_SUB, 0, 0, 7)
+
+            case 'jmp':
+                self._expect(ops, 1, mnem, f, n)
+                val = _eval_expr(ops[0], self.labels, f, n) & WORD_MASK
+                lower = val & IMM6_MASK
+                upper = (val >> 6) & IMM6_MASK
+                if lower >= 32:
+                    upper = (upper + 1) & IMM6_MASK
+                return [
+                    encode_ri(OP_LUI,  4, upper),
+                    encode_ri(OP_ADDI, 4, lower),
+                    encode_r3(OP_SPEC, 0, 4, RB_JALR),
+                ]
+
+            case 'call':
+                self._expect(ops, 1, mnem, f, n)
+                val = _eval_expr(ops[0], self.labels, f, n) & WORD_MASK
+                lower = val & IMM6_MASK
+                upper = (val >> 6) & IMM6_MASK
+                if lower >= 32:
+                    upper = (upper + 1) & IMM6_MASK
+                return [
+                    encode_ri(OP_LUI,  4, upper),
+                    encode_ri(OP_ADDI, 4, lower),
+                    encode_r3(OP_SPEC, 5, 4, RB_JALR),
+                ]
+
+            case 'or':
+                self._expect(ops, 3, mnem, f, n)
+                rx = _reg(ops[0], f, n)
+                ry = _reg(ops[1], f, n)
+                rz = _reg(ops[2], f, n)
+                if rx == 4:
+                    raise AsmError(f, n, "or: destination cannot be r4 (assembler scratch)")
+                return [
+                    encode_r3(OP_AND,  4,  ry, rz),
+                    0o6000,                              # clrt
+                    encode_r3(OP_ADDC, rx, ry, rz),
+                    encode_r3(OP_SUB,  rx, rx, 4),
+                ]
+
+            case 'xor':
+                self._expect(ops, 3, mnem, f, n)
+                rx = _reg(ops[0], f, n)
+                ry = _reg(ops[1], f, n)
+                rz = _reg(ops[2], f, n)
+                if rx == 4:
+                    raise AsmError(f, n, "xor: destination cannot be r4 (assembler scratch)")
+                return [
+                    encode_r3(OP_AND,  4,  ry, rz),
+                    0o6000,                              # clrt
+                    encode_r3(OP_ADDC, rx, ry, rz),
+                    encode_r3(OP_SUB,  rx, rx, 4),
+                    encode_r3(OP_SUB,  rx, rx, 4),
+                ]
 
             case _:
                 raise AsmError(f, n, f"unknown mnemonic '{mnem}'")

@@ -1,0 +1,118 @@
+; rcc-generated assembly
+    .org 0o1000
+_start:
+    li r6, 0o3000
+    li r1, main
+    jalr r5, r1
+    halt
+
+
+fib:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -7
+    and r1, r6, r7
+    swr r2, r1
+;; if (n<=1)
+    and r1, r6, r7
+    lwr r3, r1
+    li r2, 1
+    li r1, 0o4000
+    clrt
+    addc r3, r3, r1
+    clrt
+    addc r2, r2, r1
+    sub r1, r2, r3
+    li r2, 1
+    bf _L_fib_ne_17
+    li r2, 0
+_L_fib_ne_17:
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _L_fib_ifz_skip_28
+    li r1, _L_endif_0
+    jalr r0, r1
+_L_fib_ifz_skip_28:
+;; return n
+    and r1, r6, r7
+    lwr r2, r1
+    li r1, _epi_fib
+    jalr r0, r1
+_L_endif_0:
+;; return fib(n-1)+fib(n-2)
+    and r1, r6, r7
+    lwr r3, r1
+    li r2, 1
+    sub r2, r3, r2
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    li r1, fib
+    jalr r5, r1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    and r1, r6, r7
+    lwr r3, r1
+    li r2, 2
+    sub r2, r3, r2
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    lwr r2, r1
+    li r1, fib
+    jalr r5, r1
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 5
+    lwr r2, r1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 6
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 6
+    lwr r2, r1
+    li r1, _epi_fib
+    jalr r0, r1
+_epi_fib:
+    addi r6, 7
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5
+
+main:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -1
+;; return fib(5)
+    li r2, 5
+    li r1, fib
+    jalr r5, r1
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    lwr r2, r1
+    li r1, _epi_main
+    jalr r0, r1
+_epi_main:
+    addi r6, 1
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

@@ -78,8 +78,8 @@ foldBinOp op a b = mask12 result
       TAC.TAdd  -> a + b
       TAC.TSub  -> a - b
       TAC.TMul  -> a * b
-      TAC.TDiv  -> if b == 0 then 0 else signed12 a `div` signed12 b
-      TAC.TMod  -> if b == 0 then 0 else signed12 a `mod` signed12 b
+      TAC.TDiv  -> if b == 0 then 0 else signed12 a `quot` signed12 b
+      TAC.TMod  -> if b == 0 then 0 else signed12 a `rem`  signed12 b
       TAC.TBand -> a .&. b
       TAC.TBor  -> a .|. b
       TAC.TBxor -> xor a b

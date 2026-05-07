@@ -1,0 +1,96 @@
+; rcc-generated assembly
+    .org 0o1000
+_start:
+    li r6, 0o100
+    li r1, main
+    jalr r5, r1
+    halt
+
+
+f:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -7
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    swr r3, r1
+    and r1, r6, r7
+    addi r1, 2
+    swr r4, r1
+    and r1, r6, r7
+    addi r1, 8
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+;; return a+b+c+d
+    and r1, r6, r7
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 5
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 6
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 6
+    lwr r2, r1
+    li r1, _epi_f
+    jalr r0, r1
+_epi_f:
+    addi r6, 7
+    lwr r5, r6
+    addi r6, 1
+    addi r6, 1
+    jalr r0, r5
+
+main:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -1
+;; return f(1,2,3,4)
+    li r2, 4
+    addi r6, -1
+    swr r2, r6
+    li r2, 1
+    li r3, 2
+    li r4, 3
+    li r1, f
+    jalr r5, r1
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    lwr r2, r1
+    li r1, _epi_main
+    jalr r0, r1
+_epi_main:
+    addi r6, 1
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

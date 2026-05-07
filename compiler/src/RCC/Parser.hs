@@ -398,12 +398,12 @@ mulExpr  = leftAssoc unaryExpr [("*",  BMul),  ("/",  BDiv), ("%", BMod)]
 unaryExpr :: Parser Expr
 unaryExpr = choice
   [ unaryOp "!"  UNot
+  , unaryOp "--" UPreDec  -- must precede "-" so "--x" isn't parsed as "-(−x)"
   , unaryOp "-"  UNeg
   , unaryOp "~"  UBNot
   , unaryOp "*"  UDeref
   , unaryOp "&"  UAddrOf
   , unaryOp "++" UPreInc
-  , unaryOp "--" UPreDec
   , sizeofExpr
   , try castExpr
   , postfixExpr

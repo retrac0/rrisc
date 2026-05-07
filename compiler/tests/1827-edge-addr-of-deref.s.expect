@@ -1,0 +1,47 @@
+; rcc-generated assembly
+    .org 0o1000
+_start:
+    li r6, 0o100
+    li r1, main
+    jalr r5, r1
+    halt
+
+
+main:
+    addi r6, -1
+    swr r5, r6
+    addi r6, -4
+;; int x = ...
+    li r2, 99
+    and r1, r6, r7
+    swr r2, r1
+;; int* p = ...
+    and r1, r6, r7
+    and r2, r1, r7
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+;; return *p
+    and r1, r6, r7
+    addi r1, 2
+    lwr r1, r1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    li r1, _epi_main
+    jalr r0, r1
+_epi_main:
+    addi r6, 4
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5
