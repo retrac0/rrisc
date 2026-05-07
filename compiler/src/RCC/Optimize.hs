@@ -8,7 +8,7 @@ import qualified Data.Map.Strict as Map
 import qualified RCC.TAC as TAC
 
 optimize :: TAC.TACProg -> TAC.TACProg
-optimize = foldConstants
+optimize = foldBranches . foldConstants
 
 type ConstMap = Map TAC.Temp Int
 
@@ -102,3 +102,21 @@ foldUnaryOp :: TAC.UnOp -> Int -> Int
 foldUnaryOp TAC.TNeg  x = mask12 (negate x)
 foldUnaryOp TAC.TNot  x = if x == 0 then 1 else 0
 foldUnaryOp TAC.TBNot x = mask12 (complement x)
+
+-- ---------------------------------------------------------------------------
+-- Constant branch folding
+
+foldBranches :: TAC.TACProg -> TAC.TACProg
+foldBranches prog = prog { TAC.tacProcs = map foldBranchesProc (TAC.tacProcs prog) }
+
+foldBranchesProc :: TAC.Proc -> TAC.Proc
+foldBranchesProc p = p { TAC.procInstrs = foldBranchInstrs (TAC.procInstrs p) }
+
+foldBranchInstrs :: [TAC.Instr] -> [TAC.Instr]
+foldBranchInstrs [] = []
+foldBranchInstrs (i:rest) = case i of
+  TAC.IIfZ  (TAC.OConst 0) lbl -> TAC.IGoto lbl   : foldBranchInstrs rest
+  TAC.IIfZ  (TAC.OConst _) _   ->                    foldBranchInstrs rest  -- always false
+  TAC.IIfNZ (TAC.OConst 0) _   ->                    foldBranchInstrs rest  -- never taken
+  TAC.IIfNZ (TAC.OConst _) lbl -> TAC.IGoto lbl   : foldBranchInstrs rest
+  _                             -> i               : foldBranchInstrs rest

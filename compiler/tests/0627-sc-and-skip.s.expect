@@ -28,12 +28,8 @@ main:
     swr r5, r6
     addi r6, -3
 ;; 0&&set_flag()
-    and r2, r0, r0
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_8
     li r1, _L_and_false_0
     jalr r0, r1
-_L_main_ifz_skip_8:
     li r1, set_flag
     jalr r5, r1
     and r1, r6, r7
@@ -41,10 +37,10 @@ _L_main_ifz_skip_8:
     and r1, r6, r7
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_19
+    bt _L_main_ifz_skip_15
     li r1, _L_and_false_0
     jalr r0, r1
-_L_main_ifz_skip_19:
+_L_main_ifz_skip_15:
     li r2, 1
     and r1, r6, r7
     addi r1, 1

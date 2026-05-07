@@ -30,12 +30,6 @@ main:
     and r1, r6, r7
     addi r1, 3
     swr r2, r1
-    li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_26
-    li r1, _L_endif_0
-    jalr r0, r1
-_L_main_ifz_skip_26:
 ;; result=1
     li r2, 1
     and r1, r6, r7

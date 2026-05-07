@@ -203,9 +203,15 @@ def _eval_expr(s, labels, filename, lineno):
 
 
 def _imm6(val, filename, lineno):
-    """Encode val as 6-bit field; accepts -32..63 (signed or unsigned 6-bit)."""
-    if val < -32 or val > 63:
-        raise AsmError(filename, lineno, f"immediate {val} out of 6-bit range (-32..63)")
+    """Encode val as unsigned 6-bit field (0..63) — used by lui."""
+    if val < 0 or val > 63:
+        raise AsmError(filename, lineno, f"immediate {val} out of 6-bit unsigned range (0..63)")
+    return val & IMM6_MASK
+
+def _imm6s(val, filename, lineno):
+    """Encode val as signed 6-bit field (-32..31) — used by addi (sign-extended by hardware)."""
+    if val < -32 or val > 31:
+        raise AsmError(filename, lineno, f"immediate {val} out of 6-bit signed range (-32..31)")
     return val & IMM6_MASK
 
 def _resolve_mem_operand(val, rd, bases, filename, lineno):
@@ -835,7 +841,7 @@ class Assembler:
                     raise AsmError(f, n, "addi cannot target r0 (use bt for branches)")
                 if rd == 7:
                     raise AsmError(f, n, "addi cannot target r7 (use bt for branches)")
-                return encode_ri(OP_ADDI, rd, _imm6(_eval_expr(ops[1], self.labels, f, n), f, n))
+                return encode_ri(OP_ADDI, rd, _imm6s(_eval_expr(ops[1], self.labels, f, n), f, n))
 
             case 'bf':
                 self._expect(ops, 1, mnem, f, n)

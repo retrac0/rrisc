@@ -31,21 +31,9 @@ main:
     addi r1, 3
     swr r2, r1
     li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_26
-    li r1, _L_and_false_0
-    jalr r0, r1
-_L_main_ifz_skip_26:
-    li r2, 1
     and r1, r6, r7
     addi r1, 4
     swr r2, r1
-    li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_36
-    li r1, _L_and_false_0
-    jalr r0, r1
-_L_main_ifz_skip_36:
     li r2, 1
     and r1, r6, r7
     addi r1, 5
@@ -62,10 +50,10 @@ _L_and_end_1:
     addi r1, 5
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_56
+    bt _L_main_ifz_skip_44
     li r1, _L_endif_2
     jalr r0, r1
-_L_main_ifz_skip_56:
+_L_main_ifz_skip_44:
 ;; if (a==3||b==10)
     and r1, r6, r7
     lwr r3, r1
@@ -73,9 +61,9 @@ _L_main_ifz_skip_56:
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_main_ne_66
+    bf _L_main_ne_54
     li r2, 0
-_L_main_ne_66:
+_L_main_ne_54:
     and r1, r6, r7
     addi r1, 6
     swr r2, r1
@@ -83,10 +71,10 @@ _L_main_ne_66:
     addi r1, 6
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_main_ifnz_skip_77
+    bf _L_main_ifnz_skip_65
     li r1, _L_or_true_3
     jalr r0, r1
-_L_main_ifnz_skip_77:
+_L_main_ifnz_skip_65:
     and r1, r6, r7
     addi r1, 1
     lwr r3, r1
@@ -94,9 +82,9 @@ _L_main_ifnz_skip_77:
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_main_ne_87
+    bf _L_main_ne_75
     li r2, 0
-_L_main_ne_87:
+_L_main_ne_75:
     and r1, r6, r7
     addi r1, 7
     swr r2, r1
@@ -104,10 +92,10 @@ _L_main_ne_87:
     addi r1, 7
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_main_ifnz_skip_98
+    bf _L_main_ifnz_skip_86
     li r1, _L_or_true_3
     jalr r0, r1
-_L_main_ifnz_skip_98:
+_L_main_ifnz_skip_86:
     and r2, r0, r0
     and r1, r6, r7
     addi r1, 8
@@ -124,10 +112,10 @@ _L_or_end_4:
     addi r1, 8
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_118
+    bt _L_main_ifz_skip_106
     li r1, _L_endif_5
     jalr r0, r1
-_L_main_ifz_skip_118:
+_L_main_ifz_skip_106:
 ;; result=1
     li r2, 1
     and r1, r6, r7
@@ -155,10 +143,10 @@ _L_endif_2:
     addi r1, 9
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_main_ifnz_skip_149
+    bf _L_main_ifnz_skip_137
     li r1, _L_or_true_6
     jalr r0, r1
-_L_main_ifnz_skip_149:
+_L_main_ifnz_skip_137:
     and r1, r6, r7
     addi r1, 1
     lwr r3, r1
@@ -166,9 +154,9 @@ _L_main_ifnz_skip_149:
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_main_ne_159
+    bf _L_main_ne_147
     li r2, 0
-_L_main_ne_159:
+_L_main_ne_147:
     and r1, r6, r7
     addi r1, 10
     swr r2, r1
@@ -176,10 +164,10 @@ _L_main_ne_159:
     addi r1, 10
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_main_ifnz_skip_170
+    bf _L_main_ifnz_skip_158
     li r1, _L_or_true_6
     jalr r0, r1
-_L_main_ifnz_skip_170:
+_L_main_ifnz_skip_158:
     and r2, r0, r0
     and r1, r6, r7
     addi r1, 11
@@ -196,10 +184,10 @@ _L_or_end_7:
     addi r1, 11
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_190
+    bt _L_main_ifz_skip_178
     li r1, _L_endif_8
     jalr r0, r1
-_L_main_ifz_skip_190:
+_L_main_ifz_skip_178:
 ;; result=99
     li r2, 99
     and r1, r6, r7

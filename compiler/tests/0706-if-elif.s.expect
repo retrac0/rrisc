@@ -20,12 +20,8 @@ main:
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
-    and r2, r0, r0
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_16
     li r1, _L_else_0
     jalr r0, r1
-_L_main_ifz_skip_16:
 ;; return 1
     li r2, 1
     li r1, _epi_main
@@ -40,9 +36,9 @@ _L_else_0:
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_main_ne_33
+    bf _L_main_ne_29
     li r2, 0
-_L_main_ne_33:
+_L_main_ne_29:
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
@@ -50,10 +46,10 @@ _L_main_ne_33:
     addi r1, 2
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_44
+    bt _L_main_ifz_skip_40
     li r1, _L_else_2
     jalr r0, r1
-_L_main_ifz_skip_44:
+_L_main_ifz_skip_40:
 ;; return 2
     li r2, 2
     li r1, _epi_main

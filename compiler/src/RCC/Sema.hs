@@ -347,6 +347,17 @@ inferExpr (Syn.ECast _ ty e) = do
   pure ty
 inferExpr (Syn.ESizeof _ _) = pure Syn.TyInt
 inferExpr (Syn.EPostfix _ _ e) = inferExpr e
+inferExpr (Syn.ETernary _ cond t f) = do
+  _ <- inferExpr cond
+  tt <- inferExpr t
+  _  <- inferExpr f
+  pure tt
+inferExpr (Syn.ECompoundLit sp ty es) = do
+  checkTyDefinedAt ty
+  mapM_ (\e -> () <$ inferExpr e) es
+  case ty of
+    Syn.TyVoid -> throwAt sp "compound literal cannot have void type"
+    _          -> pure ty
 
 -- Verify the expression is a valid lvalue (for assignment).
 -- Reports 'assignment to const variable' if it names a const variable directly.

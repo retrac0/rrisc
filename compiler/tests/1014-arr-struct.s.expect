@@ -10,138 +10,164 @@ _start:
 main:
     addi r6, -1
     swr r5, r6
-    addi r6, -12
+    addi r6, -22
 ;; struct P[2] a
 ;; a[0].x=1
+    and r2, r0, r0
     and r1, r6, r7
-    lwr r3, r1
+    addi r1, 4
+    swr r2, r1
+    and r1, r6, r7
+    and r3, r1, r7
     and r2, r0, r0
     clrt
     addc r2, r3, r2
     and r1, r6, r7
+    addi r1, 5
     swr r2, r1
     li r2, 1
     and r1, r6, r7
+    addi r1, 5
     lwr r1, r1
     swr r2, r1
 ;; a[0].y=2
+    and r2, r0, r0
     and r1, r6, r7
-    lwr r3, r1
+    addi r1, 6
+    swr r2, r1
+    and r1, r6, r7
+    and r3, r1, r7
     and r2, r0, r0
     clrt
     addc r2, r3, r2
     and r1, r6, r7
-    addi r1, 1
+    addi r1, 7
     swr r2, r1
     and r1, r6, r7
-    addi r1, 1
+    addi r1, 7
     lwr r3, r1
     li r2, 1
     clrt
     addc r2, r3, r2
     and r1, r6, r7
-    addi r1, 2
+    addi r1, 8
     swr r2, r1
     li r2, 2
     and r1, r6, r7
-    addi r1, 2
+    addi r1, 8
     lwr r1, r1
     swr r2, r1
 ;; a[1].x=3
+    li r2, 2
     and r1, r6, r7
-    lwr r3, r1
-    li r2, 1
+    addi r1, 9
+    swr r2, r1
+    and r1, r6, r7
+    and r3, r1, r7
+    li r2, 2
     clrt
     addc r2, r3, r2
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 10
     swr r2, r1
     li r2, 3
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 10
     lwr r1, r1
     swr r2, r1
 ;; a[1].y=4
+    li r2, 2
     and r1, r6, r7
-    lwr r3, r1
-    li r2, 1
-    clrt
-    addc r2, r3, r2
-    and r1, r6, r7
-    addi r1, 4
+    addi r1, 11
     swr r2, r1
     and r1, r6, r7
-    addi r1, 4
+    and r3, r1, r7
+    li r2, 2
+    clrt
+    addc r2, r3, r2
+    and r1, r6, r7
+    addi r1, 12
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 12
     lwr r3, r1
     li r2, 1
     clrt
     addc r2, r3, r2
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 13
     swr r2, r1
     li r2, 4
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 13
     lwr r1, r1
     swr r2, r1
 ;; return a[1].x+a[0].y
+    li r2, 2
     and r1, r6, r7
-    lwr r3, r1
-    li r2, 1
+    addi r1, 14
+    swr r2, r1
+    and r1, r6, r7
+    and r3, r1, r7
+    li r2, 2
     clrt
     addc r2, r3, r2
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 15
     swr r2, r1
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 15
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 16
+    swr r2, r1
+    and r2, r0, r0
+    and r1, r6, r7
+    addi r1, 17
     swr r2, r1
     and r1, r6, r7
-    lwr r3, r1
+    and r3, r1, r7
     and r2, r0, r0
     clrt
     addc r2, r3, r2
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 18
     swr r2, r1
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 18
     lwr r3, r1
     li r2, 1
     clrt
     addc r2, r3, r2
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 19
     swr r2, r1
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 19
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 10
+    addi r1, 20
     swr r2, r1
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 16
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 10
+    addi r1, 20
     lwr r2, r1
     clrt
     addc r2, r3, r2
     and r1, r6, r7
-    addi r1, 11
+    addi r1, 21
     swr r2, r1
     and r1, r6, r7
-    addi r1, 11
+    addi r1, 21
     lwr r2, r1
     li r1, _epi_main
     jalr r0, r1
 _epi_main:
-    addi r6, 12
+    addi r6, 22
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

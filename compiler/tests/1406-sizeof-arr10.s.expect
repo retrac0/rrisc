@@ -10,16 +10,8 @@ _start:
 main:
     addi r6, -1
     swr r5, r6
-;; if (0)
-    li r1, _L_endif_0
-    jalr r0, r1
-;; return 1
-    li r2, 1
-    li r1, _epi_main
-    jalr r0, r1
-_L_endif_0:
-;; return 0
-    and r2, r0, r0
+;; return sizeof(...)
+    li r2, 10
     li r1, _epi_main
     jalr r0, r1
 _epi_main:

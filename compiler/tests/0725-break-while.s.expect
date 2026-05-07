@@ -17,12 +17,6 @@ main:
     swr r2, r1
 ;; while (1)
 _L_while_0:
-    li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_13
-    li r1, _L_endwhile_1
-    jalr r0, r1
-_L_main_ifz_skip_13:
 ;; i=i+1
     and r1, r6, r7
     lwr r3, r1
@@ -44,9 +38,9 @@ _L_main_ifz_skip_13:
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_main_ne_37
+    bf _L_main_ne_31
     li r2, 0
-_L_main_ne_37:
+_L_main_ne_31:
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
@@ -54,10 +48,10 @@ _L_main_ne_37:
     addi r1, 2
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_48
+    bt _L_main_ifz_skip_42
     li r1, _L_endif_2
     jalr r0, r1
-_L_main_ifz_skip_48:
+_L_main_ifz_skip_42:
 ;; break
     li r1, _L_endwhile_1
     jalr r0, r1

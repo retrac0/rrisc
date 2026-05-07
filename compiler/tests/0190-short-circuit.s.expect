@@ -33,12 +33,8 @@ main:
     swr r5, r6
     addi r6, -5
 ;; if (0&&set_flag(1))
-    and r2, r0, r0
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_8
     li r1, _L_and_false_0
     jalr r0, r1
-_L_main_ifz_skip_8:
     li r2, 1
     li r1, set_flag
     jalr r5, r1
@@ -47,10 +43,10 @@ _L_main_ifz_skip_8:
     and r1, r6, r7
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_20
+    bt _L_main_ifz_skip_16
     li r1, _L_and_false_0
     jalr r0, r1
-_L_main_ifz_skip_20:
+_L_main_ifz_skip_16:
     li r2, 1
     and r1, r6, r7
     addi r1, 1
@@ -67,22 +63,18 @@ _L_and_end_1:
     addi r1, 1
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_40
+    bt _L_main_ifz_skip_36
     li r1, _L_endif_2
     jalr r0, r1
-_L_main_ifz_skip_40:
+_L_main_ifz_skip_36:
 ;; side_effect_called=99
     li r2, 99
     li r1, side_effect_called
     swr r2, r1
 _L_endif_2:
 ;; if (1||set_flag(0))
-    li r2, 1
-    sub r0, r0, r2
-    bf _L_main_ifnz_skip_52
     li r1, _L_or_true_3
     jalr r0, r1
-_L_main_ifnz_skip_52:
     and r2, r0, r0
     li r1, set_flag
     jalr r5, r1
@@ -93,10 +85,10 @@ _L_main_ifnz_skip_52:
     addi r1, 2
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_main_ifnz_skip_66
+    bf _L_main_ifnz_skip_58
     li r1, _L_or_true_3
     jalr r0, r1
-_L_main_ifnz_skip_66:
+_L_main_ifnz_skip_58:
     and r2, r0, r0
     and r1, r6, r7
     addi r1, 3
@@ -113,10 +105,10 @@ _L_or_end_4:
     addi r1, 3
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_86
+    bt _L_main_ifz_skip_78
     li r1, _L_endif_5
     jalr r0, r1
-_L_main_ifz_skip_86:
+_L_main_ifz_skip_78:
 ;; side_effect_called=0
     and r2, r0, r0
     li r1, side_effect_called

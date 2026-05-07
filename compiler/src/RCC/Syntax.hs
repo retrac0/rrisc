@@ -107,18 +107,20 @@ data Init
   deriving (Show)
 
 data Expr
-  = ELit     Span Int
-  | EVar     Span Text
-  | EUnary   Span UnOp Expr
-  | EBinary  Span BinOp Expr Expr
-  | EAssign  Span AssOp Expr Expr
-  | EIndex   Span Expr Expr
-  | EField   Span Expr Text
-  | EArrow   Span Expr Text
-  | ECall    Span Text [Expr]
-  | ECast    Span Ty Expr
-  | ESizeof  Span (Either Ty Expr)
-  | EPostfix Span PostOp Expr
+  = ELit          Span Int
+  | EVar          Span Text
+  | EUnary        Span UnOp Expr
+  | EBinary       Span BinOp Expr Expr
+  | EAssign       Span AssOp Expr Expr
+  | EIndex        Span Expr Expr
+  | EField        Span Expr Text
+  | EArrow        Span Expr Text
+  | ECall         Span Text [Expr]
+  | ECast         Span Ty Expr
+  | ESizeof       Span (Either Ty Expr)
+  | EPostfix      Span PostOp Expr
+  | ETernary      Span Expr Expr Expr   -- cond ? then : else
+  | ECompoundLit  Span Ty [Expr]        -- (type){e1, e2, ...}
   deriving (Show)
 
 data UnOp
@@ -153,18 +155,20 @@ data AssOp
 
 exprSpan :: Expr -> Span
 exprSpan e = case e of
-  ELit     s _       -> s
-  EVar     s _       -> s
-  EUnary   s _ _     -> s
-  EBinary  s _ _ _   -> s
-  EAssign  s _ _ _   -> s
-  EIndex   s _ _     -> s
-  EField   s _ _     -> s
-  EArrow   s _ _     -> s
-  ECall    s _ _     -> s
-  ECast    s _ _     -> s
-  ESizeof  s _       -> s
-  EPostfix s _ _     -> s
+  ELit         s _       -> s
+  EVar         s _       -> s
+  EUnary       s _ _     -> s
+  EBinary      s _ _ _   -> s
+  EAssign      s _ _ _   -> s
+  EIndex       s _ _     -> s
+  EField       s _ _     -> s
+  EArrow       s _ _     -> s
+  ECall        s _ _     -> s
+  ECast        s _ _     -> s
+  ESizeof      s _       -> s
+  EPostfix     s _ _     -> s
+  ETernary     s _ _ _   -> s
+  ECompoundLit s _ _     -> s
 
 stmtSpan :: Stmt -> Span
 stmtSpan s = case s of

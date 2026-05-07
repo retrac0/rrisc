@@ -117,9 +117,8 @@ genGlobal g =
 
 genProc :: TAC.Proc -> [Text]
 genProc p =
-  let temps   = collectTemps p
-      slots   = Map.fromList (zip temps [0..])
-      n       = length temps
+  let temps      = collectTemps p
+      (slots, n) = buildSlotMap (TAC.procLocSzs p) temps
       epi     = "_epi_" <> TAC.procName p
       initSt  = CGState [] slots n epi (TAC.procName p)
       numStack = max 0 (length (TAC.procParams p) - 3)
@@ -148,9 +147,20 @@ instrTemps :: TAC.Instr -> [TAC.Temp]
 instrTemps (TAC.IAssign t _)        = [t]
 instrTemps (TAC.IBinOp  t _ _ _)    = [t]
 instrTemps (TAC.IUnOp   t _ _)      = [t]
-instrTemps (TAC.ILoad   t _)        = [t]
+instrTemps (TAC.ILoad        t _)     = [t]
 instrTemps (TAC.ICall   (Just t) _ _) = [t]
+instrTemps (TAC.IAllocLocal  t)       = [t]
 instrTemps _ = []
+
+-- Build slot map accounting for multi-word locals (arrays/structs).
+-- Each temp gets a base slot offset; multi-word locals consume consecutive slots.
+buildSlotMap :: Map TAC.Temp Int -> [TAC.Temp] -> (Map TAC.Temp Int, Int)
+buildSlotMap locSzs = go 0 []
+  where
+    go off acc []     = (Map.fromList acc, off)
+    go off acc (t:ts) =
+      let sz = Map.findWithDefault 1 t locSzs
+      in go (off + sz) ((t, off) : acc) ts
 
 -- Prologue: save r5, allocate slots, save params to slots.
 -- We never use r4 inside the body, so r4 needs no save (callee-saved trivially).
@@ -159,8 +169,13 @@ genPrologue p n = do
   -- Save r5
   emitL "addi r6, -1"
   emitL "swr r5, r6"
-  -- Allocate slots for all temps
-  when (n > 0) $ emitL ("addi r6, " <> tshow (negate n))
+  -- Allocate slots for all temps (addi signed range: -32..31; use sub for large frames)
+  when (n > 0) $
+    if n <= 31
+      then emitL ("addi r6, " <> tshow (negate n))
+      else do
+        emitLoadConst 1 n
+        emitL "sub r6, r6, r1"
   -- Save parameters into their slots: r2/r3/r4 for the first three, stack for the rest.
   -- Stack args were pushed right-to-left by the caller; arg 4 is closest to the frame
   -- (at offset n+1 from r6), arg 5 at n+2, etc.
@@ -178,7 +193,13 @@ genPrologue p n = do
 
 genEpilogue :: Int -> Int -> CG ()
 genEpilogue n numStack = do
-  when (n > 0) $ emitL ("addi r6, " <> tshow n)
+  when (n > 0) $
+    if n <= 31
+      then emitL ("addi r6, " <> tshow n)
+      else do
+        emitLoadConst 1 n
+        emitL "clrt"
+        emitL "addc r6, r6, r1"
   emitL "lwr r5, r6"
   emitL "addi r6, 1"
   when (numStack > 0) $ emitL ("addi r6, " <> tshow numStack)
@@ -189,9 +210,13 @@ genEpilogue n numStack = do
 
 -- Compute (r6 + slot) into r1.
 addrOfSlot :: Int -> CG ()
-addrOfSlot s = do
-  emitL "and r1, r6, r7"
-  when (s /= 0) $ emitL ("addi r1, " <> tshow s)
+addrOfSlot s
+  | s == 0    = emitL "and r1, r6, r7"
+  | s <= 31   = do emitL "and r1, r6, r7"
+                   emitL ("addi r1, " <> tshow s)
+  | otherwise = do emitLoadConst 1 s      -- r1 = s
+                   emitL "clrt"
+                   emitL "addc r1, r1, r6" -- r1 = s + r6
 
 -- Emit the most compact single instruction that loads constant n into reg.
 -- val = n masked to 12 bits.
@@ -222,26 +247,21 @@ loadOpInto reg (TAC.OTemp t)   = do
   addrOfSlot s
   emitL ("lwr r" <> tshow reg <> ", r1")
 loadOpInto reg (TAC.OLocalAddr t) = do
-  -- Compute address of local variable's stack slot into reg.
-  -- addrOfSlot places r6+slot in r1; if target is r1 that's already done.
   s <- slotOf t
-  emitL "and r1, r6, r7"
-  when (s /= 0) $ emitL ("addi r1, " <> tshow s)
+  addrOfSlot s
   when (reg /= 1) $ emitL ("and r" <> tshow reg <> ", r1, r7")
 
 -- Like loadOpInto but adds adj to the slot offset (compensates for r6 drift during arg pushes).
 loadOpIntoAdj :: Int -> TAC.Operand -> Int -> CG ()
 loadOpIntoAdj reg (TAC.OTemp t) adj = do
   s <- slotOf t
-  emitL "and r1, r6, r7"
   let s' = s + adj
-  when (s' /= 0) $ emitL ("addi r1, " <> tshow s')
+  addrOfSlot s'
   emitL ("lwr r" <> tshow reg <> ", r1")
 loadOpIntoAdj reg (TAC.OLocalAddr t) adj = do
   s <- slotOf t
-  emitL "and r1, r6, r7"
   let s' = s + adj
-  when (s' /= 0) $ emitL ("addi r1, " <> tshow s')
+  addrOfSlot s'
   when (reg /= 1) $ emitL ("and r" <> tshow reg <> ", r1, r7")
 loadOpIntoAdj reg op _ = loadOpInto reg op
 
@@ -256,8 +276,9 @@ storeRegToTemp reg t = do
 
 genInstr :: TAC.Instr -> CG ()
 
-genInstr (TAC.ILabel   lbl) = emit (lbl <> ":")
-genInstr (TAC.IComment txt) = emit (";; " <> txt)
+genInstr (TAC.ILabel      lbl) = emit (lbl <> ":")
+genInstr (TAC.IComment    txt) = emit (";; " <> txt)
+genInstr (TAC.IAllocLocal _  ) = pure ()  -- slot reserved by buildSlotMap; no code needed
 
 genInstr (TAC.IAssign t op) = do
   loadOpInto 2 op

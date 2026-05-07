@@ -11,7 +11,7 @@ module RCC.TAC
   , lower
   ) where
 
-import Control.Monad (when, unless)
+import Control.Monad (when, unless, forM_)
 import Control.Monad.State
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -61,6 +61,7 @@ data Instr
   | IIfZ     Operand Label
   | ICall    (Maybe Temp) Label [Operand]
   | IReturn  (Maybe Operand)
+  | IAllocLocal Temp    -- reserve stack space for a local array/struct; no code emitted
   deriving (Show)
 
 data Global = Global
@@ -71,9 +72,10 @@ data Global = Global
   } deriving (Show)
 
 data Proc = Proc
-  { procName   :: Label
-  , procParams :: [Temp]
-  , procInstrs :: [Instr]
+  { procName    :: Label
+  , procParams  :: [Temp]
+  , procInstrs  :: [Instr]
+  , procLocSzs  :: Map Temp Int  -- local name -> word count for multi-word locals
   } deriving (Show)
 
 data TACProg = TACProg
@@ -95,10 +97,11 @@ data LS = LS
   , lsLoopStack   :: [(Label, Label)]                   -- (continue, break)
   , lsProcs       :: [Proc]                             -- reversed
   , lsGlobalDefs  :: [Global]                           -- reversed
+  , lsConstLocals :: Map Text Operand                   -- const local aggregates mapped to rodata address
   }
 
 emptyLS :: LS
-emptyLS = LS 0 0 [] Map.empty Map.empty Map.empty Map.empty [] [] []
+emptyLS = LS 0 0 [] Map.empty Map.empty Map.empty Map.empty [] [] [] Map.empty
 
 type L = State LS
 
@@ -126,6 +129,10 @@ isGlobal name = Map.member name <$> gets lsGlobals
 addLocal :: Text -> Syn.Ty -> L ()
 addLocal name ty =
   modify $ \s -> s { lsLocals = Map.insert name ty (lsLocals s) }
+
+addConstLocal :: Text -> Operand -> L ()
+addConstLocal name op =
+  modify $ \s -> s { lsConstLocals = Map.insert name op (lsConstLocals s) }
 
 structOffset :: Text -> Text -> L Int
 structOffset sname fname = do
@@ -183,7 +190,8 @@ lowerTop (Syn.TDFunc fd) = case Syn.fdBody fd of
   Nothing   -> pure ()
   Just body -> do
     s0 <- get
-    put s0 { lsTemp = 0, lsInstrs = [], lsLocals = Map.empty, lsLoopStack = [] }
+    put s0 { lsTemp = 0, lsInstrs = [], lsLocals = Map.empty
+           , lsLoopStack = [], lsConstLocals = Map.empty }
     mapM_ (\(ty, n) -> addLocal n ty) (Syn.fdParams fd)
     mapM_ lowerStmt body
     -- Implicit return at end of body (0 if int, void otherwise).
@@ -196,11 +204,23 @@ lowerTop (Syn.TDFunc fd) = case Syn.fdBody fd of
         then emit (IReturn Nothing)
         else emit (IReturn (Just (OConst 0)))
     sg <- get
-    let proc = Proc (Syn.fdName fd) (map snd (Syn.fdParams fd)) (reverse (lsInstrs sg))
+    let ss        = lsStructs sg
+        paramSet  = Map.fromList (map (\(ty, n) -> (n, ty)) (Syn.fdParams fd))
+        locSzs    = Map.fromList
+          [ (name, sz)
+          | (name, ty) <- Map.toList (lsLocals sg)
+          , Map.notMember name paramSet
+          , Map.notMember name (lsConstLocals sg)
+          , let sz = Sema.tySize ss ty
+          , sz > 1
+          ]
+        proc = Proc (Syn.fdName fd) (map snd (Syn.fdParams fd))
+                    (reverse (lsInstrs sg)) locSzs
     put sg { lsTemp        = lsTemp s0
            , lsInstrs      = lsInstrs s0
            , lsLocals      = lsLocals s0
            , lsLoopStack   = lsLoopStack s0
+           , lsConstLocals = lsConstLocals s0
            , lsProcs       = proc : lsProcs sg
            }
 lowerTop _ = pure ()
@@ -216,11 +236,29 @@ lowerStmt s@(Syn.SVarDecl vd) = do
       ty   = Syn.vdTy vd
   addLocal name ty
   case Syn.vdInit vd of
-    Nothing            -> pure ()
-    Just (Syn.IExpr e) -> do
-      v <- lowerExpr e
-      emit (IAssign name v)
-    Just (Syn.IList _) -> pure ()  -- array initializers not supported for locals
+    Nothing ->
+      case ty of
+        Syn.TyArray  _ _ -> emit (IAllocLocal name)
+        Syn.TyStruct _ _ -> emit (IAllocLocal name)
+        _                -> pure ()
+    Just (Syn.IList es) ->
+      if Syn.vdConst vd && all isLitExpr es
+        then do  -- const aggregate with all-literal init -> rodata global
+          ss <- gets lsStructs
+          let sz       = Sema.tySize ss ty
+              initVals = [n | Syn.ELit _ n <- es]
+          synName <- freshLabel ("const_" <> name)
+          modify $ \ls -> ls { lsGlobalDefs = Global synName sz initVals True
+                                              : lsGlobalDefs ls }
+          addConstLocal name (OAddr synName)
+        else initAggrOnStack name ty es
+    Just (Syn.IExpr e) ->
+      case ty of
+        Syn.TyArray  _ _ -> emit (IAllocLocal name)
+        Syn.TyStruct _ _ -> emit (IAllocLocal name)
+        _ -> do
+          v <- lowerExpr e
+          emit (IAssign name v)
 lowerStmt s@(Syn.SExpr _ e)   = do
   emit (IComment (prettyStmt s))
   () <$ lowerExpr e
@@ -305,6 +343,29 @@ pushLoop pair = modify $ \s -> s { lsLoopStack = pair : lsLoopStack s }
 popLoop :: L ()
 popLoop = modify $ \s -> s { lsLoopStack = drop 1 (lsLoopStack s) }
 
+isLitExpr :: Syn.Expr -> Bool
+isLitExpr (Syn.ELit _ _) = True
+isLitExpr _              = False
+
+-- Emit IAllocLocal + runtime stores for a non-rodata aggregate initializer.
+initAggrOnStack :: Text -> Syn.Ty -> [Syn.Expr] -> L ()
+initAggrOnStack name ty es = do
+  emit (IAllocLocal name)
+  ss <- gets lsStructs
+  let elemSz = case ty of
+        Syn.TyArray inner _ -> Sema.tySize ss inner
+        _                   -> 1
+  forM_ (zip [0..] es) $ \(i, e) -> do
+    ev <- lowerExpr e
+    let off = i * elemSz
+    addrOp <- if off == 0
+                then pure (OLocalAddr name)
+                else do
+                  at <- freshTemp
+                  emit (IBinOp at TAdd (OLocalAddr name) (OConst off))
+                  pure (OTemp at)
+    emit (IStore addrOp ev)
+
 -- ---------------------------------------------------------------------------
 -- Source-level pretty-printing (for IComment annotations)
 
@@ -329,9 +390,11 @@ prettyExpr (Syn.EIndex _ e i)      = prettyExpr e <> "[" <> prettyExpr i <> "]"
 prettyExpr (Syn.EField _ e f)      = prettyExpr e <> "." <> f
 prettyExpr (Syn.EArrow _ e f)      = prettyExpr e <> "->" <> f
 prettyExpr (Syn.ECall _ f args)    = f <> "(" <> T.intercalate "," (map prettyExpr args) <> ")"
-prettyExpr (Syn.ECast _ ty e)      = "(" <> prettyTy ty <> ")" <> prettyExpr e
-prettyExpr (Syn.ESizeof _ _)       = "sizeof(...)"
-prettyExpr (Syn.EPostfix _ op e)   = prettyExpr e <> prettyPostOp op
+prettyExpr (Syn.ECast _ ty e)           = "(" <> prettyTy ty <> ")" <> prettyExpr e
+prettyExpr (Syn.ESizeof _ _)            = "sizeof(...)"
+prettyExpr (Syn.EPostfix _ op e)        = prettyExpr e <> prettyPostOp op
+prettyExpr (Syn.ETernary _ c t f)       = prettyExpr c <> "?" <> prettyExpr t <> ":" <> prettyExpr f
+prettyExpr (Syn.ECompoundLit _ ty _)    = "(" <> prettyTy ty <> "){...}"
 
 prettyUnOp :: Syn.UnOp -> Text
 prettyUnOp Syn.UNeg    = "-"
@@ -404,23 +467,32 @@ prettyStmt (Syn.SBlock _ _)         = ""
 lowerExpr :: Syn.Expr -> L Operand
 lowerExpr (Syn.ELit _ n)       = pure (OConst n)
 lowerExpr (Syn.EVar _ name)    = do
-  loc <- isLocal name
-  if loc
-    then pure (OTemp name)
-    else do
-      glb <- isGlobal name
-      if glb
+  cl <- gets lsConstLocals
+  case Map.lookup name cl of
+    Just op -> pure op   -- const local aggregate (rodata): return its address operand
+    Nothing -> do
+      loc <- isLocal name
+      if loc
         then do
-          gs <- gets lsGlobals
-          let ty = fst (gs Map.! name)
-          case ty of
-            Syn.TyArray _ _ -> pure (OAddr name)        -- array decays to pointer
-            Syn.TyStruct _ _ -> pure (OAddr name)       -- struct as value: address
-            _ -> do
-              t <- freshTemp
-              emit (ILoad t (OAddr name))
-              pure (OTemp t)
-        else pure (OAddr name)   -- function name? unreachable in our tests
+          ls <- gets lsLocals
+          case Map.lookup name ls of
+            Just (Syn.TyArray  _ _) -> pure (OLocalAddr name)
+            Just (Syn.TyStruct _ _) -> pure (OLocalAddr name)
+            _                       -> pure (OTemp name)
+        else do
+          glb <- isGlobal name
+          if glb
+            then do
+              gs <- gets lsGlobals
+              let ty = fst (gs Map.! name)
+              case ty of
+                Syn.TyArray  _ _ -> pure (OAddr name)
+                Syn.TyStruct _ _ -> pure (OAddr name)
+                _ -> do
+                  t <- freshTemp
+                  emit (ILoad t (OAddr name))
+                  pure (OTemp t)
+            else pure (OAddr name)   -- function name
 lowerExpr (Syn.EUnary _ op e)  = do
   v <- lowerExpr e
   t <- freshTemp
@@ -469,12 +541,9 @@ lowerExpr (Syn.EAssign _ aop lhs rhs) = case aop of
     assignTo lhs (OTemp t)
     pure (OTemp t)
 lowerExpr (Syn.EIndex _ arr idx) = do
-  baseAddr <- lowerExpr arr        -- arrays decay to address; pointers are values
-  iv       <- lowerExpr idx
-  addr     <- freshTemp
-  emit (IBinOp addr TAdd baseAddr iv)
-  t <- freshTemp
-  emit (ILoad t (OTemp addr))
+  addr <- indexAddr arr idx
+  t    <- freshTemp
+  emit (ILoad t addr)
   pure (OTemp t)
 lowerExpr (Syn.EField _ inner fname) = do
   ty <- inferTy inner
@@ -503,6 +572,30 @@ lowerExpr (Syn.ECall _ name args) = do
   t <- freshTemp
   emit (ICall (Just t) name argOps)
   pure (OTemp t)
+lowerExpr (Syn.ETernary _ cond t f) = do
+  cv     <- lowerExpr cond
+  result <- freshTemp
+  lElse  <- freshLabel "tern_else"
+  lEnd   <- freshLabel "tern_end"
+  emit (IIfZ cv lElse)
+  tv <- lowerExpr t
+  emit (IAssign result tv)
+  emit (IGoto lEnd)
+  emit (ILabel lElse)
+  fv <- lowerExpr f
+  emit (IAssign result fv)
+  emit (ILabel lEnd)
+  pure (OTemp result)
+lowerExpr (Syn.ECompoundLit _ ty es) = do
+  name <- freshTemp
+  addLocal name ty
+  case ty of
+    Syn.TyArray  _ _ -> initAggrOnStack name ty es
+    Syn.TyStruct _ _ -> initAggrOnStack name ty es
+    _ -> case es of
+           [e] -> do { v <- lowerExpr e; emit (IAssign name v) }
+           _   -> pure ()
+  pure (OLocalAddr name)
 lowerExpr (Syn.ECast _ _ e)     = lowerExpr e
 lowerExpr (Syn.ESizeof _ arg)   = do
   ss <- gets lsStructs
@@ -541,20 +634,40 @@ readField baseAddr off fty = do
       emit (ILoad t addr)
       pure (OTemp t)
 
+-- Compute address of arr[idx], scaling by element size.
+indexAddr :: Syn.Expr -> Syn.Expr -> L Operand
+indexAddr arr idx = do
+  arrTy <- inferTy arr
+  ss    <- gets lsStructs
+  let elemSz = case arrTy of
+        Syn.TyPtr   inner   -> Sema.tySize ss inner
+        Syn.TyArray inner _ -> Sema.tySize ss inner
+        _                   -> 1
+  baseAddr <- lowerExpr arr
+  iv       <- lowerExpr idx
+  scaledIv <- if elemSz <= 1
+                then pure iv
+                else do
+                  si <- freshTemp
+                  emit (IBinOp si TMul iv (OConst elemSz))
+                  pure (OTemp si)
+  a <- freshTemp
+  emit (IBinOp a TAdd baseAddr scaledIv)
+  pure (OTemp a)
+
 -- Lower an lvalue: produce an Operand holding the address of the location.
 lowerAddr :: Syn.Expr -> L Operand
 lowerAddr (Syn.EVar _ name) = do
-  glb <- isGlobal name
-  if glb
-    then pure (OAddr name)
-    else pure (OLocalAddr name)
+  cl <- gets lsConstLocals
+  case Map.lookup name cl of
+    Just op -> pure op
+    Nothing -> do
+      glb <- isGlobal name
+      if glb
+        then pure (OAddr name)
+        else pure (OLocalAddr name)
 lowerAddr (Syn.EUnary _ Syn.UDeref e) = lowerExpr e
-lowerAddr (Syn.EIndex _ arr idx) = do
-  baseAddr <- lowerExpr arr
-  iv       <- lowerExpr idx
-  a <- freshTemp
-  emit (IBinOp a TAdd baseAddr iv)
-  pure (OTemp a)
+lowerAddr (Syn.EIndex _ arr idx) = indexAddr arr idx
 lowerAddr (Syn.EField _ inner fname) = do
   ty <- inferTy inner
   case ty of
@@ -596,11 +709,8 @@ assignTo (Syn.EUnary _ Syn.UDeref e) rv = do
   pv <- lowerExpr e
   emit (IStore pv rv)
 assignTo (Syn.EIndex _ arr idx) rv = do
-  baseAddr <- lowerExpr arr
-  iv       <- lowerExpr idx
-  a <- freshTemp
-  emit (IBinOp a TAdd baseAddr iv)
-  emit (IStore (OTemp a) rv)
+  addr <- indexAddr arr idx
+  emit (IStore addr rv)
 assignTo (Syn.EField _ inner fname) rv = do
   ty <- inferTy inner
   case ty of
@@ -681,9 +791,11 @@ inferTy (Syn.ECall _ name _) = do
   case Map.lookup name fs of
     Just (rt, _) -> pure rt
     Nothing      -> pure Syn.TyInt
-inferTy (Syn.ECast _ ty _)   = pure ty
-inferTy (Syn.ESizeof _ _)    = pure Syn.TyInt
-inferTy (Syn.EPostfix _ _ e) = inferTy e
+inferTy (Syn.ECast _ ty _)        = pure ty
+inferTy (Syn.ESizeof _ _)         = pure Syn.TyInt
+inferTy (Syn.EPostfix _ _ e)      = inferTy e
+inferTy (Syn.ETernary _ _ t _)    = inferTy t
+inferTy (Syn.ECompoundLit _ ty _) = pure ty
 
 -- ---------------------------------------------------------------------------
 -- Helpers

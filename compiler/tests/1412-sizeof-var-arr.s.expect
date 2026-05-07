@@ -10,12 +10,14 @@ _start:
 main:
     addi r6, -1
     swr r5, r6
+    addi r6, -5
 ;; int[5] a
 ;; return sizeof(...)
     li r2, 5
     li r1, _epi_main
     jalr r0, r1
 _epi_main:
+    addi r6, 5
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

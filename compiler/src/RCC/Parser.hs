@@ -112,6 +112,23 @@ intLit = lexeme $ choice
   , L.decimal
   ]
 
+charLit :: Parser Int
+charLit = lexeme $ do
+  void (char '\'')
+  c <- charBody
+  void (char '\'')
+  pure (fromEnum c)
+  where
+    charBody = (char '\\' *> escapeSeq) <|> satisfy (/= '\'')
+    escapeSeq = choice
+      [ '\n' <$ char 'n'
+      , '\t' <$ char 't'
+      , '\r' <$ char 'r'
+      , '\0' <$ char '0'
+      , '\\' <$ char '\\'
+      , '\'' <$ char '\''
+      ]
+
 -- ---------------------------------------------------------------------------
 -- Source position helpers
 
@@ -137,7 +154,8 @@ parseTy :: Parser Ty
 parseTy = do
   base <- baseTy
   ptrs <- many (symbol "*")
-  pure $ foldl (\t _ -> TyPtr t) base ptrs
+  let ptrTy = foldl (\t _ -> TyPtr t) base ptrs
+  arrSuffix ptrTy   -- handle e.g. int[3] in sizeof(int[3])
 
 baseTy :: Parser Ty
 baseTy = choice
@@ -364,7 +382,14 @@ assignOp = choice
   ]
 
 condExpr :: Parser Expr
-condExpr = lorExpr
+condExpr = do
+  c <- lorExpr
+  option c $ do
+    sp    <- fst <$> withSpan (symbol "?")
+    t     <- expr
+    void (symbol ":")
+    f     <- condExpr
+    pure $ ETernary sp c t f
 
 lorExpr, landExpr, borExpr, bxorExpr :: Parser Expr
 lorExpr  = leftAssoc landExpr  [("||", BOr)]
@@ -427,8 +452,15 @@ castExpr :: Parser Expr
 castExpr = do
   start <- getPos
   ty    <- between (symbol "(") (symbol ")") parseTy
-  e     <- unaryExpr
-  pure $ ECast (Span start (spanEnd (exprSpan e))) ty e
+  choice
+    [ do -- compound literal: (type){ e1, e2, ... }
+         es  <- between (symbol "{") (symbol "}") (sepBy expr (symbol ","))
+         end <- getPos
+         pure $ ECompoundLit (Span start end) ty es
+    , do -- ordinary cast: (type)expr
+         e <- unaryExpr
+         pure $ ECast (Span start (spanEnd (exprSpan e))) ty e
+    ]
 
 postfixExpr :: Parser Expr
 postfixExpr = do
@@ -458,6 +490,8 @@ postfixExpr = do
 primaryExpr :: Parser Expr
 primaryExpr = choice
   [ do (sp, n) <- withSpan intLit
+       pure $ ELit sp n
+  , do (sp, n) <- withSpan charLit
        pure $ ELit sp n
   , do sp <- fst <$> withSpan (keyword "true")
        pure $ ELit sp 1

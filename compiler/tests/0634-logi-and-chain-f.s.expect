@@ -12,18 +12,8 @@ main:
     swr r5, r6
     addi r6, -2
 ;; return 1&&0&&1
-    li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_8
     li r1, _L_and_false_2
     jalr r0, r1
-_L_main_ifz_skip_8:
-    and r2, r0, r0
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_14
-    li r1, _L_and_false_2
-    jalr r0, r1
-_L_main_ifz_skip_14:
     li r2, 1
     and r1, r6, r7
     swr r2, r1
@@ -37,16 +27,10 @@ _L_and_end_3:
     and r1, r6, r7
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_31
+    bt _L_main_ifz_skip_21
     li r1, _L_and_false_0
     jalr r0, r1
-_L_main_ifz_skip_31:
-    li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_37
-    li r1, _L_and_false_0
-    jalr r0, r1
-_L_main_ifz_skip_37:
+_L_main_ifz_skip_21:
     li r2, 1
     and r1, r6, r7
     addi r1, 1

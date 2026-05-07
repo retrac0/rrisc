@@ -22,18 +22,6 @@ main:
     swr r2, r1
 ;; return a&&b
     li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_17
-    li r1, _L_and_false_0
-    jalr r0, r1
-_L_main_ifz_skip_17:
-    li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_23
-    li r1, _L_and_false_0
-    jalr r0, r1
-_L_main_ifz_skip_23:
-    li r2, 1
     and r1, r6, r7
     addi r1, 2
     swr r2, r1

@@ -17,12 +17,8 @@ main:
     swr r2, r1
 ;; while (0)
 _L_while_0:
-    and r2, r0, r0
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_13
     li r1, _L_endwhile_1
     jalr r0, r1
-_L_main_ifz_skip_13:
 ;; i=99
     li r2, 99
     and r1, r6, r7

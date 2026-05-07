@@ -20,56 +20,26 @@ main:
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
-    li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_16
-    li r1, _L_endif_0
-    jalr r0, r1
-_L_main_ifz_skip_16:
 ;; if (x>1)
     li r2, 1
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
-    li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_27
-    li r1, _L_endif_1
-    jalr r0, r1
-_L_main_ifz_skip_27:
 ;; if (x>2)
     li r2, 1
     and r1, r6, r7
     addi r1, 3
     swr r2, r1
-    li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_38
-    li r1, _L_endif_2
-    jalr r0, r1
-_L_main_ifz_skip_38:
 ;; if (x>3)
     li r2, 1
     and r1, r6, r7
     addi r1, 4
     swr r2, r1
-    li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_49
-    li r1, _L_endif_3
-    jalr r0, r1
-_L_main_ifz_skip_49:
 ;; if (x>4)
     li r2, 1
     and r1, r6, r7
     addi r1, 5
     swr r2, r1
-    li r2, 1
-    sub r0, r0, r2
-    bt _L_main_ifz_skip_60
-    li r1, _L_endif_4
-    jalr r0, r1
-_L_main_ifz_skip_60:
 ;; return x
     li r2, 5
     li r1, _epi_main
