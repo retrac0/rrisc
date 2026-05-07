@@ -5,10 +5,11 @@ module RCC.Optimize
 import Data.Bits
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import qualified RCC.TAC as TAC
 
 optimize :: TAC.TACProg -> TAC.TACProg
-optimize = foldBranches . foldConstants
+optimize = foldBranches . foldConstants . eliminateDeadCode
 
 type ConstMap = Map TAC.Temp Int
 
@@ -120,3 +121,45 @@ foldBranchInstrs (i:rest) = case i of
   TAC.IIfNZ (TAC.OConst 0) _   ->                    foldBranchInstrs rest  -- never taken
   TAC.IIfNZ (TAC.OConst _) lbl -> TAC.IGoto lbl   : foldBranchInstrs rest
   _                             -> i               : foldBranchInstrs rest
+
+-- ---------------------------------------------------------------------------
+-- Dead code elimination: drop procedures (and globals) unreachable from main
+
+eliminateDeadCode :: TAC.TACProg -> TAC.TACProg
+eliminateDeadCode prog =
+    prog { TAC.tacProcs   = liveProcs
+         , TAC.tacGlobals = liveGlobals }
+  where
+    liveNames   = reachableProcs prog
+    liveProcs   = filter (\p -> TAC.procName p `Set.member` liveNames) (TAC.tacProcs prog)
+    liveAddrRefs = Set.fromList
+        [ lbl | p <- liveProcs, instr <- TAC.procInstrs p, lbl <- addrRefs instr ]
+    liveGlobals = filter (\g -> TAC.globalName g `Set.member` liveAddrRefs) (TAC.tacGlobals prog)
+
+reachableProcs :: TAC.TACProg -> Set.Set TAC.Label
+reachableProcs prog = bfs Set.empty ["main"]
+  where
+    procMap = Map.fromList [(TAC.procName p, p) | p <- TAC.tacProcs prog]
+    bfs visited [] = visited
+    bfs visited (name:queue)
+      | Set.member name visited = bfs visited queue
+      | otherwise =
+          let callees = case Map.lookup name procMap of
+                Nothing -> []
+                Just p  -> [lbl | TAC.ICall _ lbl _ <- TAC.procInstrs p]
+          in bfs (Set.insert name visited) (callees ++ queue)
+
+-- OAddr labels referenced in an instruction (for global liveness)
+addrRefs :: TAC.Instr -> [TAC.Label]
+addrRefs instr = [lbl | TAC.OAddr lbl <- ops instr]
+  where
+    ops (TAC.IAssign _ o)       = [o]
+    ops (TAC.IBinOp _ _ a b)    = [a, b]
+    ops (TAC.IUnOp _ _ a)       = [a]
+    ops (TAC.ILoad _ o)         = [o]
+    ops (TAC.IStore a b)        = [a, b]
+    ops (TAC.IIfNZ o _)         = [o]
+    ops (TAC.IIfZ  o _)         = [o]
+    ops (TAC.IReturn (Just o))  = [o]
+    ops (TAC.ICall _ _ args)    = args
+    ops _                       = []
