@@ -2,7 +2,7 @@
  * rlibc.h -- minimal C library for the RRISC 12-bit machine
  *
  * Usage (requires host preprocessor):
- *   rcc --preprocessor "cpp -P" myprogram.c
+ *   rcc [--optimize] --preprocessor "cpp -P" myprogram.c
  *   #include "rlibc.h"   (in your .c file)
  *
  * All values are 12-bit words.  Strings are int* with a null word terminator.
@@ -38,8 +38,12 @@ void puts(int *s) {
 /* Read a line into buf (no bounds check); strips newline; returns buf. */
 int *gets(int *buf) {
     int *p = buf;
-    int c;
-    while ((c = getchar()) != '\n' && c != 0) *p++ = c;
+    while (1) {
+        int ch = getchar();
+        if (ch == '\n') break;
+        if (ch == 0) break;
+        *p++ = ch;
+    }
     *p = 0;
     return buf;
 }
