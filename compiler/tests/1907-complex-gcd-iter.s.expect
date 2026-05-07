@@ -8,9 +8,9 @@ _start:
 
 
 gcd:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -5
+    subi r6, 5
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
@@ -54,7 +54,7 @@ _L_gcd_ifz_skip_26:
     and r1, r3, r7
     rol r1, r1
     rol r4, r0
-    addi r6, -1
+    subi r6, 1
     swr r4, r6
     sub r0, r0, r4
     bf _L_gcd_mod_npos_43
@@ -114,9 +114,9 @@ _epi_gcd:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; return gcd(100,75)
     li r2, 100
     li r3, 75

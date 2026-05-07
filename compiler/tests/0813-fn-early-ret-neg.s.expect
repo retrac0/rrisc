@@ -8,9 +8,9 @@ _start:
 
 
 sign:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -4
+    subi r6, 4
     and r1, r6, r7
     swr r2, r1
 ;; if (x>0)
@@ -18,10 +18,8 @@ sign:
     lwr r3, r1
     and r2, r0, r0
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r2, r3
     rol r2, r0
     and r1, r6, r7
@@ -31,10 +29,10 @@ sign:
     addi r1, 1
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_sign_ifz_skip_25
+    bt _L_sign_ifz_skip_23
     li r1, _L_endif_0
     jalr r0, r1
-_L_sign_ifz_skip_25:
+_L_sign_ifz_skip_23:
 ;; return 1
     li r2, 1
     li r1, _epi_sign
@@ -45,10 +43,8 @@ _L_endif_0:
     lwr r3, r1
     and r2, r0, r0
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r3, r2
     rol r2, r0
     and r1, r6, r7
@@ -58,10 +54,10 @@ _L_endif_0:
     addi r1, 2
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_sign_ifz_skip_52
+    bt _L_sign_ifz_skip_48
     li r1, _L_endif_1
     jalr r0, r1
-_L_sign_ifz_skip_52:
+_L_sign_ifz_skip_48:
 ;; return -1
     and r2, r7, r7
     and r1, r6, r7
@@ -82,9 +78,9 @@ _epi_sign:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -2
+    subi r6, 2
 ;; return sign(-3)
     li r2, 4093
     and r1, r6, r7

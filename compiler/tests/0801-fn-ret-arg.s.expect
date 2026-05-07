@@ -8,9 +8,9 @@ _start:
 
 
 f:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
     and r1, r6, r7
     swr r2, r1
 ;; return x
@@ -25,9 +25,9 @@ _epi_f:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; return f(77)
     li r2, 77
     li r1, f

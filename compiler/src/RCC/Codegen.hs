@@ -10,7 +10,6 @@ import Data.Bits ((.&.), shiftR)
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import qualified Data.Set as Set
-import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Numeric (showOct)
@@ -47,7 +46,6 @@ line t = "    " <> t
 data CGState = CGState
   { cgLines    :: [Text]            -- output (reversed)
   , cgSlots    :: Map TAC.Temp Int  -- temp -> slot offset from r6 (after prologue)
-  , cgFrame    :: Int               -- number of param/temp slots
   , cgEpiLabel :: TAC.Label
   , cgFuncName :: TAC.Label
   }
@@ -120,7 +118,7 @@ genProc p =
   let temps      = collectTemps p
       (slots, n) = buildSlotMap (TAC.procLocSzs p) temps
       epi     = "_epi_" <> TAC.procName p
-      initSt  = CGState [] slots n epi (TAC.procName p)
+      initSt  = CGState [] slots epi (TAC.procName p)
       numStack = max 0 (length (TAC.procParams p) - 3)
       action  = do
         emit ""
@@ -167,12 +165,12 @@ buildSlotMap locSzs = go 0 []
 genPrologue :: TAC.Proc -> Int -> CG ()
 genPrologue p n = do
   -- Save r5
-  emitL "addi r6, -1"
+  emitL "subi r6, 1"
   emitL "swr r5, r6"
-  -- Allocate slots for all temps (addi signed range: -32..31; use sub for large frames)
+  -- Allocate slots for all temps (addi unsigned 0..63; subi for decrements)
   when (n > 0) $
-    if n <= 31
-      then emitL ("addi r6, " <> tshow (negate n))
+    if n <= 63
+      then emitL ("subi r6, " <> tshow n)
       else do
         emitLoadConst 1 n
         emitL "sub r6, r6, r1"
@@ -186,20 +184,18 @@ genPrologue p n = do
       2 -> storeRegToTemp 4 paramName
       _ -> do
         let stackOffset = n + 1 + (i - 3)
-        emitL "and r1, r6, r7"
-        emitL ("addi r1, " <> tshow stackOffset)
+        addrOfSlot stackOffset
         emitL "lwr r2, r1"
         storeRegToTemp 2 paramName
 
 genEpilogue :: Int -> Int -> CG ()
 genEpilogue n numStack = do
   when (n > 0) $
-    if n <= 31
+    if n <= 63
       then emitL ("addi r6, " <> tshow n)
       else do
         emitLoadConst 1 n
-        emitL "clrt"
-        emitL "addc r6, r6, r1"
+        emitL "add r6, r6, r1"
   emitL "lwr r5, r6"
   emitL "addi r6, 1"
   when (numStack > 0) $ emitL ("addi r6, " <> tshow numStack)
@@ -212,11 +208,10 @@ genEpilogue n numStack = do
 addrOfSlot :: Int -> CG ()
 addrOfSlot s
   | s == 0    = emitL "and r1, r6, r7"
-  | s <= 31   = do emitL "and r1, r6, r7"
+  | s <= 63   = do emitL "and r1, r6, r7"
                    emitL ("addi r1, " <> tshow s)
-  | otherwise = do emitLoadConst 1 s      -- r1 = s
-                   emitL "clrt"
-                   emitL "addc r1, r1, r6" -- r1 = s + r6
+  | otherwise = do emitLoadConst 1 s
+                   emitL "add r1, r1, r6"
 
 -- Emit the most compact single instruction that loads constant n into reg.
 -- val = n masked to 12 bits.
@@ -279,6 +274,7 @@ genInstr :: TAC.Instr -> CG ()
 genInstr (TAC.ILabel      lbl) = emit (lbl <> ":")
 genInstr (TAC.IComment    txt) = emit (";; " <> txt)
 genInstr (TAC.IAllocLocal _  ) = pure ()  -- slot reserved by buildSlotMap; no code needed
+genInstr (TAC.IAsmInline  txt) = emitL txt
 
 genInstr (TAC.IAssign t op) = do
   loadOpInto 2 op
@@ -349,7 +345,7 @@ genInstr (TAC.ICall mt fname args) = do
   -- Push stack args right-to-left; adjust slot offsets as r6 descends.
   forM_ (zip [0..] (reverse stackArgs)) $ \(k, op) -> do
     loadOpIntoAdj 2 op k
-    emitL "addi r6, -1"
+    emitL "subi r6, 1"
     emitL "swr r2, r6"
   -- Load register args; r6 is now numStack words below the frame base.
   forM_ (zip [2,3,4] regArgs) $ \(r, op) -> loadOpIntoAdj r op numStack
@@ -379,25 +375,22 @@ genInstr (TAC.IReturn (Just op)) = do
 
 emitBinOp :: TAC.BinOp -> CG ()
 emitBinOp TAC.TAdd = do
-  emitL "clrt"
-  emitL "addc r2, r3, r2"
+  emitL "add r2, r3, r2"
 emitBinOp TAC.TSub = do
   emitL "sub r2, r3, r2"
 emitBinOp TAC.TBand = do
   emitL "and r2, r3, r2"
 emitBinOp TAC.TBor = do
   -- r3 | r2 = (r3 + r2) - (r3 & r2)
-  emitL "and r1, r3, r2"          -- r1 = r3 & r2
-  emitL "clrt"
-  emitL "addc r2, r3, r2"         -- r2 = r3 + r2
-  emitL "sub r2, r2, r1"          -- r2 = (r3+r2) - (r3&r2)
+  emitL "and r1, r3, r2"
+  emitL "add r2, r3, r2"
+  emitL "sub r2, r2, r1"
 emitBinOp TAC.TBxor = do
-  -- r3 XOR r2 = (r3 | r2) - (r3 & r2)
-  emitL "and r1, r3, r2"          -- r1 = r3 & r2
-  emitL "clrt"
-  emitL "addc r2, r3, r2"         -- r2 = r3 + r2
-  emitL "sub r2, r2, r1"          -- r2 = (r3 | r2)
-  emitL "sub r2, r2, r1"          -- r2 = XOR
+  -- r3 XOR r2 = (r3 | r2) - (r3 & r2) - (r3 & r2)
+  emitL "and r1, r3, r2"
+  emitL "add r2, r3, r2"
+  emitL "sub r2, r2, r1"
+  emitL "sub r2, r2, r1"
 emitBinOp TAC.TShl  = emitShift True  True   -- logical left
 emitBinOp TAC.TShr  = emitShift False False  -- arithmetic right (sign-extending)
 emitBinOp TAC.TUShr = emitShift False True   -- logical right (unsigned)
@@ -413,14 +406,14 @@ emitBinOp TAC.TDiv = do
   -- Extract and push sign_n.
   emitL "and r1, r3, r7"
   emitL "rol r1, r1"
-  emitL "rol r4, r0"              -- r4 = sign_n (0 or 1)
-  emitL "addi r6, -1"
+  emitL "rol r4, r0"
+  emitL "subi r6, 1"
   emitL "swr r4, r6"
   -- Extract and push sign_d.
   emitL "and r1, r2, r7"
   emitL "rol r1, r1"
-  emitL "rol r4, r0"              -- r4 = sign_d
-  emitL "addi r6, -1"
+  emitL "rol r4, r0"
+  emitL "subi r6, 1"
   emitL "swr r4, r6"
   -- Abs(n): sign_n is at [r6+1].
   emitL "and r1, r6, r7"
@@ -448,9 +441,8 @@ emitBinOp TAC.TDiv = do
   emitL "lwr r4, r4"
   emitL "addi r6, 1"
   -- Negate quotient when exactly one operand was negative (sum==1).
-  emitL "clrt"
-  emitL "addc r1, r1, r4"
-  emitL "addi r1, -1"
+  emitL "add r1, r1, r4"
+  emitL "subi r1, 1"
   emitL "sub r0, r0, r1"          -- T=1 iff sum!=1
   emitL ("bt " <> lDivDone)
   emitL "sub r2, r0, r2"
@@ -466,8 +458,8 @@ emitBinOp TAC.TMod = do
   -- Extract and push sign_n; r4 retains it for the abs(n) test below.
   emitL "and r1, r3, r7"
   emitL "rol r1, r1"
-  emitL "rol r4, r0"              -- r4 = sign_n
-  emitL "addi r6, -1"
+  emitL "rol r4, r0"
+  emitL "subi r6, 1"
   emitL "swr r4, r6"
   -- Abs(n): r4 still holds sign_n.
   emitL "sub r0, r0, r4"
@@ -496,11 +488,8 @@ emitBinOp TAC.TAnd = do
   -- Logical: should not appear (lowered to branches by TAC), but handle anyway.
   emitL "and r2, r3, r2"
 emitBinOp TAC.TOr = do
-  -- Logical: should not appear (lowered to branches by TAC), but handle anyway.
-  -- r3 | r2 = (r3 + r2) - (r3 & r2)
   emitL "and r1, r3, r2"
-  emitL "clrt"
-  emitL "addc r2, r3, r2"
+  emitL "add r2, r3, r2"
   emitL "sub r2, r2, r1"
 
 -- Comparisons: result in r2 as 0 or 1.
@@ -548,11 +537,9 @@ emitBinOp TAC.TUGe = do
 -- holder; r1 is freely clobbered later by the comparing 'sub'.
 emitSignedNorm :: CG ()
 emitSignedNorm = do
-  emitL "li r1, 0o4000"            -- 2048
-  emitL "clrt"
-  emitL "addc r3, r3, r1"
-  emitL "clrt"
-  emitL "addc r2, r2, r1"
+  emitL "li r1, 0o4000"
+  emitL "add r3, r3, r1"
+  emitL "add r2, r2, r1"
 
 -- After T is set such that T = 1 means "negative result":
 -- ttoR2 False -> r2 = T          (used when T=1 means TRUE)
@@ -588,11 +575,11 @@ emitShift isLeft isLogical = do
       emitL "and r1, r3, r7"         -- r1 = r3
       emitL "rol r1, r1"             -- T = bit 11 of r3 (sign bit)
       emitL "ror r3, r3"             -- r3 >>= 1, bit 11 filled with T
-  emitL "addi r2, -1"
+  emitL "subi r2, 1"
   emitL "sub r0, r0, r7"
   emitL ("bt " <> lLoop)
   emit (lEnd <> ":")
-  emitL "and r2, r3, r7"            -- r2 = r3 (move)
+  emitL "and r2, r3, r7"
 
 -- Multiply by repeated addition (uses r1 as accumulator).
 -- Inputs: r3 = a, r2 = b. Output: r2 = a*b.
@@ -604,13 +591,12 @@ emitMul = do
   emit (lLoop <> ":")
   emitL "sub r0, r0, r2"            -- T = 1 iff b != 0
   emitL ("bf " <> lEnd)
-  emitL "clrt"
-  emitL "addc r1, r1, r3"           -- acc += a
-  emitL "addi r2, -1"
+  emitL "add r1, r1, r3"
+  emitL "subi r2, 1"
   emitL "sub r0, r0, r7"
   emitL ("bt " <> lLoop)
   emit (lEnd <> ":")
-  emitL "and r2, r1, r7"            -- r2 = acc
+  emitL "and r2, r1, r7"
 
 -- Unsigned division: r3=|n|, r2=|d| → r1=quotient, r4=remainder.
 -- r2 and r3 are unchanged by this routine.

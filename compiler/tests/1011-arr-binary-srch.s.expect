@@ -8,9 +8,9 @@ _start:
 
 
 bsrch:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -19
+    subi r6, 19
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
@@ -48,15 +48,13 @@ _L_while_0:
     addi r1, 5
     lwr r2, r1
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r2, r3
     li r2, 1
-    bf _L_bsrch_ne_47
+    bf _L_bsrch_ne_45
     li r2, 0
-_L_bsrch_ne_47:
+_L_bsrch_ne_45:
     and r1, r6, r7
     addi r1, 6
     swr r2, r1
@@ -64,10 +62,10 @@ _L_bsrch_ne_47:
     addi r1, 6
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_bsrch_ifz_skip_58
+    bt _L_bsrch_ifz_skip_56
     li r1, _L_endwhile_1
     jalr r0, r1
-_L_bsrch_ifz_skip_58:
+_L_bsrch_ifz_skip_56:
 ;; int mid = ...
     and r1, r6, r7
     addi r1, 3
@@ -75,8 +73,7 @@ _L_bsrch_ifz_skip_58:
     and r1, r6, r7
     addi r1, 5
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 7
     swr r2, r1
@@ -85,40 +82,40 @@ _L_bsrch_ifz_skip_58:
     lwr r3, r1
     li r2, 2
     sub r0, r0, r2
-    bf _L_bsrch_div_done_78
+    bf _L_bsrch_div_done_75
     and r1, r3, r7
     rol r1, r1
     rol r4, r0
-    addi r6, -1
+    subi r6, 1
     swr r4, r6
     and r1, r2, r7
     rol r1, r1
     rol r4, r0
-    addi r6, -1
+    subi r6, 1
     swr r4, r6
     and r1, r6, r7
     addi r1, 1
     lwr r4, r1
     sub r0, r0, r4
-    bf _L_bsrch_div_npos_78
+    bf _L_bsrch_div_npos_75
     sub r3, r0, r3
-_L_bsrch_div_npos_78:
+_L_bsrch_div_npos_75:
     and r1, r6, r7
     lwr r4, r1
     sub r0, r0, r4
-    bf _L_bsrch_div_dpos_78
+    bf _L_bsrch_div_dpos_75
     sub r2, r0, r2
-_L_bsrch_div_dpos_78:
+_L_bsrch_div_dpos_75:
     and r4, r3, r7
     and r1, r0, r0
-_L_bsrch_udiv_loop_103:
+_L_bsrch_udiv_loop_100:
     sub r0, r4, r2
-    bt _L_bsrch_udiv_end_103
+    bt _L_bsrch_udiv_end_100
     sub r4, r4, r2
     addi r1, 1
     sub r0, r0, r7
-    bt _L_bsrch_udiv_loop_103
-_L_bsrch_udiv_end_103:
+    bt _L_bsrch_udiv_loop_100
+_L_bsrch_udiv_end_100:
     and r2, r1, r7
     and r1, r6, r7
     lwr r1, r1
@@ -126,13 +123,12 @@ _L_bsrch_udiv_end_103:
     and r4, r6, r7
     lwr r4, r4
     addi r6, 1
-    clrt
-    addc r1, r1, r4
-    addi r1, -1
+    add r1, r1, r4
+    subi r1, 1
     sub r0, r0, r1
-    bt _L_bsrch_div_done_78
+    bt _L_bsrch_div_done_75
     sub r2, r0, r2
-_L_bsrch_div_done_78:
+_L_bsrch_div_done_75:
     and r1, r6, r7
     addi r1, 8
     swr r2, r1
@@ -148,8 +144,7 @@ _L_bsrch_div_done_78:
     and r1, r6, r7
     addi r1, 9
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 10
     swr r2, r1
@@ -169,9 +164,9 @@ _L_bsrch_div_done_78:
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_bsrch_ne_162
+    bf _L_bsrch_ne_157
     li r2, 0
-_L_bsrch_ne_162:
+_L_bsrch_ne_157:
     and r1, r6, r7
     addi r1, 12
     swr r2, r1
@@ -179,10 +174,10 @@ _L_bsrch_ne_162:
     addi r1, 12
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_bsrch_ifz_skip_173
+    bt _L_bsrch_ifz_skip_168
     li r1, _L_endif_2
     jalr r0, r1
-_L_bsrch_ifz_skip_173:
+_L_bsrch_ifz_skip_168:
 ;; return mid
     and r1, r6, r7
     addi r1, 9
@@ -196,8 +191,7 @@ _L_endif_2:
     and r1, r6, r7
     addi r1, 9
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 13
     swr r2, r1
@@ -215,10 +209,8 @@ _L_endif_2:
     addi r1, 2
     lwr r2, r1
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r3, r2
     rol r2, r0
     and r1, r6, r7
@@ -228,17 +220,16 @@ _L_endif_2:
     addi r1, 15
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_bsrch_ifz_skip_222
+    bt _L_bsrch_ifz_skip_214
     li r1, _L_else_3
     jalr r0, r1
-_L_bsrch_ifz_skip_222:
+_L_bsrch_ifz_skip_214:
 ;; lo=mid+1
     and r1, r6, r7
     addi r1, 9
     lwr r3, r1
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 16
     swr r2, r1
@@ -285,14 +276,13 @@ _epi_bsrch:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -9
+    subi r6, 9
 ;; a[0]=1
     li r3, a
     and r2, r0, r0
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     swr r2, r1
     li r2, 1
@@ -302,8 +292,7 @@ main:
 ;; a[1]=3
     li r3, a
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
@@ -315,8 +304,7 @@ main:
 ;; a[2]=5
     li r3, a
     li r2, 2
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
@@ -328,8 +316,7 @@ main:
 ;; a[3]=7
     li r3, a
     li r2, 3
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 3
     swr r2, r1
@@ -341,8 +328,7 @@ main:
 ;; a[4]=9
     li r3, a
     li r2, 4
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 4
     swr r2, r1
@@ -354,8 +340,7 @@ main:
 ;; a[5]=11
     li r3, a
     li r2, 5
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 5
     swr r2, r1
@@ -367,8 +352,7 @@ main:
 ;; a[6]=13
     li r3, a
     li r2, 6
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 6
     swr r2, r1
@@ -380,8 +364,7 @@ main:
 ;; a[7]=15
     li r3, a
     li r2, 7
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 7
     swr r2, r1

@@ -8,14 +8,13 @@ _start:
 
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -13
+    subi r6, 13
 ;; arr[0]=10
     li r3, arr
     and r2, r0, r0
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     swr r2, r1
     li r2, 10
@@ -25,8 +24,7 @@ main:
 ;; arr[1]=20
     li r3, arr
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
@@ -38,8 +36,7 @@ main:
 ;; arr[2]=30
     li r3, arr
     li r2, 2
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
@@ -51,8 +48,7 @@ main:
 ;; arr[3]=40
     li r3, arr
     li r2, 3
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 3
     swr r2, r1
@@ -64,8 +60,7 @@ main:
 ;; arr[4]=50
     li r3, arr
     li r2, 4
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 4
     swr r2, r1
@@ -96,10 +91,8 @@ _L_while_0:
     lwr r3, r1
     li r2, 5
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r3, r2
     rol r2, r0
     and r1, r6, r7
@@ -109,10 +102,10 @@ _L_while_0:
     addi r1, 8
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_103
+    bt _L_main_ifz_skip_96
     li r1, _L_endwhile_1
     jalr r0, r1
-_L_main_ifz_skip_103:
+_L_main_ifz_skip_96:
 ;; sum=sum+*p
     and r1, r6, r7
     addi r1, 5
@@ -127,8 +120,7 @@ _L_main_ifz_skip_103:
     and r1, r6, r7
     addi r1, 9
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 10
     swr r2, r1
@@ -143,8 +135,7 @@ _L_main_ifz_skip_103:
     addi r1, 5
     lwr r3, r1
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 11
     swr r2, r1
@@ -159,8 +150,7 @@ _L_main_ifz_skip_103:
     addi r1, 7
     lwr r3, r1
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 12
     swr r2, r1

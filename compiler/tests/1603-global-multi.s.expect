@@ -8,9 +8,9 @@ _start:
 
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -5
+    subi r6, 5
 ;; return a+b+c
     li r1, a
     lwr r2, r1
@@ -26,8 +26,7 @@ main:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
@@ -42,8 +41,7 @@ main:
     and r1, r6, r7
     addi r1, 3
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 4
     swr r2, r1

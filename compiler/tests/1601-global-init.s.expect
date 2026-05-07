@@ -8,9 +8,9 @@ _start:
 
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; return g
     li r1, g
     lwr r2, r1

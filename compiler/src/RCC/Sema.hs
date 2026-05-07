@@ -352,6 +352,7 @@ inferExpr (Syn.ETernary _ cond t f) = do
   tt <- inferExpr t
   _  <- inferExpr f
   pure tt
+inferExpr (Syn.EString _ _) = pure (Syn.TyPtr Syn.TyInt)
 inferExpr (Syn.ECompoundLit sp ty es) = do
   checkTyDefinedAt ty
   mapM_ (\e -> () <$ inferExpr e) es

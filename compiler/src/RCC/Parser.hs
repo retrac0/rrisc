@@ -106,9 +106,10 @@ keyword kw = lexeme $ string kw *> notFollowedBy (alphaNumChar <|> char '_')
 
 intLit :: Parser Int
 intLit = lexeme $ choice
-  [ string "0o" *> L.octal
-  , string "0x" *> L.hexadecimal
-  , string "0b" *> L.binary
+  [ string "0o" *> L.octal                  -- 0o777  Python-style octal
+  , string "0x" *> L.hexadecimal            -- 0xFF   hex
+  , string "0b" *> L.binary                 -- 0b101  binary
+  , try (char '0' *> L.octal)               -- 0777   C-style octal
   , L.decimal
   ]
 
@@ -326,8 +327,27 @@ sasmInline = do
   semi
   pure $ SAsmInline sp txt
 
+-- Used by asm("...") — no escape processing, literal content.
 stringLit :: Parser Text
 stringLit = lexeme $ char '"' *> (T.pack <$> many (satisfy (/= '"'))) <* char '"'
+
+-- Used by string literal expressions "..." — processes escape sequences.
+strExprLit :: Parser Text
+strExprLit = lexeme $ do
+  void (char '"')
+  cs <- many strChar
+  void (char '"')
+  pure (T.pack cs)
+  where
+    strChar   = (char '\\' *> escSeq) <|> satisfy (\c -> c /= '"' && c /= '\n')
+    escSeq    = choice
+      [ '\n' <$ char 'n'
+      , '\t' <$ char 't'
+      , '\r' <$ char 'r'
+      , '\0' <$ char '0'
+      , '"'  <$ char '"'
+      , '\\' <$ char '\\'
+      ]
 
 braceOrStmt :: Parser Stmt
 braceOrStmt = choice
@@ -493,6 +513,8 @@ primaryExpr = choice
        pure $ ELit sp n
   , do (sp, n) <- withSpan charLit
        pure $ ELit sp n
+  , do (sp, s) <- withSpan strExprLit
+       pure $ EString sp s
   , do sp <- fst <$> withSpan (keyword "true")
        pure $ ELit sp 1
   , do sp <- fst <$> withSpan (keyword "false")

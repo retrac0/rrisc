@@ -8,9 +8,9 @@ _start:
 
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -12
+    subi r6, 12
 ;; int a = ...
     li r2, 3
     and r1, r6, r7
@@ -130,10 +130,8 @@ _L_endif_2:
     addi r1, 1
     lwr r2, r1
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r2, r3
     rol r2, r0
     and r1, r6, r7
@@ -143,10 +141,10 @@ _L_endif_2:
     addi r1, 9
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_main_ifnz_skip_137
+    bf _L_main_ifnz_skip_135
     li r1, _L_or_true_6
     jalr r0, r1
-_L_main_ifnz_skip_137:
+_L_main_ifnz_skip_135:
     and r1, r6, r7
     addi r1, 1
     lwr r3, r1
@@ -154,9 +152,9 @@ _L_main_ifnz_skip_137:
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_main_ne_147
+    bf _L_main_ne_145
     li r2, 0
-_L_main_ne_147:
+_L_main_ne_145:
     and r1, r6, r7
     addi r1, 10
     swr r2, r1
@@ -164,10 +162,10 @@ _L_main_ne_147:
     addi r1, 10
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_main_ifnz_skip_158
+    bf _L_main_ifnz_skip_156
     li r1, _L_or_true_6
     jalr r0, r1
-_L_main_ifnz_skip_158:
+_L_main_ifnz_skip_156:
     and r2, r0, r0
     and r1, r6, r7
     addi r1, 11
@@ -184,10 +182,10 @@ _L_or_end_7:
     addi r1, 11
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_178
+    bt _L_main_ifz_skip_176
     li r1, _L_endif_8
     jalr r0, r1
-_L_main_ifz_skip_178:
+_L_main_ifz_skip_176:
 ;; result=99
     li r2, 99
     and r1, r6, r7

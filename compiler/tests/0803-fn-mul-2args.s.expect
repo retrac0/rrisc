@@ -8,9 +8,9 @@ _start:
 
 
 mul:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -3
+    subi r6, 3
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
@@ -26,9 +26,8 @@ mul:
 _L_mul_mul_loop_16:
     sub r0, r0, r2
     bf _L_mul_mul_end_16
-    clrt
-    addc r1, r1, r3
-    addi r2, -1
+    add r1, r1, r3
+    subi r2, 1
     sub r0, r0, r7
     bt _L_mul_mul_loop_16
 _L_mul_mul_end_16:
@@ -48,9 +47,9 @@ _epi_mul:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; return mul(6,7)
     li r2, 6
     li r3, 7

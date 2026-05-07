@@ -8,9 +8,9 @@ _start:
 
 
 area:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -5
+    subi r6, 5
     and r1, r6, r7
     swr r2, r1
 ;; return r.w*r.h
@@ -22,8 +22,7 @@ area:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
@@ -41,15 +40,14 @@ area:
     addi r1, 3
     lwr r2, r1
     and r1, r0, r0
-_L_area_mul_loop_34:
+_L_area_mul_loop_33:
     sub r0, r0, r2
-    bf _L_area_mul_end_34
-    clrt
-    addc r1, r1, r3
-    addi r2, -1
+    bf _L_area_mul_end_33
+    add r1, r1, r3
+    subi r2, 1
     sub r0, r0, r7
-    bt _L_area_mul_loop_34
-_L_area_mul_end_34:
+    bt _L_area_mul_loop_33
+_L_area_mul_end_33:
     and r2, r1, r7
     and r1, r6, r7
     addi r1, 4
@@ -66,9 +64,9 @@ _epi_area:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -4
+    subi r6, 4
 ;; struct R r
 ;; r.w=6
     li r2, 6
@@ -78,8 +76,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 2
     swr r2, r1

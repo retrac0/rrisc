@@ -8,9 +8,9 @@ _start:
 
 
 pw:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -6
+    subi r6, 6
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
@@ -71,9 +71,8 @@ _L_endif_0:
 _L_pw_mul_loop_61:
     sub r0, r0, r2
     bf _L_pw_mul_end_61
-    clrt
-    addc r1, r1, r3
-    addi r2, -1
+    add r1, r1, r3
+    subi r2, 1
     sub r0, r0, r7
     bt _L_pw_mul_loop_61
 _L_pw_mul_end_61:
@@ -93,9 +92,9 @@ _epi_pw:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; return pw(2,8)
     li r2, 2
     li r3, 8

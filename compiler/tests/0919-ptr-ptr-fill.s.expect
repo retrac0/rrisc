@@ -8,9 +8,9 @@ _start:
 
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -13
+    subi r6, 13
 ;; int[5] a
 ;; int* p = ...
     and r1, r6, r7
@@ -30,10 +30,8 @@ _L_for_0:
     lwr r3, r1
     li r2, 5
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r3, r2
     rol r2, r0
     and r1, r6, r7
@@ -43,10 +41,10 @@ _L_for_0:
     addi r1, 7
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_37
+    bt _L_main_ifz_skip_35
     li r1, _L_endfor_2
     jalr r0, r1
-_L_main_ifz_skip_37:
+_L_main_ifz_skip_35:
 ;; *p=i*i
     and r1, r6, r7
     addi r1, 6
@@ -55,15 +53,14 @@ _L_main_ifz_skip_37:
     addi r1, 6
     lwr r2, r1
     and r1, r0, r0
-_L_main_mul_loop_48:
+_L_main_mul_loop_46:
     sub r0, r0, r2
-    bf _L_main_mul_end_48
-    clrt
-    addc r1, r1, r3
-    addi r2, -1
+    bf _L_main_mul_end_46
+    add r1, r1, r3
+    subi r2, 1
     sub r0, r0, r7
-    bt _L_main_mul_loop_48
-_L_main_mul_end_48:
+    bt _L_main_mul_loop_46
+_L_main_mul_end_46:
     and r2, r1, r7
     and r1, r6, r7
     addi r1, 8
@@ -80,8 +77,7 @@ _L_main_mul_end_48:
     addi r1, 5
     lwr r3, r1
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 9
     swr r2, r1
@@ -96,8 +92,7 @@ _L_forcont_1:
     addi r1, 6
     lwr r3, r1
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 10
     swr r2, r1
@@ -114,8 +109,7 @@ _L_endfor_2:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 3
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 11
     swr r2, r1

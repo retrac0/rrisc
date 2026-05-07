@@ -8,9 +8,9 @@ _start:
 
 
 dbl:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -2
+    subi r6, 2
     and r1, r6, r7
     swr r2, r1
 ;; return x*2
@@ -21,9 +21,8 @@ dbl:
 _L_dbl_mul_loop_11:
     sub r0, r0, r2
     bf _L_dbl_mul_end_11
-    clrt
-    addc r1, r1, r3
-    addi r2, -1
+    add r1, r1, r3
+    subi r2, 1
     sub r0, r0, r7
     bt _L_dbl_mul_loop_11
 _L_dbl_mul_end_11:
@@ -43,9 +42,9 @@ _epi_dbl:
     jalr r0, r5
 
 tri:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -2
+    subi r6, 2
     and r1, r6, r7
     swr r2, r1
 ;; return x*3
@@ -56,9 +55,8 @@ tri:
 _L_tri_mul_loop_11:
     sub r0, r0, r2
     bf _L_tri_mul_end_11
-    clrt
-    addc r1, r1, r3
-    addi r2, -1
+    add r1, r1, r3
+    subi r2, 1
     sub r0, r0, r7
     bt _L_tri_mul_loop_11
 _L_tri_mul_end_11:
@@ -78,9 +76,9 @@ _epi_tri:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -2
+    subi r6, 2
 ;; return dbl(tri(4))
     li r2, 4
     li r1, tri

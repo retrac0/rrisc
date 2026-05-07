@@ -8,9 +8,9 @@ _start:
 
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -12
+    subi r6, 12
 ;; struct T t
 ;; t.a=1
     li r2, 1
@@ -20,8 +20,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 3
     swr r2, r1
@@ -34,8 +33,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 2
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 4
     swr r2, r1
@@ -53,8 +51,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 6
     swr r2, r1
@@ -71,16 +68,14 @@ main:
     and r1, r6, r7
     addi r1, 7
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 8
     swr r2, r1
     and r1, r6, r7
     and r3, r1, r7
     li r2, 2
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 9
     swr r2, r1
@@ -97,8 +92,7 @@ main:
     and r1, r6, r7
     addi r1, 10
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 11
     swr r2, r1

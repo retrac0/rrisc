@@ -8,9 +8,9 @@ _start:
 
 
 odd_:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -4
+    subi r6, 4
     and r1, r6, r7
     swr r2, r1
 ;; if (n==0)
@@ -67,9 +67,9 @@ _epi_odd_:
     jalr r0, r5
 
 even_:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -4
+    subi r6, 4
     and r1, r6, r7
     swr r2, r1
 ;; if (n==0)
@@ -126,9 +126,9 @@ _epi_even_:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; return even_(4)
     li r2, 4
     li r1, even_

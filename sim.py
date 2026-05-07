@@ -8,9 +8,9 @@ import argparse
 import random
 
 from terminal import Terminal
-from isa import (OP_ADDI, OP_LUI, OP_AND, OP_LW, OP_ADDC, OP_SUB, OP_SW, OP_SPEC,
+from isa import (OP_ADDI, OP_LUI, OP_AND, OP_ADD, OP_ADDC, OP_SUB, OP_SUBI, OP_SPEC,
                  RB_JALR, RB_ROR, RB_ROL, RB_LWR, RB_SWR,
-                 sign_extend_imm, branch_offset, decode, disasm_word, WORD_MASK, IMM6_MASK)
+                 branch_offset, decode, disasm_word, WORD_MASK, IMM6_MASK)
 
 
 
@@ -260,6 +260,11 @@ class CPU:
             self.wrreg(rd, val)
             self.T = 1 if (val & 0o10000) else 0
             note = f"T={self.T}"
+        elif op == OP_ADD:
+            val = self.rdreg(ra) + self.rdreg(rb)
+            self.wrreg(rd, val)
+            self.T = 1 if val > WORD_MASK else 0
+            note = f"T={self.T}"
         elif op == OP_ADDC:
             val = self.rdreg(ra) + self.rdreg(rb) + self.T
             self.wrreg(rd, val)
@@ -280,8 +285,13 @@ class CPU:
         elif op == OP_LUI:
             self.wrreg(rd, (imm << 6))
         elif op == OP_ADDI:
-            val = self.rdreg(rd) + sign_extend_imm(imm)
+            val = self.rdreg(rd) + imm   # unsigned 0..63
             self.wrreg(rd, val)
+        elif op == OP_SUBI:
+            val = self.rdreg(rd) - imm   # unsigned 0..63
+            self.wrreg(rd, val)
+            self.T = 1 if (val & 0o10000) else 0
+            note = f"T={self.T}"
         elif op == OP_SPEC and rb == RB_JALR:
             target = self.rdreg(ra)
             self.wrreg(rd, self.pc)
@@ -301,14 +311,6 @@ class CPU:
             self.T = new_t
             self.wrreg(rd, val)
             note = f"T={self.T}"
-        elif op == OP_LW:
-            addr = (self.rdreg(rd) & 0o7700) | imm
-            self.wrreg(1, self.rdmem(addr))
-            note = "+2cyc"
-        elif op == OP_SW:
-            addr = (self.rdreg(rd) & 0o7700) | imm
-            self.wrmem(addr, self.rdreg(1))
-            note = "+2cyc"
         elif op == OP_SPEC and rb == RB_LWR:
             self.wrreg(rd, self.rdmem(self.rdreg(ra)))
             note = "+2cyc"
@@ -320,7 +322,7 @@ class CPU:
         else:
             note = "unknown"
 
-        is_mem = op == OP_LW or op == OP_SW or (op == OP_SPEC and rb in (RB_LWR, RB_SWR))
+        is_mem = op == OP_SPEC and rb in (RB_LWR, RB_SWR)
         if self.trace:
             print(f"{oldpc:04o}  {ir:04o}  {disasm_word(ir):<20}  {note}".rstrip())
 

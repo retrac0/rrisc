@@ -34,7 +34,7 @@ import sys
 from collections import namedtuple
 from dataclasses import dataclass, field
 
-from isa import (OP_ADDI, OP_LUI, OP_AND, OP_LW, OP_ADDC, OP_SUB, OP_SW, OP_SPEC,
+from isa import (OP_ADDI, OP_LUI, OP_AND, OP_ADD, OP_ADDC, OP_SUB, OP_SUBI, OP_SPEC,
                  RB_JALR, RB_ROR, RB_ROL, RB_LWR, RB_SWR,
                  encode_r3, encode_ri, WORD_MASK, IMM6_MASK)
 from float48 import from_float
@@ -206,12 +206,6 @@ def _imm6(val, filename, lineno):
     """Encode val as unsigned 6-bit field (0..63) — used by lui."""
     if val < 0 or val > 63:
         raise AsmError(filename, lineno, f"immediate {val} out of 6-bit unsigned range (0..63)")
-    return val & IMM6_MASK
-
-def _imm6s(val, filename, lineno):
-    """Encode val as signed 6-bit field (-32..31) — used by addi (sign-extended by hardware)."""
-    if val < -32 or val > 31:
-        raise AsmError(filename, lineno, f"immediate {val} out of 6-bit signed range (-32..31)")
     return val & IMM6_MASK
 
 def _resolve_mem_operand(val, rd, bases, filename, lineno):
@@ -597,9 +591,9 @@ def assign_addresses(lines: list) -> tuple:
         elif mnem in ('jmp', 'call'):
             addr += 3
         elif mnem == 'or':
-            addr += 4
+            addr += 3
         elif mnem == 'xor':
-            addr += 5
+            addr += 4
         else:
             addr += 1
 
@@ -664,9 +658,9 @@ class Assembler:
         if mnem in ('jmp', 'call'):
             return 3
         if mnem == 'or':
-            return 4
+            return 3
         if mnem == 'xor':
-            return 5
+            return 4
         return 1
 
     def _labels_from_stmts(self, stmts) -> dict:
@@ -748,7 +742,7 @@ class Assembler:
                 return 0o0000
             case 'clrt':
                 self._expect(ops, 0, mnem, f, n)
-                return 0o6000
+                return 0o3000
             case 'halt':
                 self._expect(ops, 0, mnem, f, n)
                 return 0o7777
@@ -818,7 +812,10 @@ class Assembler:
             case 'and':
                 self._expect(ops, 3, mnem, f, n)
                 return encode_r3(OP_AND, _reg(ops[0],f,n), _reg(ops[1],f,n), _reg(ops[2],f,n))
-            case 'add' | 'addc':
+            case 'add':
+                self._expect(ops, 3, mnem, f, n)
+                return encode_r3(OP_ADD, _reg(ops[0],f,n), _reg(ops[1],f,n), _reg(ops[2],f,n))
+            case 'addc':
                 self._expect(ops, 3, mnem, f, n)
                 return encode_r3(OP_ADDC, _reg(ops[0],f,n), _reg(ops[1],f,n), _reg(ops[2],f,n))
             case 'sub':
@@ -841,7 +838,16 @@ class Assembler:
                     raise AsmError(f, n, "addi cannot target r0 (use bt for branches)")
                 if rd == 7:
                     raise AsmError(f, n, "addi cannot target r7 (use bt for branches)")
-                return encode_ri(OP_ADDI, rd, _imm6s(_eval_expr(ops[1], self.labels, f, n), f, n))
+                return encode_ri(OP_ADDI, rd, _imm6(_eval_expr(ops[1], self.labels, f, n), f, n))
+
+            case 'subi':
+                self._expect(ops, 2, mnem, f, n)
+                rd = _reg(ops[0], f, n)
+                if rd == 0:
+                    raise AsmError(f, n, "subi cannot target r0")
+                if rd == 7:
+                    raise AsmError(f, n, "subi cannot target r7")
+                return encode_ri(OP_SUBI, rd, _imm6(_eval_expr(ops[1], self.labels, f, n), f, n))
 
             case 'bf':
                 self._expect(ops, 1, mnem, f, n)
@@ -862,11 +868,7 @@ class Assembler:
                 return encode_r3(OP_SPEC, _reg(ops[0],f,n), _reg(ops[1],f,n), rb)
 
             case 'lw' | 'sw':
-                self._expect(ops, 2, mnem, f, n)
-                op = OP_LW if mnem == 'lw' else OP_SW
-                rd = _reg(ops[0], f, n)
-                val = _eval_expr(ops[1], self.labels, f, n)
-                return encode_ri(op, rd, _resolve_mem_operand(val, rd, self.bases, f, n))
+                raise AsmError(f, n, f"'{mnem}' is not part of this ISA; use lwr/swr (register-addressed)")
 
             case 'li':
                 self._expect(ops, 2, mnem, f, n)
@@ -877,11 +879,9 @@ class Assembler:
                 if val < -2048 or val > WORD_MASK:
                     raise AsmError(f, n, f"li value {val} out of 12-bit range")
                 val &= WORD_MASK
-                lower = val & IMM6_MASK
-                upper = (val >> 6) & IMM6_MASK
-                # addi sign-extends lower; if bit 5 is set it subtracts 64, so add 1 to upper to compensate
-                if lower >= 32:
-                    upper = (upper + 1) & IMM6_MASK
+                lower = val & IMM6_MASK   # bits 5:0  (0..63)
+                upper = (val >> 6) & IMM6_MASK  # bits 11:6 (0..63)
+                # addi is now unsigned (0..63), no sign-extension compensation needed
                 return [encode_ri(OP_LUI, rd, upper), encode_ri(OP_ADDI, rd, lower)]
 
             case '':
@@ -922,8 +922,6 @@ class Assembler:
                 val = _eval_expr(ops[0], self.labels, f, n) & WORD_MASK
                 lower = val & IMM6_MASK
                 upper = (val >> 6) & IMM6_MASK
-                if lower >= 32:
-                    upper = (upper + 1) & IMM6_MASK
                 return [
                     encode_ri(OP_LUI,  4, upper),
                     encode_ri(OP_ADDI, 4, lower),
@@ -935,8 +933,6 @@ class Assembler:
                 val = _eval_expr(ops[0], self.labels, f, n) & WORD_MASK
                 lower = val & IMM6_MASK
                 upper = (val >> 6) & IMM6_MASK
-                if lower >= 32:
-                    upper = (upper + 1) & IMM6_MASK
                 return [
                     encode_ri(OP_LUI,  4, upper),
                     encode_ri(OP_ADDI, 4, lower),
@@ -951,10 +947,9 @@ class Assembler:
                 if rx == 4:
                     raise AsmError(f, n, "or: destination cannot be r4 (assembler scratch)")
                 return [
-                    encode_r3(OP_AND,  4,  ry, rz),
-                    0o6000,                              # clrt
-                    encode_r3(OP_ADDC, rx, ry, rz),
-                    encode_r3(OP_SUB,  rx, rx, 4),
+                    encode_r3(OP_AND, 4,  ry, rz),
+                    encode_r3(OP_ADD, rx, ry, rz),
+                    encode_r3(OP_SUB, rx, rx, 4),
                 ]
 
             case 'xor':
@@ -965,11 +960,10 @@ class Assembler:
                 if rx == 4:
                     raise AsmError(f, n, "xor: destination cannot be r4 (assembler scratch)")
                 return [
-                    encode_r3(OP_AND,  4,  ry, rz),
-                    0o6000,                              # clrt
-                    encode_r3(OP_ADDC, rx, ry, rz),
-                    encode_r3(OP_SUB,  rx, rx, 4),
-                    encode_r3(OP_SUB,  rx, rx, 4),
+                    encode_r3(OP_AND, 4,  ry, rz),
+                    encode_r3(OP_ADD, rx, ry, rz),
+                    encode_r3(OP_SUB, rx, rx, 4),
+                    encode_r3(OP_SUB, rx, rx, 4),
                 ]
 
             case _:

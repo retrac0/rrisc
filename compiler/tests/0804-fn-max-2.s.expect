@@ -8,9 +8,9 @@ _start:
 
 
 max2:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -3
+    subi r6, 3
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
@@ -23,10 +23,8 @@ max2:
     addi r1, 1
     lwr r2, r1
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r2, r3
     rol r2, r0
     and r1, r6, r7
@@ -36,10 +34,10 @@ max2:
     addi r1, 2
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_max2_ifz_skip_30
+    bt _L_max2_ifz_skip_28
     li r1, _L_endif_0
     jalr r0, r1
-_L_max2_ifz_skip_30:
+_L_max2_ifz_skip_28:
 ;; return a
     and r1, r6, r7
     lwr r2, r1
@@ -59,9 +57,9 @@ _epi_max2:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; return max2(3,7)
     li r2, 3
     li r3, 7

@@ -8,9 +8,9 @@ _start:
 
 
 set:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -2
+    subi r6, 2
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
@@ -32,9 +32,9 @@ _epi_set:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -3
+    subi r6, 3
 ;; int x = ...
     and r2, r0, r0
     and r1, r6, r7

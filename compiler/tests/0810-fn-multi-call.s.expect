@@ -8,17 +8,16 @@ _start:
 
 
 inc:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -2
+    subi r6, 2
     and r1, r6, r7
     swr r2, r1
 ;; return x+1
     and r1, r6, r7
     lwr r3, r1
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
@@ -34,9 +33,9 @@ _epi_inc:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -5
+    subi r6, 5
 ;; int a = ...
     li r2, 1
     li r1, inc

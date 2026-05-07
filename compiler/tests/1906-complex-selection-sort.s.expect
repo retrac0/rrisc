@@ -8,17 +8,15 @@ _start:
 
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    li r1, 35
-    sub r6, r6, r1
+    subi r6, 35
 ;; int[5] a
 ;; a[0]=4
     and r1, r6, r7
     and r3, r1, r7
     and r2, r0, r0
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 5
     swr r2, r1
@@ -31,8 +29,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 6
     swr r2, r1
@@ -45,8 +42,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 2
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 7
     swr r2, r1
@@ -59,8 +55,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 3
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 8
     swr r2, r1
@@ -73,8 +68,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 4
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 9
     swr r2, r1
@@ -95,10 +89,8 @@ _L_for_0:
     lwr r3, r1
     li r2, 4
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r3, r2
     rol r2, r0
     and r1, r6, r7
@@ -108,10 +100,10 @@ _L_for_0:
     addi r1, 11
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_102
+    bt _L_main_ifz_skip_94
     li r1, _L_endfor_2
     jalr r0, r1
-_L_main_ifz_skip_102:
+_L_main_ifz_skip_94:
 ;; int m = ...
     and r1, r6, r7
     addi r1, 10
@@ -125,8 +117,7 @@ _L_main_ifz_skip_102:
     addi r1, 10
     lwr r3, r1
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 13
     swr r2, r1
@@ -142,10 +133,8 @@ _L_for_3:
     lwr r3, r1
     li r2, 5
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r3, r2
     rol r2, r0
     and r1, r6, r7
@@ -155,18 +144,17 @@ _L_for_3:
     addi r1, 15
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_149
+    bt _L_main_ifz_skip_138
     li r1, _L_endfor_5
     jalr r0, r1
-_L_main_ifz_skip_149:
+_L_main_ifz_skip_138:
 ;; if (a[j]<a[m])
     and r1, r6, r7
     and r3, r1, r7
     and r1, r6, r7
     addi r1, 14
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 16
     swr r2, r1
@@ -182,8 +170,7 @@ _L_main_ifz_skip_149:
     and r1, r6, r7
     addi r1, 12
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 18
     swr r2, r1
@@ -201,10 +188,8 @@ _L_main_ifz_skip_149:
     addi r1, 19
     lwr r2, r1
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r3, r2
     rol r2, r0
     and r1, r6, r7
@@ -214,10 +199,10 @@ _L_main_ifz_skip_149:
     addi r1, 20
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_208
+    bt _L_main_ifz_skip_193
     li r1, _L_endif_6
     jalr r0, r1
-_L_main_ifz_skip_208:
+_L_main_ifz_skip_193:
 ;; m=j
     and r1, r6, r7
     addi r1, 14
@@ -231,8 +216,7 @@ _L_forcont_4:
     addi r1, 14
     lwr r3, r1
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 21
     swr r2, r1
@@ -251,8 +235,7 @@ _L_endfor_5:
     and r1, r6, r7
     addi r1, 10
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 22
     swr r2, r1
@@ -275,8 +258,7 @@ _L_endfor_5:
     and r1, r6, r7
     addi r1, 12
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 25
     swr r2, r1
@@ -292,8 +274,7 @@ _L_endfor_5:
     and r1, r6, r7
     addi r1, 10
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 27
     swr r2, r1
@@ -310,8 +291,7 @@ _L_endfor_5:
     and r1, r6, r7
     addi r1, 12
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 28
     swr r2, r1
@@ -327,8 +307,7 @@ _L_forcont_1:
     addi r1, 10
     lwr r3, r1
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 29
     swr r2, r1
@@ -345,8 +324,7 @@ _L_endfor_2:
     and r1, r6, r7
     and r3, r1, r7
     and r2, r0, r0
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 30
     swr r2, r1
@@ -360,44 +338,34 @@ _L_endfor_2:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 4
-    clrt
-    addc r2, r3, r2
-    li r1, 32
-    clrt
-    addc r1, r1, r6
+    add r2, r3, r2
+    and r1, r6, r7
+    addi r1, 32
     swr r2, r1
-    li r1, 32
-    clrt
-    addc r1, r1, r6
+    and r1, r6, r7
+    addi r1, 32
     lwr r1, r1
     lwr r2, r1
-    li r1, 33
-    clrt
-    addc r1, r1, r6
+    and r1, r6, r7
+    addi r1, 33
     swr r2, r1
     and r1, r6, r7
     addi r1, 31
     lwr r3, r1
-    li r1, 33
-    clrt
-    addc r1, r1, r6
+    and r1, r6, r7
+    addi r1, 33
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
-    li r1, 34
-    clrt
-    addc r1, r1, r6
+    add r2, r3, r2
+    and r1, r6, r7
+    addi r1, 34
     swr r2, r1
-    li r1, 34
-    clrt
-    addc r1, r1, r6
+    and r1, r6, r7
+    addi r1, 34
     lwr r2, r1
     li r1, _epi_main
     jalr r0, r1
 _epi_main:
-    li r1, 35
-    clrt
-    addc r6, r6, r1
+    addi r6, 35
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

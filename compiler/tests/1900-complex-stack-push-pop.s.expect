@@ -8,9 +8,9 @@ _start:
 
 
 push:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -6
+    subi r6, 6
     and r1, r6, r7
     swr r2, r1
 ;; stk[top]=v
@@ -23,8 +23,7 @@ push:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
@@ -50,8 +49,7 @@ push:
     addi r1, 3
     lwr r3, r1
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 5
     swr r2, r1
@@ -69,9 +67,9 @@ _epi_push:
     jalr r0, r5
 
 pop:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -6
+    subi r6, 6
 ;; top--
     li r1, top
     lwr r2, r1
@@ -104,8 +102,7 @@ pop:
     and r1, r6, r7
     addi r1, 3
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 4
     swr r2, r1
@@ -128,9 +125,9 @@ _epi_pop:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -13
+    subi r6, 13
 ;; push(1)
     li r2, 1
     li r1, push
@@ -196,9 +193,8 @@ main:
 _L_main_mul_loop_66:
     sub r0, r0, r2
     bf _L_main_mul_end_66
-    clrt
-    addc r1, r1, r3
-    addi r2, -1
+    add r1, r1, r3
+    subi r2, 1
     sub r0, r0, r7
     bt _L_main_mul_loop_66
 _L_main_mul_end_66:
@@ -212,8 +208,7 @@ _L_main_mul_end_66:
     and r1, r6, r7
     addi r1, 9
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 10
     swr r2, r1
@@ -222,15 +217,14 @@ _L_main_mul_end_66:
     lwr r3, r1
     li r2, 100
     and r1, r0, r0
-_L_main_mul_loop_95:
+_L_main_mul_loop_93:
     sub r0, r0, r2
-    bf _L_main_mul_end_95
-    clrt
-    addc r1, r1, r3
-    addi r2, -1
+    bf _L_main_mul_end_93
+    add r1, r1, r3
+    subi r2, 1
     sub r0, r0, r7
-    bt _L_main_mul_loop_95
-_L_main_mul_end_95:
+    bt _L_main_mul_loop_93
+_L_main_mul_end_93:
     and r2, r1, r7
     and r1, r6, r7
     addi r1, 11
@@ -241,8 +235,7 @@ _L_main_mul_end_95:
     and r1, r6, r7
     addi r1, 11
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 12
     swr r2, r1

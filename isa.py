@@ -5,15 +5,16 @@ from dataclasses import dataclass
 from typing import Literal
 
 # Opcodes (3-bit, stored in bits 11:9)
-OP_AND  = 0   # rd=ra&rb; preserves T; 0o0000 = and r0,r0,r0 = NOP; binary 000
-OP_SUB  = 1   # rd=ra-rb; sets T=borrow; binary 001
-OP_SW   = 2   # mem[(rd & 0o7700) | imm6] = r1; binary 010
-OP_LW   = 3   # r1 = mem[(rd & 0o7700) | imm6]; binary 011
-OP_LUI  = 4   # also BF (rd=0 or rd=7); binary 100
-OP_ADDI = 5   # also BT (rd=0 or rd=7); binary 101
-OP_ADDC = 6   # rd=ra+rb+T; T=carry; 0o6000 = addc r0,r0,r0 = CLRT; binary 110
-OP_SPEC = 7   # jalr / ror / rol / lwr / swr, distinguished by rb field
-OP_ADD  = OP_ADDC  # alias: 'add' assembles as addc
+# Bit 2 = 0: R3 register-register ops
+# Bit 2 = 1: RI immediate/special ops
+OP_AND  = 0   # rd=ra&rb; R3; preserves T; 0o0000=NOP; binary 000
+OP_SUB  = 1   # rd=ra-rb; R3; T=borrow; binary 001
+OP_ADD  = 2   # rd=ra+rb; R3; T=carry (no carry-in); binary 010
+OP_ADDC = 3   # rd=ra+rb+T; R3; T=carry; 0o3000=CLRT; binary 011
+OP_LUI  = 4   # rd=imm6<<6; also BF (rd=0 or rd=7); RI; binary 100
+OP_ADDI = 5   # rd=rd+imm6 (unsigned 0..63); also BT; RI; binary 101
+OP_SUBI = 6   # rd=rd-imm6 (unsigned 0..63); RI; T=borrow; binary 110
+OP_SPEC = 7   # jalr/ror/rol/lwr/swr, distinguished by rb; binary 111
 
 # Sub-opcodes for OP_SPEC (stored in bits 2:0)
 RB_JALR = 0
@@ -66,7 +67,7 @@ def decode(word: int) -> Instruction:
     ra  = (word >> 3) & 7
     rb  =  word       & 7
     imm =  word       & IMM6_MASK
-    fmt: Literal['R3', 'RI'] = 'RI' if op in (OP_LUI, OP_ADDI, OP_LW, OP_SW) else 'R3'
+    fmt: Literal['R3', 'RI'] = 'RI' if op in (OP_LUI, OP_ADDI, OP_SUBI) else 'R3'
     return Instruction(op=op, rd=rd, ra=ra, rb=rb, imm=imm, fmt=fmt, word=word)
 
 
@@ -76,7 +77,7 @@ def disasm(instr: Instruction) -> str:
 
     if word == 0o0000:
         return "nop"
-    elif word == 0o6000:
+    elif word == 0o3000:
         return "clrt"
     elif word == 0o7777:
         return "halt"
@@ -84,6 +85,8 @@ def disasm(instr: Instruction) -> str:
         return f"and r{rd}, r{ra}, r{rb}"
     elif op == OP_SUB:
         return f"sub r{rd}, r{ra}, r{rb}"
+    elif op == OP_ADD:
+        return f"add r{rd}, r{ra}, r{rb}"
     elif op == OP_ADDC:
         return f"addc r{rd}, r{ra}, r{rb}"
     elif op == OP_LUI and (rd == 0 or rd == 7):
@@ -93,11 +96,9 @@ def disasm(instr: Instruction) -> str:
     elif op == OP_LUI:
         return f"lui r{rd}, {imm:02o}"
     elif op == OP_ADDI:
-        return f"addi r{rd}, {imm:02o}"
-    elif op == OP_LW:
-        return f"lw r{rd}, {imm:02o}"
-    elif op == OP_SW:
-        return f"sw r{rd}, {imm:02o}"
+        return f"addi r{rd}, {imm}"
+    elif op == OP_SUBI:
+        return f"subi r{rd}, {imm}"
     elif op == OP_SPEC and rb == RB_JALR:
         return f"jalr r{rd}, r{ra}"
     elif op == OP_SPEC and rb == RB_ROR:

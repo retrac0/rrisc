@@ -8,16 +8,15 @@ _start:
 
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -21
+    subi r6, 21
 ;; int[5] msg
 ;; msg[0]=72
     and r1, r6, r7
     and r3, r1, r7
     and r2, r0, r0
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 5
     swr r2, r1
@@ -30,8 +29,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 6
     swr r2, r1
@@ -44,8 +42,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 2
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 7
     swr r2, r1
@@ -58,8 +55,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 3
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 8
     swr r2, r1
@@ -72,8 +68,7 @@ main:
     and r1, r6, r7
     and r3, r1, r7
     li r2, 4
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 9
     swr r2, r1
@@ -104,10 +99,8 @@ _L_for_0:
     lwr r3, r1
     li r2, 5
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r3, r2
     rol r2, r0
     and r1, r6, r7
@@ -117,18 +110,17 @@ _L_for_0:
     addi r1, 13
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_111
+    bt _L_main_ifz_skip_104
     li r1, _L_endfor_2
     jalr r0, r1
-_L_main_ifz_skip_111:
+_L_main_ifz_skip_104:
 ;; s+=msg[i]+shift%128
     and r1, r6, r7
     and r3, r1, r7
     and r1, r6, r7
     addi r1, 12
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 14
     swr r2, r1
@@ -145,8 +137,7 @@ _L_main_ifz_skip_111:
     and r1, r6, r7
     addi r1, 10
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 16
     swr r2, r1
@@ -155,40 +146,40 @@ _L_main_ifz_skip_111:
     lwr r3, r1
     lui r2, 2
     sub r0, r0, r2
-    bf _L_main_mod_done_148
+    bf _L_main_mod_done_139
     and r1, r3, r7
     rol r1, r1
     rol r4, r0
-    addi r6, -1
+    subi r6, 1
     swr r4, r6
     sub r0, r0, r4
-    bf _L_main_mod_npos_148
+    bf _L_main_mod_npos_139
     sub r3, r0, r3
-_L_main_mod_npos_148:
+_L_main_mod_npos_139:
     and r1, r2, r7
     rol r1, r1
-    bf _L_main_mod_dpos_148
+    bf _L_main_mod_dpos_139
     sub r2, r0, r2
-_L_main_mod_dpos_148:
+_L_main_mod_dpos_139:
     and r4, r3, r7
     and r1, r0, r0
-_L_main_udiv_loop_164:
+_L_main_udiv_loop_155:
     sub r0, r4, r2
-    bt _L_main_udiv_end_164
+    bt _L_main_udiv_end_155
     sub r4, r4, r2
     addi r1, 1
     sub r0, r0, r7
-    bt _L_main_udiv_loop_164
-_L_main_udiv_end_164:
+    bt _L_main_udiv_loop_155
+_L_main_udiv_end_155:
     and r1, r6, r7
     lwr r1, r1
     addi r6, 1
     sub r0, r0, r1
-    bf _L_main_mod_rpos_148
+    bf _L_main_mod_rpos_139
     sub r4, r0, r4
-_L_main_mod_rpos_148:
+_L_main_mod_rpos_139:
     and r2, r4, r7
-_L_main_mod_done_148:
+_L_main_mod_done_139:
     and r1, r6, r7
     addi r1, 17
     swr r2, r1
@@ -198,8 +189,7 @@ _L_main_mod_done_148:
     and r1, r6, r7
     addi r1, 17
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 18
     swr r2, r1
@@ -214,8 +204,7 @@ _L_forcont_1:
     addi r1, 12
     lwr r3, r1
     li r2, 1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 19
     swr r2, r1
@@ -234,40 +223,40 @@ _L_endfor_2:
     lwr r3, r1
     lui r2, 4
     sub r0, r0, r2
-    bf _L_main_mod_done_227
+    bf _L_main_mod_done_216
     and r1, r3, r7
     rol r1, r1
     rol r4, r0
-    addi r6, -1
+    subi r6, 1
     swr r4, r6
     sub r0, r0, r4
-    bf _L_main_mod_npos_227
+    bf _L_main_mod_npos_216
     sub r3, r0, r3
-_L_main_mod_npos_227:
+_L_main_mod_npos_216:
     and r1, r2, r7
     rol r1, r1
-    bf _L_main_mod_dpos_227
+    bf _L_main_mod_dpos_216
     sub r2, r0, r2
-_L_main_mod_dpos_227:
+_L_main_mod_dpos_216:
     and r4, r3, r7
     and r1, r0, r0
-_L_main_udiv_loop_243:
+_L_main_udiv_loop_232:
     sub r0, r4, r2
-    bt _L_main_udiv_end_243
+    bt _L_main_udiv_end_232
     sub r4, r4, r2
     addi r1, 1
     sub r0, r0, r7
-    bt _L_main_udiv_loop_243
-_L_main_udiv_end_243:
+    bt _L_main_udiv_loop_232
+_L_main_udiv_end_232:
     and r1, r6, r7
     lwr r1, r1
     addi r6, 1
     sub r0, r0, r1
-    bf _L_main_mod_rpos_227
+    bf _L_main_mod_rpos_216
     sub r4, r0, r4
-_L_main_mod_rpos_227:
+_L_main_mod_rpos_216:
     and r2, r4, r7
-_L_main_mod_done_227:
+_L_main_mod_done_216:
     and r1, r6, r7
     addi r1, 20
     swr r2, r1

@@ -108,6 +108,7 @@ data Init
 
 data Expr
   = ELit          Span Int
+  | EString       Span Text             -- "hello\n" → rodata, type int*
   | EVar          Span Text
   | EUnary        Span UnOp Expr
   | EBinary       Span BinOp Expr Expr
@@ -156,6 +157,7 @@ data AssOp
 exprSpan :: Expr -> Span
 exprSpan e = case e of
   ELit         s _       -> s
+  EString      s _       -> s
   EVar         s _       -> s
   EUnary       s _ _     -> s
   EBinary      s _ _ _   -> s

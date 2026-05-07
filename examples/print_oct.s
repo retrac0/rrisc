@@ -11,9 +11,9 @@
 ;   r2  value to print (clobbered)
 ;   r6  return address
 ;   r1, r3, r4, r5, T  clobbered
-;   zero-page 0o20..0o24: NUL-terminated ASCII digit buffer (clobbered)
+;   zero-page 0o10..0o14: NUL-terminated ASCII digit buffer (clobbered)
 ;
-; --- putstr calling convention (from hello.s) ---
+; --- putstr calling convention ---
 ;   r2  pointer to NUL-terminated word string
 ;   r6  return address
 ;   r1, r3, r4, r5, T  clobbered
@@ -23,11 +23,10 @@
 ;   r4  return address
 ;   r1, T  clobbered; exits with T=1
 
-%define TXRDY  0o70     ; 0o7700|0o70 = 0o7770: TX ready flag (read)
-%define TXBUF  0o72     ; 0o7700|0o72 = 0o7772: TX data buffer (write)
+%define TXRDY  0o7770   ; TX ready flag (read)
+%define TXBUF  0o7772   ; TX data buffer (write)
 
 ; ror3 reg -- rotate reg right by 3 (destructive: upper bits become garbage).
-; Each ror updates T; clrt before addc (ASCII conversion) clears that carry-in.
 %macro ror3 reg
         ror  reg, reg
         ror  reg, reg
@@ -35,23 +34,18 @@
 %endm
 
 %macro jal d, r, l
-
-        li r, l 
+        li r, l
         jalr d, r
-%endm        
+%endm
 
-; --- octoa ---
-; Builds a NUL-terminated ASCII string in memory
+; digit buffer in zero-page RAM
+.org 0o10
+pbuf:  .fill 5, 0       ; 4 digits + NUL terminator
 
-.org 010
-
-pbuf:  .fill 4, 0
-       .word 0
-
-        .org 01000
+        .org 0o1000
 
 main:
-        li   r2, 01357
+        li   r2, 0o1357
         jal  r6, r1, print_oct
         li   r3, 010            ; '\n'
         jal  r4, r5, putchar
@@ -59,45 +53,44 @@ main:
 
 ;
 ; Digits are extracted LSB-first but stored in descending address order
-; (digit 0 at 0o23, digit 3 at 0o20) so putstr scanning upward from 0o20
-; prints the MSB digit first.  ASCII conversion (add '0') happens at store
-; time using r3 = 0o060 loaded once up front.
+; so putstr scanning upward from pbuf prints MSB digit first.
+; Uses r5 as a descending pointer into pbuf.
 print_oct:
-        li   r3, 060         ; r3 = '0' = 48
-        li   r4, 07          ; r4 = 3-bit mask
+        li   r3, 060            ; r3 = '0' = 48
+        li   r4, 07             ; r4 = 3-bit mask
+        li   r5, pbuf+3         ; r5 = pointer to LSB digit slot
 
-        sub  r0, r0, r0         ; clrt (T unknown at entry)
         and  r1, r2, r4         ; digit 0 (LSB, bits 2:0)
-        addc r1, r1, r3         ; → ASCII (T=0 from clrt)
-        sw   r0, pbuf+3           ; buffer[3]
+        add  r1, r1, r3         ; -> ASCII
+        swr  r1, r5             ; buffer[3]
+        subi r5, 1
 
         ror3 r2
 
-        sub  r0, r0, r0         ; clrt (ror3 leaves T unpredictable)
         and  r1, r2, r4         ; digit 1 (bits 5:3)
-        addc r1, r1, r3
-        sw   r0, pbuf+2           ; buffer[2]
+        add  r1, r1, r3
+        swr  r1, r5             ; buffer[2]
+        subi r5, 1
 
         ror3 r2
 
-        sub  r0, r0, r0         ; clrt
         and  r1, r2, r4         ; digit 2 (bits 8:6)
-        addc r1, r1, r3
-        sw   r0, pbuf+1             ; buffer[1]
+        add  r1, r1, r3
+        swr  r1, r5             ; buffer[1]
+        subi r5, 1
 
         ror3 r2
 
-        sub  r0, r0, r0         ; clrt
         and  r1, r2, r4         ; digit 3 (MSB, bits 11:9)
-        addc r1, r1, r3
-        sw   r0, pbuf           ; buffer[0]
+        add  r1, r1, r3
+        swr  r1, r5             ; buffer[0]
 
-        and  r1, r0, r0         ; r1 = 0
-        sw   r0, 024          ; buffer[4] = NUL
+        and  r1, r0, r0         ; r1 = 0 (NUL)
+        li   r5, pbuf+4
+        swr  r1, r5             ; buffer[4] = NUL
 
-        li   r2, pbuf           ; r2 → start of buffer
-        jal r0, r5, putstr            ; tail-call putstr; it returns via r6 to our caller
-
+        li   r2, pbuf           ; r2 -> start of buffer
+        jal  r0, r5, putstr     ; tail-call putstr; it returns via r6 to our caller
 
 ; --- putstr ---
 ; Print the NUL-terminated string of words starting at r2.
@@ -106,18 +99,19 @@ putstr:
 next:   lwr  r3, r2             ; r3 = mem[r2]
         sub  r0, r0, r3         ; T=1 if nonzero, T=0 if NUL
         bf   putstr_done
-        jalr r4, r5             ; call putchar(r3); putchar exits with T=1
+        jalr r4, r5             ; call putchar(r3); exits with T=1
         addi r2, 1
-        bt   next               ; T=1 — always loops back
+        bt   next
 putstr_done:
         jalr r0, r6
 
 ; --- putchar ---
 ; Poll TXRDY, then transmit r3.  Exits with T=1.
 putchar:
-        lw   r7, TXRDY          ; r1 = TX ready flag (1=ready, 0=busy)
+        li   r1, TXRDY
+        lwr  r1, r1             ; r1 = TX ready flag
         sub  r0, r0, r1         ; T=1 if ready
         bf   putchar
-        and  r1, r3, r7         ; r1 = r3  (move character)
-        sw   r7, TXBUF
+        li   r1, TXBUF
+        swr  r3, r1             ; transmit r3
         jalr r0, r4

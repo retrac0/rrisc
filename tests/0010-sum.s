@@ -19,7 +19,7 @@
         addi r5, 1      ; r5 = 1
 
 loop:   addc r1, r1, r2 ; sum += counter
-        addi r2, -1     ; counter--
+        subi r2, 1      ; counter--
         sub  r3, r2, r5 ; T=1 if r2 < 1 (i.e. counter reached 0)
         bt   done       ; T=1 -> done
         bf   loop       ; T=0 -> continue

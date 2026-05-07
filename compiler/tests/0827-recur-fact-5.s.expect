@@ -8,9 +8,9 @@ _start:
 
 
 fact:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -5
+    subi r6, 5
     and r1, r6, r7
     swr r2, r1
 ;; if (n<=1)
@@ -18,15 +18,13 @@ fact:
     lwr r3, r1
     li r2, 1
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r2, r3
     li r2, 1
-    bf _L_fact_ne_17
+    bf _L_fact_ne_15
     li r2, 0
-_L_fact_ne_17:
+_L_fact_ne_15:
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
@@ -34,10 +32,10 @@ _L_fact_ne_17:
     addi r1, 1
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_fact_ifz_skip_28
+    bt _L_fact_ifz_skip_26
     li r1, _L_endif_0
     jalr r0, r1
-_L_fact_ifz_skip_28:
+_L_fact_ifz_skip_26:
 ;; return 1
     li r2, 1
     li r1, _epi_fact
@@ -65,15 +63,14 @@ _L_endif_0:
     addi r1, 3
     lwr r2, r1
     and r1, r0, r0
-_L_fact_mul_loop_58:
+_L_fact_mul_loop_56:
     sub r0, r0, r2
-    bf _L_fact_mul_end_58
-    clrt
-    addc r1, r1, r3
-    addi r2, -1
+    bf _L_fact_mul_end_56
+    add r1, r1, r3
+    subi r2, 1
     sub r0, r0, r7
-    bt _L_fact_mul_loop_58
-_L_fact_mul_end_58:
+    bt _L_fact_mul_loop_56
+_L_fact_mul_end_56:
     and r2, r1, r7
     and r1, r6, r7
     addi r1, 4
@@ -90,9 +87,9 @@ _epi_fact:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; return fact(5)
     li r2, 5
     li r1, fact

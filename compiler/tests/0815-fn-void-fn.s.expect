@@ -8,7 +8,7 @@ _start:
 
 
 noop:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
     li r1, _epi_noop
     jalr r0, r1
@@ -18,9 +18,9 @@ _epi_noop:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; noop()
     li r1, noop
     jalr r5, r1

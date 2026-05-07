@@ -1,1 +1,1 @@
-/home/joel/rrisc/tests/err-branch-range.s:1: branch offset +65 out of range (-64..63)
+/home/joel/rrisc/tests/err-branch-range.s:2: branch offset +65 out of range (-64..63)

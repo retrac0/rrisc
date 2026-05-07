@@ -14,7 +14,7 @@
 loop:   addc r4, r1, r2   ; r4 = r1 + r2  (next Fibonacci; T=0 from bt not-taken)
         and  r1, r2, r7   ; r1 = r2        (slide window)
         and  r2, r4, r7   ; r2 = r4        (slide window)
-        addi r3, -1       ; r3 = r3 - 1
+        subi r3, 1        ; r3 = r3 - 1
         sub  r5, r0, r3   ; T=1 if r3 > 0 (borrow: 0 < r3)
         bt   loop         ; loop while counter > 0
 

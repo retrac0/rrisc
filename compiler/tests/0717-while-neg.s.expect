@@ -8,9 +8,9 @@ _start:
 
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -3
+    subi r6, 3
 ;; int i = ...
     li r2, 100
     and r1, r6, r7
@@ -21,10 +21,8 @@ _L_while_0:
     lwr r3, r1
     and r2, r0, r0
     li r1, 0o4000
-    clrt
-    addc r3, r3, r1
-    clrt
-    addc r2, r2, r1
+    add r3, r3, r1
+    add r2, r2, r1
     sub r1, r2, r3
     rol r2, r0
     and r1, r6, r7
@@ -34,10 +32,10 @@ _L_while_0:
     addi r1, 1
     lwr r2, r1
     sub r0, r0, r2
-    bt _L_main_ifz_skip_28
+    bt _L_main_ifz_skip_26
     li r1, _L_endwhile_1
     jalr r0, r1
-_L_main_ifz_skip_28:
+_L_main_ifz_skip_26:
 ;; i=i-1
     and r1, r6, r7
     lwr r3, r1

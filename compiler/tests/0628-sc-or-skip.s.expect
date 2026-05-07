@@ -8,7 +8,7 @@ _start:
 
 
 set_flag:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
 ;; flag=1
     li r2, 1
@@ -24,9 +24,9 @@ _epi_set_flag:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -3
+    subi r6, 3
 ;; 1||set_flag()
     li r1, _L_or_true_0
     jalr r0, r1

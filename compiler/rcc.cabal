@@ -14,6 +14,7 @@ common rcc-common
         , megaparsec >= 9.0  && < 10
         , containers >= 0.6  && < 1
         , mtl        >= 2.3  && < 3
+        , process    >= 1.6  && < 2
 
 library
     import:          rcc-common
@@ -24,6 +25,7 @@ library
         RCC.Parser
         RCC.Sema
         RCC.TAC
+        RCC.Lower
         RCC.Optimize
         RCC.Codegen
 

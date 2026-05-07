@@ -8,9 +8,9 @@ _start:
 
 
 double_it:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -2
+    subi r6, 2
     and r1, r6, r7
     swr r2, r1
 ;; return x+x
@@ -18,8 +18,7 @@ double_it:
     lwr r3, r1
     and r1, r6, r7
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
@@ -35,9 +34,9 @@ _epi_double_it:
     jalr r0, r5
 
 quadruple:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -3
+    subi r6, 3
     and r1, r6, r7
     swr r2, r1
 ;; return double_it(double_it(x))
@@ -68,9 +67,9 @@ _epi_quadruple:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; return quadruple(3)
     li r2, 3
     li r1, quadruple

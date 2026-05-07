@@ -28,7 +28,7 @@
 loop:   addc r4, r1, r2 ; r4 = r1 + r2  (next Fibonacci; T=0 from bf)
         and  r1, r2, r7 ; r1 = r2        (slide window)
         and  r2, r4, r7 ; r2 = r4        (slide window)
-        addi r3, -1     ; r3 = r3 - 1   (decrement)
+        subi r3, 1      ; r3 = r3 - 1   (decrement)
         sub  r4, r3, r5 ; T=1 if r3 < r5 (borrow: counter reached zero)
         bt   done       ; T=1 -> counter exhausted, exit
         bf   loop       ; T=0 -> still counting, repeat

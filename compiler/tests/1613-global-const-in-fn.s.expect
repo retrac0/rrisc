@@ -8,9 +8,9 @@ _start:
 
 
 f:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -2
+    subi r6, 2
 ;; int C = ...
     li r2, 10
     and r1, r6, r7
@@ -30,9 +30,9 @@ _epi_f:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; return f()
     li r1, f
     jalr r5, r1

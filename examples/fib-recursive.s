@@ -35,7 +35,7 @@ fib:
         bf   fib_leaf
 
         ; fib(n-1)
-        addi r2, 0o77           ; r2 = n - 1
+        subi r2, 1              ; r2 = n - 1
         push r5
         call fib
         pop  r5
@@ -45,14 +45,13 @@ fib:
         and  r4, r6, r7         ; r4 = r6  (move, T-independent)
         addi r4, 1              ; r4 = r6 + 1 = address of saved argument n
         lwr  r2, r4
-        addi r2, 0o76           ; r2 = n - 2
+        subi r2, 2              ; r2 = n - 2
         push r5
         call fib
         pop  r5
 
         lwr  r4, r6             ; load saved fib(n-1)
-        sub  r0, r0, r0         ; clrt
-        addc r3, r3, r4         ; r3 = fib(n-2) + fib(n-1)
+        add  r3, r3, r4         ; r3 = fib(n-2) + fib(n-1)
 
         addi r6, 1              ; pop saved fib(n-1)
         addi r6, 1              ; pop saved argument n

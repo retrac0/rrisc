@@ -8,9 +8,9 @@ _start:
 
 
 add:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -3
+    subi r6, 3
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
@@ -22,8 +22,7 @@ add:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
-    clrt
-    addc r2, r3, r2
+    add r2, r3, r2
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
@@ -39,9 +38,9 @@ _epi_add:
     jalr r0, r5
 
 main:
-    addi r6, -1
+    subi r6, 1
     swr r5, r6
-    addi r6, -1
+    subi r6, 1
 ;; return add(3,4)
     li r2, 3
     li r3, 4
