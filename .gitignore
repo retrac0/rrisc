@@ -4,10 +4,8 @@ sim2
 *.bin
 TODO.md
 *.err
-
 examples/*.output 
 */dist-newstyle/*
 ras
 rcc
-demos/rpn.s
 demos/rpn.s
