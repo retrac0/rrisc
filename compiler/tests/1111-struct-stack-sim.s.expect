@@ -13,7 +13,7 @@ main:
     addi r6, -10
 ;; struct S s
 ;; s.top=0
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     swr r2, r1
 ;; s.data[0]=99
@@ -26,7 +26,7 @@ main:
     swr r2, r1
     and r1, r6, r7
     lwr r3, r1
-    li r2, 0
+    and r2, r0, r0
     clrt
     addc r2, r3, r2
     and r1, r6, r7

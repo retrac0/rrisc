@@ -16,7 +16,7 @@ main:
     and r1, r6, r7
     swr r2, r1
 ;; if (0)
-    li r2, 0
+    and r2, r0, r0
     sub r0, r0, r2
     bt _L_main_ifz_skip_12
     li r1, _L_else_0

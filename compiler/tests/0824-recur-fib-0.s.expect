@@ -102,7 +102,7 @@ main:
     swr r5, r6
     addi r6, -1
 ;; return fib(0)
-    li r2, 0
+    and r2, r0, r0
     li r1, fib
     jalr r5, r1
     and r1, r6, r7

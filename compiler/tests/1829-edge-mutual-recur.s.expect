@@ -16,7 +16,7 @@ odd_:
 ;; if (n==0)
     and r1, r6, r7
     lwr r3, r1
-    li r2, 0
+    and r2, r0, r0
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
@@ -35,7 +35,7 @@ _L_odd__ne_13:
     jalr r0, r1
 _L_odd__ifz_skip_24:
 ;; return 0
-    li r2, 0
+    and r2, r0, r0
     li r1, _epi_odd_
     jalr r0, r1
 _L_endif_0:
@@ -75,7 +75,7 @@ even_:
 ;; if (n==0)
     and r1, r6, r7
     lwr r3, r1
-    li r2, 0
+    and r2, r0, r0
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1

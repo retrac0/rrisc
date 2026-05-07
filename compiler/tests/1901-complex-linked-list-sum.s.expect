@@ -13,7 +13,7 @@ main:
     addi r6, -19
 ;; vals[0]=10
     li r3, vals
-    li r2, 0
+    and r2, r0, r0
     clrt
     addc r2, r3, r2
     and r1, r6, r7
@@ -24,7 +24,7 @@ main:
     swr r2, r1
 ;; nexts[0]=1
     li r3, nexts
-    li r2, 0
+    and r2, r0, r0
     clrt
     addc r2, r3, r2
     and r1, r6, r7
@@ -127,7 +127,7 @@ main:
     lwr r1, r1
     swr r2, r1
 ;; nexts[4]=-1
-    li r2, 4095
+    and r2, r7, r7
     and r1, r6, r7
     addi r1, 9
     swr r2, r1
@@ -138,18 +138,18 @@ main:
     and r1, r6, r7
     addi r1, 10
     swr r2, r1
-    li r2, 4095
+    and r2, r7, r7
     and r1, r6, r7
     addi r1, 10
     lwr r1, r1
     swr r2, r1
 ;; int s = ...
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 11
     swr r2, r1
 ;; int i = ...
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 12
     swr r2, r1
@@ -158,7 +158,7 @@ _L_while_0:
     and r1, r6, r7
     addi r1, 12
     lwr r3, r1
-    li r2, 0
+    and r2, r0, r0
     li r1, 0o4000
     clrt
     addc r3, r3, r1

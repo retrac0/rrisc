@@ -20,7 +20,7 @@ bsrch:
     addi r1, 2
     swr r4, r1
 ;; int lo = ...
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 3
     swr r2, r1
@@ -271,11 +271,11 @@ _L_endif_4:
     jalr r0, r1
 _L_endwhile_1:
 ;; return -1
-    li r2, 4095
+    and r2, r7, r7
     and r1, r6, r7
     addi r1, 18
     swr r2, r1
-    li r2, 4095
+    and r2, r7, r7
     li r1, _epi_bsrch
     jalr r0, r1
 _epi_bsrch:
@@ -290,7 +290,7 @@ main:
     addi r6, -9
 ;; a[0]=1
     li r3, a
-    li r2, 0
+    and r2, r0, r0
     clrt
     addc r2, r3, r2
     and r1, r6, r7

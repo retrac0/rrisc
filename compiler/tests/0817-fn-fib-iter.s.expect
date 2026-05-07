@@ -14,7 +14,7 @@ fib:
     and r1, r6, r7
     swr r2, r1
 ;; int a = ...
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
@@ -25,7 +25,7 @@ fib:
     swr r2, r1
 ;; for (...; i<n; ...)
 ;; int i = ...
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 3
     swr r2, r1

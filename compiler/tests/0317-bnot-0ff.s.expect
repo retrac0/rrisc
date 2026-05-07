@@ -12,10 +12,10 @@ main:
     swr r5, r6
     addi r6, -1
 ;; return ~255
-    li r2, 3840
+    lui r2, 60
     and r1, r6, r7
     swr r2, r1
-    li r2, 3840
+    lui r2, 60
     li r1, _epi_main
     jalr r0, r1
 _epi_main:

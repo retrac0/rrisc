@@ -6,6 +6,7 @@ module RCC.Codegen
 
 import Control.Monad (when, forM_)
 import Control.Monad.State
+import Data.Bits ((.&.), shiftR)
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import qualified Data.Set as Set
@@ -192,9 +193,29 @@ addrOfSlot s = do
   emitL "and r1, r6, r7"
   when (s /= 0) $ emitL ("addi r1, " <> tshow s)
 
+-- Emit the most compact single instruction that loads constant n into reg.
+-- val = n masked to 12 bits.
+--   val == 0:              and rx, r0, r0  (1 word)
+--   val == 0xFFF (i.e. -1): and rx, r7, r7  (1 word)
+--   lower 6 bits zero:     lui rx, val>>6  (1 word, rx not r0/r7)
+--   otherwise:             li rx, n        (2 words)
+emitLoadConst :: Int -> Int -> CG ()
+emitLoadConst reg n =
+  let val = n .&. 0xFFF
+      rn  = "r" <> tshow reg
+  in emitL $ case () of
+      _ | val == 0
+                   -> "and " <> rn <> ", r0, r0"
+        | val == 0xFFF
+                   -> "and " <> rn <> ", r7, r7"
+        | val .&. 0x3F == 0, reg /= 0, reg /= 7
+                   -> "lui " <> rn <> ", " <> tshow (val `shiftR` 6)
+        | otherwise
+                   -> "li "  <> rn <> ", " <> tshow n
+
 -- Load operand into the given register (2, 3, or 4).
 loadOpInto :: Int -> TAC.Operand -> CG ()
-loadOpInto reg (TAC.OConst n)  = emitL ("li r" <> tshow reg <> ", " <> tshow n)
+loadOpInto reg (TAC.OConst n)  = emitLoadConst reg n
 loadOpInto reg (TAC.OAddr lbl) = emitL ("li r" <> tshow reg <> ", " <> lbl)
 loadOpInto reg (TAC.OTemp t)   = do
   s <- slotOf t

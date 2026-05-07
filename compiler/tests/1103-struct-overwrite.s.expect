@@ -13,7 +13,7 @@ main:
     addi r6, -1
 ;; struct P p
 ;; p.v=0
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     swr r2, r1
 ;; p.v=99

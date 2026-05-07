@@ -25,7 +25,7 @@ _L_while_0:
     and r1, r6, r7
     addi r1, 1
     lwr r3, r1
-    li r2, 0
+    and r2, r0, r0
     sub r1, r3, r2
     sub r0, r0, r1
     rol r2, r0

@@ -16,7 +16,7 @@ main:
     and r1, r6, r7
     swr r2, r1
 ;; int s = ...
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
@@ -24,7 +24,7 @@ main:
 _L_while_0:
     and r1, r6, r7
     lwr r3, r1
-    li r2, 0
+    and r2, r0, r0
     li r1, 0o4000
     clrt
     addc r3, r3, r1

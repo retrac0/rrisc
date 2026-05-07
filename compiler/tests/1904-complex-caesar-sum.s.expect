@@ -15,7 +15,7 @@ main:
 ;; msg[0]=72
     and r1, r6, r7
     lwr r3, r1
-    li r2, 0
+    and r2, r0, r0
     clrt
     addc r2, r3, r2
     and r1, r6, r7
@@ -86,13 +86,13 @@ main:
     addi r1, 5
     swr r2, r1
 ;; int s = ...
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 6
     swr r2, r1
 ;; for (...; i<5; ...)
 ;; int i = ...
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 7
     swr r2, r1
@@ -151,7 +151,7 @@ _L_main_ifz_skip_109:
     and r1, r6, r7
     addi r1, 11
     lwr r3, r1
-    li r2, 128
+    lui r2, 2
     sub r0, r0, r2
     bf _L_main_mod_done_146
     and r1, r3, r7
@@ -230,7 +230,7 @@ _L_endfor_2:
     and r1, r6, r7
     addi r1, 6
     lwr r3, r1
-    li r2, 256
+    lui r2, 4
     sub r0, r0, r2
     bf _L_main_mod_done_225
     and r1, r3, r7

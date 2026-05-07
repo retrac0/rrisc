@@ -16,7 +16,7 @@ main:
     and r1, r6, r7
     swr r2, r1
 ;; unsigned b = ...
-    li r2, 2048
+    lui r2, 32
     and r1, r6, r7
     addi r1, 1
     swr r2, r1

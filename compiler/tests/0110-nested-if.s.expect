@@ -21,7 +21,7 @@ main:
     addi r1, 1
     swr r2, r1
 ;; int result = ...
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
@@ -53,7 +53,7 @@ _L_main_ifz_skip_36:
     li r1, _L_and_end_1
     jalr r0, r1
 _L_and_false_0:
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 5
     swr r2, r1
@@ -108,7 +108,7 @@ _L_main_ne_87:
     li r1, _L_or_true_3
     jalr r0, r1
 _L_main_ifnz_skip_98:
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 8
     swr r2, r1
@@ -162,7 +162,7 @@ _L_main_ifnz_skip_149:
     and r1, r6, r7
     addi r1, 1
     lwr r3, r1
-    li r2, 0
+    and r2, r0, r0
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
@@ -180,7 +180,7 @@ _L_main_ne_159:
     li r1, _L_or_true_6
     jalr r0, r1
 _L_main_ifnz_skip_170:
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 11
     swr r2, r1

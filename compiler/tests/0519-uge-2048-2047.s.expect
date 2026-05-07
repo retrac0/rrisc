@@ -12,7 +12,7 @@ main:
     swr r5, r6
     addi r6, -3
 ;; unsigned a = ...
-    li r2, 2048
+    lui r2, 32
     and r1, r6, r7
     swr r2, r1
 ;; unsigned b = ...

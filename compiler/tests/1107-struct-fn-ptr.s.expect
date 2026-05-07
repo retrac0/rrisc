@@ -37,7 +37,7 @@ main:
     addi r6, -3
 ;; struct P p
 ;; p.x=0
-    li r2, 0
+    and r2, r0, r0
     and r1, r6, r7
     swr r2, r1
 ;; setx(&p,42)

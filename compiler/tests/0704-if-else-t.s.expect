@@ -38,7 +38,7 @@ _L_else_0:
     li r1, _epi_main
     jalr r0, r1
 _L_endif_1:
-    li r2, 0
+    and r2, r0, r0
     li r1, _epi_main
     jalr r0, r1
 _epi_main:
