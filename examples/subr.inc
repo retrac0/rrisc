@@ -1,8 +1,12 @@
-; stack.lib -- Stack and subroutine call macros for RRISC
+; subr.inc -- push / pop / call / ret macros (rcc ABI; see Arch.md)
 ;
 ; Register convention:
+;   r1  scratch / address temp (not used for args)
+;   r2  arg 1 / return value
+;   r3  arg 2
+;   r4  arg 3
+;   r5  link register (LR) -- return address from jalr r5, ra
 ;   r6  stack pointer (SP), full descending -- points to last pushed word
-;   r5  link register (LR) -- holds return address of current frame
 ;   r7  hardwired -1 -- used by push for decrement
 ;
 ; Non-leaf functions must save/restore r5:
@@ -23,10 +27,10 @@
     addi r6, 1
 %endm
 
-; call target -- call subroutine at label; return address saved in r5
+; call target -- call subroutine at label; return address in r5 (target via r1)
 %macro call target
-    li   r5, target
-    jalr r5, r5
+    li   r1, target
+    jalr r5, r1
 %endm
 
 ; callr ra -- call subroutine whose address is in register ra; return address in r5

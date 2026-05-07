@@ -1,6 +1,7 @@
-; fib.s -- Fibonacci sequence example for RRISC
+; fib.s -- Iterative Fibonacci for RRISC (no subroutines)
 ;
-; Computes Fibonacci numbers and halts with the final values loaded into registers.
+; Leaves F(n) in r2 and F(n-1) in r1 after the loop (n=10 iterations here).
+; For subroutine calls, see fib-recursive.s + subr.inc.
 ;
         .org 0o1000
 
