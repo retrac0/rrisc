@@ -1,8 +1,11 @@
 /*
  * rpn_float.c -- RPN floating-point calculator (soft-float runtime).
  *
- * The linked binary is typically larger than 4096 words on RRISC; use integer
- * demos/rpn.c if you need a single 4k-word RAM image, or raise the machine limit.
+ * The soft-float runtime (lib/float/*.s) plus __atof/__ftoa is larger than the RRISC
+ * flat 12-bit address space (4096 words: code + rodata + globals must all fit in
+ * 0..0o7777).  python3 asm.py will fail with "li value … out of 12-bit range".
+ * Use integer demos/rpn.c for the stock demos layout, or a host build / larger
+ * memory model if you extend the architecture.
  *
  * Compile like demos/rpn.c (same flags), output e.g. demos/rpn_float.s
  */

@@ -40,8 +40,9 @@ __itof:
     bf   __itof_zero
 
     ; extract sign
+    clrt
     and  r1, r3, r7          ; r1 = n
-    rol  r1, r1               ; T = bit11 (sign)
+    rol  r1, r1               ; T = bit11 (sign); T must be 0 before rol
     and  r4, r0, r0
     addc r4, r0, r0           ; r4 = sign bit
     and  r1, r6, r7
@@ -57,8 +58,9 @@ __itof_positive:
     ; normalize: shift left until bit 11 is set; count in r4
     and  r4, r0, r0          ; r4 = k (shift count)
 __itof_norm_loop:
+    clrt
     and  r1, r3, r7          ; r1 = r3
-    rol  r1, r1               ; T = bit11 of r3
+    rol  r1, r1               ; T = bit11 of r3 (T must be 0 before rol)
     bt   __itof_normed       ; leading 1 found
     clrt
     rol  r3, r3               ; r3 <<= 1

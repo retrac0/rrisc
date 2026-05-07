@@ -41,6 +41,13 @@ octT n = "0o" <> T.pack (showOct n "")
 line :: Text -> Text
 line t = "    " <> t
 
+-- | Assembly entry symbol for calls emitted from TAC (libc float I/O uses __* names).
+asmCalleeName :: Text -> Text
+asmCalleeName f
+  | f == "atof" = "__atof"
+  | f == "ftoa" = "__ftoa"
+  | otherwise   = f
+
 -- ---------------------------------------------------------------------------
 -- Per-procedure code generation state
 
@@ -78,10 +85,22 @@ codegen opts (TAC.TACProg globals procs) = T.unlines $
   where
     inc p = "%include \"" <> T.pack p <> "\""
 
-    -- Collect which float builtins are called across all procs
+    -- Collect which float builtins (and libc float I/O) are called across all procs
     calledFuncs = Set.fromList
       [ lbl | p <- procs, TAC.ICall _ lbl _ <- TAC.procInstrs p ]
-    needFloat f = Set.member f calledFuncs
+    -- Hand-written lib/float/__ftoa.s and __atof.s call __* helpers without appearing as
+    -- ICall in TAC; pull their object code in whenever ftoa/atof is referenced.
+    libIoFloatDeps :: Map TAC.Label [TAC.Label]
+    libIoFloatDeps = Map.fromList
+      [ ("ftoa", ["__fcopy", "__fneg", "__ftoi", "__itof", "__fsub", "__fmul"])
+      , ("atof", ["__itof", "__fadd", "__fmul", "__fdiv", "__fneg", "__fcopy"])
+      ]
+    extraFloatForLibIo = Set.fromList
+      [ d | root <- Set.toList calledFuncs
+          , Just ds <- [Map.lookup root libIoFloatDeps]
+          , d <- ds
+          ]
+    needFloat f = Set.member f calledFuncs || Set.member f extraFloatForLibIo
     floatIncludes = concatMap (\(nm, path) ->
         if needFloat nm then [inc path] else [])
       [ ("__fcopy", "float/__fcopy.s")
@@ -94,6 +113,8 @@ codegen opts (TAC.TACProg globals procs) = T.unlines $
       , ("__ftoi",  "float/__ftoi.s")
       , ("__itof",  "float/__itof.s")
       ]
+      ++ (if Set.member "ftoa" calledFuncs then [inc "float/__ftoa.s"] else [])
+      ++ (if Set.member "atof" calledFuncs then [inc "float/__atof.s"] else [])
 
     roGlobs = filter TAC.globalConst globals
     rwGlobs = filter (not . TAC.globalConst) globals
@@ -337,7 +358,6 @@ storeRegToTemp reg t = do
 -- Per-instruction codegen
 
 genInstr :: TAC.Instr -> CG ()
-
 genInstr (TAC.ILabel      lbl) = emit (lbl <> ":")
 genInstr (TAC.IComment    txt) = emit (";; " <> txt)
 genInstr (TAC.IAllocLocal _  ) = pure ()  -- slot reserved by buildSlotMap; no code needed
@@ -416,7 +436,7 @@ genInstr (TAC.ICall mt fname args) = do
   -- Load register args; r6 is now numStack words below the frame base.
   forM_ (zip [2,3,4] regArgs) $ \(r, op) -> loadOpIntoAdj r op numStack
   -- Issue the call. Callee pops the stack args in its epilogue.
-  emitL ("li r1, " <> fname)
+  emitL ("li r1, " <> asmCalleeName fname)
   emitL "jalr r5, r1"
   -- Capture return value if requested.
   case mt of

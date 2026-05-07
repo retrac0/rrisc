@@ -243,9 +243,11 @@ __fadd_no_swap:
     sub   r0, r4, r1          ; T=1 if diff < 36
     bf    __fadd_b_zeroed
     ; shift sig_b right by r4
-    ; use r1 as loop counter = diff
+    ; stash diff in FA_R_EXP (scratch until result exp is written); FA_* clobber r1.
     and   r1, r4, r7          ; r1 = diff
+    FA_ST r1, FA_R_EXP
 __fadd_align_loop:
+    FA_LD r1, FA_R_EXP
     sub   r0, r0, r1          ; T=1 if count != 0
     bf    __fadd_aligned
     ; logical right shift sig_b by 1: clrt then ror hi,mid,lo
@@ -259,7 +261,9 @@ __fadd_align_loop:
     FA_LD r4, FA_B_LO
     ror   r4, r4
     FA_ST r4, FA_B_LO
-    subi  r1, 1
+    FA_LD r2, FA_R_EXP
+    subi  r2, 1
+    FA_ST r2, FA_R_EXP
     sub   r0, r0, r7          ; T=1
     bt    __fadd_align_loop
 
@@ -379,9 +383,10 @@ __fadd_subtract:
     bf    __fadd_zero_result
     ; normalize: shift left until bit11 of r_hi is set
 __fadd_norm_loop:
+    clrt
     FA_LD r2, FA_R_HI
     and   r1, r2, r7
-    rol   r1, r1              ; T = bit11 of r_hi
+    rol   r1, r1              ; T = bit11 of r_hi (T must be 0 before rol)
     bt    __fadd_normed
     ; shift left
     clrt

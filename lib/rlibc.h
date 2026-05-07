@@ -121,12 +121,25 @@ int atoi(int *s) {
 /*
  * itoa: convert n to null-terminated decimal string in buf.
  * buf must hold at least 6 words (sign + 4 digits + NUL for 12-bit range).
- * Returns buf.  Note: itoa(-2048) is unspecified (12-bit edge case).
+ * Returns buf.  Handles 12-bit MIN (-2048): unary minus has no positive twin,
+ * so "n = -n" would leave n unchanged and break the digit loop; emit "-2048".
  */
 int *itoa(int n, int *buf) {
     int *p = buf;
     int neg = n < 0;
-    if (neg) { n = -n; }
+    if (neg) {
+        int m = -n;
+        if (m == n) {
+            *p++ = '-';
+            *p++ = '2';
+            *p++ = '0';
+            *p++ = '4';
+            *p++ = '8';
+            *p = 0;
+            return buf;
+        }
+        n = m;
+    }
     if (n == 0) { *p++ = '0'; }
     else {
         int *start = p;
@@ -154,87 +167,12 @@ int *itoa(int n, int *buf) {
 }
 
 /*
- * ftoa: convert *f to a null-terminated decimal string in buf.
- * Writes sign, integer digits, '.', 4 fractional digits.
- * buf must hold at least 12 words.  Returns pointer past the null.
- * Range: |*f| < 4096 (12-bit int limit for the integer part).
+ * ftoa / atof: implemented in lib/float/__ftoa.s and lib/float/__atof.s (included by rcc
+ * when these functions are called). Prototypes only here — do not add C bodies or
+ * you will duplicate symbols at assembly time.
  */
-int *ftoa(float *f, int *buf) {
-    float zero = 0.0;
-    float ten = 10.0;
-    int *p = buf;
-    float x;
-    int ipart;
-    float frac;
-    int digit;
-    int i;
-
-    x = *f;
-    if (x == zero) {
-        *p++ = '0'; *p++ = '.';
-        *p++ = '0'; *p++ = '0'; *p++ = '0'; *p++ = '0';
-        *p = 0;
-        return p;
-    }
-    if (x < zero) {
-        *p++ = '-';
-        x = -x;
-    }
-    ipart = (int)x;
-    itoa(ipart, p);
-    while (*p) p++;
-    *p++ = '.';
-    frac = x - (float)ipart;
-    for (i = 0; i < 4; i = i + 1) {
-        frac = frac * ten;
-        digit = (int)frac;
-        *p++ = '0' + digit;
-        frac = frac - (float)digit;
-    }
-    *p = 0;
-    return p;
-}
-
-/*
- * atof: parse ASCII decimal string s into *result.
- * Handles optional sign, integer digits, optional '.'+fractional digits.
- */
-void atof(int *s, float *result) {
-    int *p = s;
-    int neg = 0;
-    int ipart = 0;
-    float fval;
-    float frac;
-    float scale;
-    float ten = 10.0;
-    float zero = 0.0;
-    float d;
-
-    while (*p == ' ' || *p == '\t') p++;
-    if (*p == '-') { neg = 1; p++; }
-    else if (*p == '+') { p++; }
-
-    while (*p >= '0' && *p <= '9') {
-        ipart = ipart * 10 + (*p - '0');
-        p++;
-    }
-    fval = (float)ipart;
-
-    frac = zero;
-    scale = ten;
-    if (*p == '.') {
-        p++;
-        while (*p >= '0' && *p <= '9') {
-            d = (float)(*p - '0');
-            frac = frac + d / scale;
-            scale = scale * ten;
-            p++;
-        }
-    }
-    fval = fval + frac;
-    if (neg) { fval = -fval; }
-    *result = fval;
-}
+int *ftoa(float *f, int *buf);
+void atof(int *s, float *result);
 
 /* ---- Control ---- */
 

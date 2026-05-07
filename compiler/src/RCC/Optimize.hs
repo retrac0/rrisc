@@ -1,8 +1,8 @@
 -- | TAC optimization pipeline for RRISC.
 --
--- Pass order (first on input IR): eliminateDeadCode, elimFloatCopies,
+-- Pass order (last applied first): eliminateDeadCode, elimFloatCopies,
 -- copyPropagate, uniqConstSubst, eliminateDeadTemps, cmpBranchPeephole,
--- foldConstants, foldBranches.
+-- foldConstants, foldBranches, dedupeFloatRoData.
 -- Optimization is default-on in 'rcc' because unoptimized codegen often exceeds
 -- the 12-bit word-address space (4096 words); assembly then fails with immediates
 -- out of range for label addresses.
@@ -12,14 +12,17 @@ module RCC.Optimize
   ) where
 
 import Data.Bits
+import Data.List (foldl')
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import qualified Data.Text as T
 import qualified RCC.TAC as TAC
 
 optimize :: TAC.TACProg -> TAC.TACProg
 optimize =
-    foldBranches
+    dedupeFloatRoData
+  . foldBranches
   . foldConstants
   . cmpBranchPeephole
   . eliminateDeadTemps
@@ -505,3 +508,58 @@ addrRefs instr = [lbl | TAC.OAddr lbl <- ops instr]
     ops (TAC.IReturn (Just o))  = [o]
     ops (TAC.ICall _ _ args)    = args
     ops _                       = []
+
+-- | Merge duplicate @.float@ rodata globals (same 48-bit words) produced from
+-- 'EFloatLit' lowering. Identical literals in rlibc (e.g. many @0.0@ / @10.0@)
+-- each became a separate label; merging shrinks the image toward the 12-bit
+-- address ceiling so soft-float demos can assemble.
+isFloatFlit :: TAC.Global -> Bool
+isFloatFlit g =
+  TAC.globalConst g
+    && TAC.globalSize g == 4
+    && length (TAC.globalInit g) == 4
+    && "_L_flit_" `T.isPrefixOf` TAC.globalName g
+
+substAddrOp :: Map TAC.Label TAC.Label -> TAC.Operand -> TAC.Operand
+substAddrOp m (TAC.OAddr l) = TAC.OAddr (Map.findWithDefault l l m)
+substAddrOp _ o             = o
+
+substAddrInstr :: Map TAC.Label TAC.Label -> TAC.Instr -> TAC.Instr
+substAddrInstr m instr = case instr of
+  TAC.IAssign t op        -> TAC.IAssign t (substAddrOp m op)
+  TAC.IBinOp t op a b     -> TAC.IBinOp t op (substAddrOp m a) (substAddrOp m b)
+  TAC.IUnOp t op a        -> TAC.IUnOp t op (substAddrOp m a)
+  TAC.ILoad t op          -> TAC.ILoad t (substAddrOp m op)
+  TAC.IStore a b          -> TAC.IStore (substAddrOp m a) (substAddrOp m b)
+  TAC.IIfNZ op lbl        -> TAC.IIfNZ (substAddrOp m op) lbl
+  TAC.IIfZ op lbl         -> TAC.IIfZ (substAddrOp m op) lbl
+  TAC.IReturn mo          -> TAC.IReturn (fmap (substAddrOp m) mo)
+  TAC.ICall mt f args     -> TAC.ICall mt f (map (substAddrOp m) args)
+  TAC.IIfCmp op a b lbl   -> TAC.IIfCmp op (substAddrOp m a) (substAddrOp m b) lbl
+  TAC.IIfNCmp op a b lbl  -> TAC.IIfNCmp op (substAddrOp m a) (substAddrOp m b) lbl
+  _                       -> instr
+
+dedupeFloatRoData :: TAC.TACProg -> TAC.TACProg
+dedupeFloatRoData prog =
+  let globs0 = TAC.tacGlobals prog
+      (accRev, _, rename) =
+        foldl'
+          ( \(acc, byInit, ren) g ->
+              if isFloatFlit g
+                then
+                  let k = TAC.globalInit g
+                      nm = TAC.globalName g
+                   in case Map.lookup k byInit of
+                        Just cnm -> (acc, byInit, Map.insert nm cnm ren)
+                        Nothing -> (g : acc, Map.insert k nm byInit, ren)
+                else (g : acc, byInit, ren)
+          )
+          ([], Map.empty, Map.empty)
+          globs0
+      globs1 = reverse accRev
+      renProc p =
+        p {TAC.procInstrs = map (substAddrInstr rename) (TAC.procInstrs p)}
+   in prog
+        { TAC.tacGlobals = globs1
+        , TAC.tacProcs = map renProc (TAC.tacProcs prog)
+        }

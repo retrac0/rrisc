@@ -18,9 +18,19 @@ SIM := python3 $(ROOT)/sim.py --terminal $(SIM_MEM) $(SIM_START)
 
 RCC_FLAGS := --code-base $(CODE_BASE) --data-base $(DATA_BASE) --stack-top $(STACK_TOP)
 
-.PHONY: all run clean
+.PHONY: all run rpn_float clean
 
 all: rpn.bin
+
+# Soft-float RPN: source is supported, but the linked image exceeds 4k words on
+# the stock ISA; assembly fails (see rpn_float.c header). Kept for experimentation.
+rpn_float.s: rpn_float.c $(ROOT)/lib/rlibc.h
+	cd $(RCC_DIR) && $(RCC) $(RCC_FLAGS) \
+	    --preprocessor "cpp -P -I $(ROOT)/lib" \
+	    $(ROOT)/demos/rpn_float.c -o $(ROOT)/demos/rpn_float.s
+
+rpn_float.bin: rpn_float.s
+	$(ASM) rpn_float.s -o rpn_float.bin
 
 rpn.s: rpn.c $(ROOT)/lib/rlibc.h
 	cd $(RCC_DIR) && $(RCC) $(RCC_FLAGS) \
@@ -34,4 +44,4 @@ run: rpn.bin
 	$(SIM) rpn.bin
 
 clean:
-	rm -f rpn.s rpn.bin
+	rm -f rpn.s rpn.bin rpn_float.s rpn_float.bin

@@ -26,11 +26,10 @@ rcc:
 	cd compiler && $(CABAL) build exe:rcc
 	ln -sf "$$(cd compiler && $(CABAL) list-bin exe:rcc)" "$(CURDIR)/rcc"
 
-examples: ras
-	for src in examples/*.s; do \
-		./ras "$$src" || exit 1; \
-	done
+examples:
+	@make -C examples all
 
 clean:
 	-rm -f sim2 ras rsim rcc *.bin tests/*.bin tests/*.output tests/*.sim2.output tests/*.err
 	-rm -f examples/*.bin examples/*.output examples/*.sim2.output
+	-rm -rf examples/build

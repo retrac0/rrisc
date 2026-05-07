@@ -912,7 +912,11 @@ class Assembler:
                     raise AsmError(f, n, "li cannot target r0")
                 val = _eval_expr(ops[1], self.labels, f, n)
                 if val < -2048 or val > WORD_MASK:
-                    raise AsmError(f, n, f"li value {val} out of 12-bit range")
+                    raise AsmError(
+                        f, n,
+                        f"li value {val} out of 12-bit range (max word address {WORD_MASK}); "
+                        "program + rodata likely exceeds the flat 4k-word address space"
+                    )
                 val &= WORD_MASK
                 lower = val & IMM6_MASK   # bits 5:0  (0..63)
                 upper = (val >> 6) & IMM6_MASK  # bits 11:6 (0..63)

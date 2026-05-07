@@ -22,8 +22,9 @@ __ftoi:
     ; load w0 -> extract sign and exp
     lwr  r1, r2
     ; sign = bit 11 of w0
+    clrt
     and  r3, r1, r7         ; r3 = w0
-    rol  r3, r3              ; T = bit11 (sign), r3 = w0<<1 (discarded)
+    rol  r3, r3              ; T = bit11 (sign); T must be 0 before rol
     ; save sign: T=1 means negative
     ; r4 = sign (0 or 1)
     and  r4, r0, r0          ; r4 = 0
@@ -99,8 +100,9 @@ __ftoi_nonspecial:
     lwr  r2, r1              ; r2 = sig_hi (result starts here)
 
     ; determine sign of shift: bit 11 of r3
+    clrt
     and  r1, r3, r7          ; r1 = r3
-    rol  r1, r1               ; T = bit11 of shift
+    rol  r1, r1               ; T = bit11 of shift (T must be 0 before rol)
     bt   __ftoi_right_shift
 
 __ftoi_left_shift:
@@ -129,8 +131,9 @@ __ftoi_rshift_loop:
     sub  r0, r0, r3           ; T=1 if r3 != 0
     bf   __ftoi_apply_sign
     ; arithmetic right shift 1 (fill with sign bit of r2)
+    clrt
     and  r1, r2, r7
-    rol  r1, r1               ; T = bit11 of r2 (sign)
+    rol  r1, r1               ; T = bit11 of r2 (sign); T must be 0 before rol
     ror  r2, r2
     subi r3, 1
     sub  r0, r0, r7           ; T=1 always
