@@ -6,7 +6,7 @@ module RRISC.Sim.Terminal (
   attachTerminal,
 ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (ThreadId, forkIO, killThread)
 import Control.Concurrent.STM (
   atomically,
   modifyTVar',
@@ -15,8 +15,9 @@ import Control.Concurrent.STM (
   writeTVar,
  )
 import Control.Exception (catch, throwIO)
-import Control.Monad (void, when)
+import Control.Monad (when)
 import Data.Bits ((.&.))
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import qualified Data.ByteString as B
 import Data.Char (chr, ord)
 import qualified Data.Sequence as Seq
@@ -66,9 +67,14 @@ popRx s =
     v Seq.:< rest -> (Just v, rest)
 
 -- | Register UART at @0o7770@–@0o7773@. Returns an action to restore stdin echo/buffering.
+--
+-- When @termReadStdin@ is true we spawn a reader thread (same role as Python's daemon
+-- @terminal-rx@). It often blocks in @hGetChar@; we @killThread@ on shutdown so @rsim@
+-- exits after the CPU halts instead of waiting for interactive input.
 attachTerminal :: Bus -> TerminalOptions -> IO (IO ())
 attachTerminal bus opts = do
   rx <- newTVarIO (Seq.empty :: RxFifo)
+  readerTid :: IORef (Maybe ThreadId) <- newIORef Nothing
   case termPreload opts of
     Just bs ->
       atomically $
@@ -82,8 +88,8 @@ attachTerminal bus opts = do
     hSetEcho stdin False
 
   -- Match terminal.py: stop the reader thread on stdin EOF (pipe/file closed), do not spin forever.
-  when (termReadStdin opts) $
-    void $
+  when (termReadStdin opts) $ do
+    tid <-
       forkIO $
         let go =
               do
@@ -100,6 +106,7 @@ attachTerminal bus opts = do
                           then pure ()
                           else throwIO e
                       )
+    writeIORef readerTid (Just tid)
 
   let txReady _ = pure (Just 1)
       rxReady _ = atomically $ do
@@ -125,6 +132,7 @@ attachTerminal bus opts = do
   registerAddress bus 0o7773 (BusHandler (Just rxRead) Nothing)
 
   pure $ do
+    readIORef readerTid >>= mapM_ killThread
     when tty $ do
       hSetEcho stdin True
       hSetBuffering stdin LineBuffering

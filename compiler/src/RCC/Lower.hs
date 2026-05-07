@@ -822,9 +822,14 @@ inferTy (Syn.EUnary _ op e)   = do
       _               -> pure Syn.TyInt
     Syn.UAddrOf -> pure (Syn.TyPtr t)
     _           -> pure t
-inferTy (Syn.EBinary _ op l _) = case op of
+inferTy (Syn.EBinary _ op l r) = case op of
+  Syn.BSub -> do
+    lt <- inferTy l
+    rt <- inferTy r
+    case (lt, rt) of
+      (Syn.TyPtr _, Syn.TyPtr _) -> pure Syn.TyInt
+      _                          -> pure lt
   Syn.BAdd  -> inferTy l
-  Syn.BSub  -> inferTy l
   Syn.BMul  -> inferTy l
   Syn.BDiv  -> inferTy l
   Syn.BMod  -> inferTy l
@@ -909,10 +914,14 @@ compoundToSynBinOp _         = Syn.BAdd  -- fallback; caller ensures float-valid
 -- Helpers
 
 -- Choose signed vs unsigned TAC op based on the type of the left operand.
+-- Pointer relational compares use unsigned order (same memory address space as TyUint).
 selectBinOp :: Syn.BinOp -> Syn.Expr -> L TAC.BinOp
 selectBinOp op lExpr = do
   lTy <- inferTy lExpr
-  let u = lTy == Syn.TyUint
+  let u = case lTy of
+        Syn.TyUint -> True
+        Syn.TyPtr _ -> True
+        _ -> False
   pure $ case op of
     Syn.BLt  | u -> TAC.TULt
     Syn.BLe  | u -> TAC.TULe

@@ -81,7 +81,7 @@ optsInfo =
   info (optsP <**> helper) $
     fullDesc
       <> progDesc "RRISC simulator (sim.py parity)"
-      <> header "hsim — RRISC simulator"
+      <> header "rsim — RRISC simulator"
 
 -- | Match @int(args.start, 8)@ in sim.py (always octal base 8).
 readStartOct :: String -> Int

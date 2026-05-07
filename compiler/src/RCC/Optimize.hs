@@ -1,3 +1,11 @@
+-- | TAC optimization pipeline for RRISC.
+--
+-- Pass order (first on input IR): eliminateDeadCode, elimFloatCopies,
+-- copyPropagate, uniqConstSubst, eliminateDeadTemps, cmpBranchPeephole,
+-- foldConstants, foldBranches.
+-- Optimization is default-on in 'rcc' because unoptimized codegen often exceeds
+-- the 12-bit word-address space (4096 words); assembly then fails with immediates
+-- out of range for label addresses.
 module RCC.Optimize
   ( optimize
   , optimizeWhen
@@ -229,6 +237,10 @@ eliminateDeadTemps prog = prog { TAC.tacProcs = map dteProc (TAC.tacProcs prog) 
         (TAC.IBinOp _ _ _ _ : rest) -> followedByPhiMerge rest
         (TAC.IUnOp _ _ _ : rest) -> followedByPhiMerge rest
         (TAC.ILoad _ _ : rest) -> followedByPhiMerge rest
+        -- Side-effecting instructions still sit on the path to IGoto in loop bodies
+        -- (e.g. *p++ = q lowers to p=p+1 then IStore — must not drop p=p+1 as dead).
+        (TAC.IStore _ _ : rest) -> followedByPhiMerge rest
+        (TAC.ICall _ _ _ : rest) -> followedByPhiMerge rest
         (TAC.IIfCmp _ _ _ _ : rest) -> followedByPhiMerge rest
         (TAC.IIfNCmp _ _ _ _ : rest) -> followedByPhiMerge rest
         (TAC.IIfZ _ _ : rest) -> followedByPhiMerge rest

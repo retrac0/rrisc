@@ -74,6 +74,7 @@ codegen opts (TAC.TACProg globals procs) = T.unlines $
   prelude
   ++ concatMap genProc procs
   ++ rodata
+  ++ rwTrailer
   where
     inc p = "%include \"" <> T.pack p <> "\""
 
@@ -97,11 +98,19 @@ codegen opts (TAC.TACProg globals procs) = T.unlines $
     roGlobs = filter TAC.globalConst globals
     rwGlobs = filter (not . TAC.globalConst) globals
     rwWords = sum $ map TAC.globalSize rwGlobs
-    -- Pack RW globals at dataBase, start code immediately after (reclaims gap below a
-    -- high default code base). With no RW globals, keep code at codeBase.
+    -- Code vs RW globals layout: when codeBase < dataBase, emit crt0+text+rodata
+    -- first at codeBase, then .org dataBase for mutable globals (split layout).
+    -- Otherwise emit RW globals first and start code at dataBase+rwWords (packed).
+    splitMemLayout = not (null rwGlobs) && codeBase opts < dataBase opts
     effectiveCodeBase
-      | null rwGlobs = codeBase opts
-      | otherwise    = dataBase opts + rwWords
+      | null rwGlobs   = codeBase opts
+      | splitMemLayout = codeBase opts
+      | otherwise      = dataBase opts + rwWords
+
+    rwPreamble =
+      if null rwGlobs || splitMemLayout
+        then []
+        else "" : ("    .org " <> octT (dataBase opts)) : concatMap genGlobal rwGlobs
 
     prelude =
       [ "; rcc-generated assembly"
@@ -109,12 +118,14 @@ codegen opts (TAC.TACProg globals procs) = T.unlines $
       , "%define RCC_DATA_BASE " <> octT (dataBase opts)
       , "%define RCC_STACK_TOP " <> octT (stackTop opts)
       ]
-      ++ ( if null rwGlobs
-             then []
-             else "" : ("    .org " <> octT (dataBase opts)) : concatMap genGlobal rwGlobs
-         )
+      ++ rwPreamble
       ++ [inc "crt0.s"]
       ++ floatIncludes ++ [""]
+
+    rwTrailer =
+      if splitMemLayout && not (null rwGlobs)
+        then "" : ("    .org " <> octT (dataBase opts)) : concatMap genGlobal rwGlobs
+        else []
 
     rodata = if null roGlobs then [] else
       [""] ++ concatMap genGlobal roGlobs

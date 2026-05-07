@@ -699,10 +699,17 @@ class Assembler:
         return labels
 
     def _recompute_stmt_addrs(self, stmts):
+        """Recompute addresses after branch relaxation inserts instructions.
+
+        Statements keep their pre-relaxation ``stmt.addr`` unless patched to -1.
+        Forward jumps in that original placement (from ``.org``, alignment, etc.)
+        must be preserved; the old heuristic ``abs(...) > 100`` broke common
+        gaps such as ``.org 0o100`` (64 words), collapsing crt0 to address 0.
+        """
         addr = 0
         for stmt in stmts:
-            if stmt.addr != -1 and abs(stmt.addr - addr) > 100:
-                addr = stmt.addr  # snap to .org section boundary
+            if stmt.addr != -1 and stmt.addr > addr:
+                addr = stmt.addr
             stmt.addr = addr
             addr += self._stmt_size(stmt)
 

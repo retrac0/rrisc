@@ -150,12 +150,14 @@ labelsFromStmts = foldl addLabels M.empty
   where
     addLabels m s = foldl (\m' l -> M.insert l (stAddr s) m') m (stLabels s)
 
+-- After branch relaxation: preserve forward address gaps from '.org' / alignment.
+-- Using abs (orig - running) > 100 missed .org 0o100 (64 words); match asm.py.
 recomputeStmtAddrs :: [Stmt] -> [Stmt]
 recomputeStmtAddrs stmts = snd $ mapAccumL step 0 stmts
   where
     step !running stmt =
       let addr =
-            if stAddr stmt /= -1 && abs (stAddr stmt - running) > 100
+            if stAddr stmt /= -1 && stAddr stmt > running
               then stAddr stmt
               else running
           sz = stmtSize stmt

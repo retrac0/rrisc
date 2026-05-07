@@ -43,7 +43,7 @@ defaultOptions = Options
   , optStackTop     = Just 0o7770
   , optPreprocessor = Nothing
   , optLibDir       = Nothing
-  , optOptimize     = False
+  , optOptimize     = True
   , optDumpAst      = False
   , optDumpTac      = False
   }
@@ -63,6 +63,7 @@ parseArgs = go defaultOptions
     go opts ("--lib-dir"      : d : rest) = go opts{ optLibDir       = Just d }        rest
     go opts ("--dump-ast"         : rest) = go opts{ optDumpAst      = True }          rest
     go opts ("--dump-tac"         : rest) = go opts{ optDumpTac      = True }          rest
+    go opts ("--no-optimize"      : rest) = go opts{ optOptimize     = False }        rest
     go opts ("--optimize"         : rest) = go opts{ optOptimize     = True }          rest
     go _    (('-' : flag)         : _   ) = Left ("unknown flag: -" <> flag)
     go opts (f                :     rest) = go opts{ optInput = f }                    rest
@@ -78,7 +79,8 @@ usage prog =
     , "  --stack-top <n>       initial stack pointer     (default: 0o7770)"
     , "  --preprocessor <cmd>  run <cmd> on source before compiling (e.g. 'cpp -P')"
     , "  --lib-dir <path>      directory for rlibc headers (default: ../lib next to rcc)"
-    , "  --optimize            run the TAC optimization pipeline (off by default)"
+    , "  --optimize            enable TAC optimizations (default; omit with --no-optimize)"
+    , "  --no-optimize         skip TAC optimizations (debug only; large programs may not assemble)"
     , "  --dump-ast            print lexical AST and exit"
     , "  --dump-tac            print TAC and exit"
     ]

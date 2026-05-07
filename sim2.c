@@ -3,6 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/select.h>
+#include <unistd.h>
+#endif
 
 #define WORD_MASK  0xFFFu
 
@@ -56,6 +60,19 @@ static int      T  = 0;
 static uint16_t pc = 0;
 static int      use_terminal = 0;
 static int      use_translate = 0;
+/* UART RX: one prefetched word for 0o7773 (matches sim.py pipe/stdin behavior). */
+static int      uart_rx_have = 0;
+static uint16_t uart_rx_val = 0;
+
+#if defined(__unix__) || defined(__APPLE__)
+static int stdin_has_byte(void) {
+    fd_set rfds;
+    struct timeval tv = {0, 0};
+    FD_ZERO(&rfds);
+    FD_SET(STDIN_FILENO, &rfds);
+    return select(STDIN_FILENO + 1, &rfds, NULL, NULL, &tv) > 0;
+}
+#endif
 
 static uint16_t rdreg(int r) { return reg[r]; }
 
@@ -121,8 +138,24 @@ static uint16_t rdmem(uint16_t addr) {
     addr &= WORD_MASK;
     if (use_terminal) {
         if (addr == 07770) return 1;  /* TX RDY: always ready */
-        if (addr == 07771) return 0;  /* RX RDY: never ready  */
-        if (addr == 07773) return 0;  /* RX BUF: empty        */
+        if (addr == 07771) {          /* RX RDY */
+            if (uart_rx_have) return 1;
+#if defined(__unix__) || defined(__APPLE__)
+            if (stdin_has_byte()) {
+                int c = fgetc(stdin);
+                uart_rx_val = (uint16_t)((c == EOF) ? 0 : (c & WORD_MASK));
+                uart_rx_have = 1;
+                return 1;
+            }
+#endif
+            return 0;
+        }
+        if (addr == 07773) {          /* RX BUF */
+            if (!uart_rx_have) return 0;
+            uint16_t v = uart_rx_val;
+            uart_rx_have = 0;
+            return v;
+        }
     }
     for (int i = 0; i < num_banks; i++) {
         uint16_t end = (uint16_t)(banks[i].base + banks[i].size);

@@ -51,7 +51,7 @@ executable hsasm
     text
 
 
-executable hsim
+executable rsim
   main-is:          SimMain.hs
   hs-source-dirs:   app
   default-language: GHC2021

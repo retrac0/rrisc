@@ -4,9 +4,10 @@
  * For floating-point (larger binary, typically >4k words), see rpn_float.c.
  *
  * Compile:
- *   rcc --optimize --preprocessor "cpp -P -I lib" demos/rpn.c -o demos/rpn.s
+ *   rcc --preprocessor "cpp -P -I lib" demos/rpn.c -o demos/rpn.s
  *
- * Use --optimize for a smaller binary; omit it for a quicker compile or debugging.
+ * Optimizations are on by default (needed to fit this demo in 4k words). Use
+ * --no-optimize only for debugging TAC/asm (large programs may fail to assemble).
  *   python3 asm.py -I lib demos/rpn.s -o demos/rpn.bin
  *
  * Run (PC must be the code entry; with default rcc layout this is often 0o21):
