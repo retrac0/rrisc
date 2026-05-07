@@ -1,30 +1,15 @@
 /*
- * rpn.c -- RPN integer calculator for the RRISC 12-bit machine (fits in 4k words).
+ * rpn_float.c -- RPN floating-point calculator (soft-float runtime).
  *
- * For floating-point (larger binary, typically >4k words), see rpn_float.c.
+ * The linked binary is typically larger than 4096 words on RRISC; use integer
+ * demos/rpn.c if you need a single 4k-word RAM image, or raise the machine limit.
  *
- * Compile:
- *   rcc --optimize --preprocessor "cpp -P -I lib" demos/rpn.c -o demos/rpn.s
- *
- * Use --optimize for a smaller binary; omit it for a quicker compile or debugging.
- *   python3 asm.py -I lib demos/rpn.s -o demos/rpn.bin
- *
- * Run (PC must be the code entry; with default rcc layout this is often 0o21):
- *   python3 sim.py --terminal --start 0o21 demos/rpn.bin
- *
- * Operators (space-separated on one line or across multiple lines):
- *   NUMBER  push (decimal int, optional leading -)
- *   +  -  *  /   binary arithmetic (pop two, push result)
- *   n       negate (pop, push negative)
- *   p       print top of stack (does not pop)
- *   d       duplicate top of stack
- *   c       clear stack
- *   q       quit (halts simulator)
+ * Compile like demos/rpn.c (same flags), output e.g. demos/rpn_float.s
  */
 
 #include "rlibc.h"
 
-int stk[16];
+float stk[16];
 int sp = 0;
 
 int isdigitch(int c) {
@@ -33,13 +18,11 @@ int isdigitch(int c) {
 
 int main() {
     int buf[64];
-    int sbuf[8];
+    int sbuf[16];
     int *p;
-    int a;
-    int b;
-    int r;
-    int neg;
-    int val;
+    float a;
+    float b;
+    float r;
 
     while (1) {
         gets(buf);
@@ -50,19 +33,12 @@ int main() {
             if (*p == 0) break;
 
             if (isdigitch(*p) ||
-                (*p == '-' && isdigitch(*(p + 1)))) {
-                neg = 0;
-                if (*p == '-') {
-                    neg = 1;
-                    p++;
-                }
-                val = 0;
-                while (isdigitch(*p)) {
-                    val = val * 10 + (*p - '0');
-                    p++;
-                }
-                if (neg) val = -val;
-                stk[sp] = val;
+                (*p == '-' && isdigitch(*(p + 1))) ||
+                (*p == '.' && isdigitch(*(p + 1)))) {
+                atof(p, &r);
+                if (*p == '-') p++;
+                while (isdigitch(*p) || *p == '.') p++;
+                stk[sp] = r;
                 sp++;
             } else if (*p == '+') {
                 sp--; b = stk[sp];
@@ -95,7 +71,7 @@ int main() {
                 p++;
             } else if (*p == 'p') {
                 if (sp > 0) {
-                    itoa(stk[sp - 1], sbuf);
+                    ftoa(&stk[sp - 1], sbuf);
                     puts(sbuf);
                 }
                 p++;

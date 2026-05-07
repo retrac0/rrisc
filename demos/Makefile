@@ -16,7 +16,7 @@ SIM_MEM    := --mem ram:0:0o7770
 SIM_START  := --start $(CODE_BASE)
 SIM := python3 $(ROOT)/sim.py --terminal $(SIM_MEM) $(SIM_START)
 
-RCC_FLAGS := --code-base $(CODE_BASE) --data-base $(DATA_BASE) --stack-top $(STACK_TOP)
+RCC_FLAGS := --optimize --code-base $(CODE_BASE) --data-base $(DATA_BASE) --stack-top $(STACK_TOP)
 
 .PHONY: all run clean
 
