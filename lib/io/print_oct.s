@@ -4,7 +4,7 @@
 ;         r5 = return address
 ; Saves r5 on stack; tail-calls putstr.  Requires pbuf (5 words) defined by caller.
 ;
-%include "ror3.inc"
+%include "macros/ror3.inc"
 
 print_oct:
         subi r6, 1

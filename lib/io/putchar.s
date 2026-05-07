@@ -4,7 +4,7 @@
 ;         r5 = return address
 ; Clobbers: r1 (scratch).  T may be 1 on return (last poll saw ready).
 ;
-; Include inc/uart_tx.inc before this file (defines TXRDY / TXBUF).
+; Include macros/uart_tx.inc before this file (defines TXRDY / TXBUF).
 
 putchar:
         li   r1, TXRDY

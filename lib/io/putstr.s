@@ -4,7 +4,7 @@
 ;         r5 = return address
 ; Uses stack (push r5 / push r2) across putchar calls.
 ;
-; Include inc/uart_tx.inc before this file.
+; Include macros/uart_tx.inc before this file.
 
 putstr:
         subi r6, 1

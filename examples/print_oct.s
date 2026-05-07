@@ -4,7 +4,7 @@
 ;   python asm.py examples/print_oct.s
 ;   python sim.py examples/print_oct.bin --terminal --start 1000
 ;
-%include "inc/uart_tx.inc"
+%include "macros/uart_tx.inc"
 
         .org 0o10
 pbuf:   .fill 5, 0
@@ -20,6 +20,6 @@ main:   li   r6, 0o0100
         jalr r5, r1
         halt
 
-%include "inc/putchar.s"
-%include "inc/putstr.s"
-%include "inc/print_oct.s"
+%include "io/putchar.s"
+%include "io/putstr.s"
+%include "io/print_oct.s"

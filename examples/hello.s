@@ -4,7 +4,7 @@
 ;   python asm.py examples/hello.s
 ;   python sim.py examples/hello.bin --terminal --start 1000
 ;
-%include "inc/uart_tx.inc"
+%include "macros/uart_tx.inc"
         .org 0o1000
 
         li   r6, 0o0100         ; SP just above RAM (default sim: RAM 0o0000..0o0077)
@@ -16,5 +16,5 @@
 msg:    .unicode "Hello, world!\n"
         .word 0
 
-%include "inc/putchar.s"
-%include "inc/putstr.s"
+%include "io/putchar.s"
+%include "io/putstr.s"

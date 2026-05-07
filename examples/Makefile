@@ -11,7 +11,7 @@
 ROOT     := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))..
 # Recursive invoke: default to POSIX `make` (some environments set MAKE to a non-make binary).
 MK       ?= make
-ASM      := python3 $(ROOT)/asm.py -I $(ROOT)/lib -I $(ROOT)/examples
+ASM      := python3 $(ROOT)/asm.py -I $(ROOT)/lib
 SIM      := python3 $(ROOT)/sim.py --terminal --start 0o1000
 MAXCY    ?= 10000000
 

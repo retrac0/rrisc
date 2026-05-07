@@ -2,7 +2,7 @@
 ;
 ; Doubles r2 via a leaf subroutine; verifies push/call/ret.
 ;
-%include "subr.inc"
+%include "macros/subr.inc"
 
         .org 0o1000
 

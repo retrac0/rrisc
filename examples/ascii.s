@@ -4,7 +4,7 @@
 ;   python asm.py examples/ascii.s
 ;   python sim.py examples/ascii.bin --terminal --start 1000
 ;
-%include "inc/uart_tx.inc"
+%include "macros/uart_tx.inc"
         .org 0o1000
 
         li   r6, 0o0100
@@ -24,4 +24,4 @@ done:   li   r2, 10
         jalr r5, r1
         halt
 
-%include "inc/putchar.s"
+%include "io/putchar.s"

@@ -2,7 +2,7 @@
 ;
 ; fib(n): argument and return in r2.  SP starts at 0o0100 (RAM 0o00..0o77 in default sim).
 ;
-%include "subr.inc"
+%include "macros/subr.inc"
 
         .org 0o1000
 

@@ -14,7 +14,7 @@
 ;   python3 asm.py -I lib -I examples lib/float/demo-add.s -o /tmp/f.bin
 ;   python3 sim.py /tmp/f.bin --terminal --start 1000
 
-%include "inc/uart_tx.inc"
+%include "macros/uart_tx.inc"
 
         .org 0o0100
 fa:     .fill 4, 0
@@ -116,8 +116,8 @@ nl:     .unicode "\n"
 golden: .unicode "golden from_float seven: 0x402 0xe00 0x0 0x0\n"
         .word 0
 
-%include "inc/putchar.s"
-%include "inc/putstr.s"
+%include "io/putchar.s"
+%include "io/putstr.s"
 %include "float/put_hex12.s"
 %include "float/__itof.s"
 %include "float/__fadd.s"

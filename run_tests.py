@@ -949,6 +949,7 @@ def run_example_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]
     results: list[TResult] = []
     py_asm = cfg.root / "asm.py"
     bin_path = tmp_root / f"{base}.bin"
+    lib_inc = str(cfg.root / "lib")
 
     tried: list[str] = []
     for asm_id in cfg.assemblers:
@@ -959,12 +960,12 @@ def run_example_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]
             continue
         if asm_id == "py":
             ar = run_capture(
-                [python_exe(), str(py_asm), str(src), "-o", str(bin_path)],
+                [python_exe(), str(py_asm), "-I", lib_inc, str(src), "-o", str(bin_path)],
                 cwd=cfg.root,
             )
         else:
             ar = run_capture(
-                [str(cfg.hsasm_path), str(src), "-o", str(bin_path)],
+                [str(cfg.hsasm_path), "-I", lib_inc, str(src), "-o", str(bin_path)],
                 cwd=cfg.root,
             )
         if ar.returncode != 0:
@@ -1067,7 +1068,10 @@ def collect_asm_tests(cfg: RunConfig) -> tuple[list[Path], list[Path]]:
 
 
 def collect_examples(cfg: RunConfig) -> list[Path]:
-    ex = sorted((cfg.root / "examples").glob("*.s"))
+    # Top-level examples plus examples/float/*.s float demos.
+    top = list((cfg.root / "examples").glob("*.s"))
+    sub = list((cfg.root / "examples" / "float").glob("*.s"))
+    ex = sorted(top + sub)
     if cfg.filter_re:
         ex = [p for p in ex if cfg.filter_re.search(p.stem)]
     return ex
