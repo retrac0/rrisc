@@ -146,6 +146,89 @@ int *itoa(int n, int *buf) {
     return buf;
 }
 
+/*
+ * ftoa: convert *f to a null-terminated decimal string in buf.
+ * Writes sign, integer digits, '.', 4 fractional digits.
+ * buf must hold at least 12 words.  Returns pointer past the null.
+ * Range: |*f| < 4096 (12-bit int limit for the integer part).
+ */
+int *ftoa(float *f, int *buf) {
+    float zero = 0.0;
+    float ten = 10.0;
+    int *p = buf;
+    float x;
+    int ipart;
+    float frac;
+    int digit;
+    int i;
+
+    x = *f;
+    if (x == zero) {
+        *p++ = '0'; *p++ = '.';
+        *p++ = '0'; *p++ = '0'; *p++ = '0'; *p++ = '0';
+        *p = 0;
+        return p;
+    }
+    if (x < zero) {
+        *p++ = '-';
+        x = -x;
+    }
+    ipart = (int)x;
+    itoa(ipart, p);
+    while (*p) p++;
+    *p++ = '.';
+    frac = x - (float)ipart;
+    for (i = 0; i < 4; i = i + 1) {
+        frac = frac * ten;
+        digit = (int)frac;
+        *p++ = '0' + digit;
+        frac = frac - (float)digit;
+    }
+    *p = 0;
+    return p;
+}
+
+/*
+ * atof: parse ASCII decimal string s into *result.
+ * Handles optional sign, integer digits, optional '.'+fractional digits.
+ */
+void atof(int *s, float *result) {
+    int *p = s;
+    int neg = 0;
+    int ipart = 0;
+    float fval;
+    float frac;
+    float scale;
+    float ten = 10.0;
+    float zero = 0.0;
+    float d;
+
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p == '-') { neg = 1; p++; }
+    else if (*p == '+') { p++; }
+
+    while (*p >= '0' && *p <= '9') {
+        ipart = ipart * 10 + (*p - '0');
+        p++;
+    }
+    fval = (float)ipart;
+
+    frac = zero;
+    scale = ten;
+    if (*p == '.') {
+        p++;
+        while (*p >= '0' && *p <= '9') {
+            d = (float)(*p - '0');
+            frac = frac + d / scale;
+            scale = scale * ten;
+            p++;
+        }
+    }
+    fval = fval + frac;
+    if (neg) { fval = -fval; }
+    *result = fval;
+}
+
 /* ---- Control ---- */
 
 void exit(int code) {

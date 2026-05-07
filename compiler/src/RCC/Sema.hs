@@ -51,6 +51,7 @@ tySize :: Map Text [Syn.Field] -> Syn.Ty -> Int
 tySize _  Syn.TyInt          = 1
 tySize _  Syn.TyUint         = 1
 tySize _  Syn.TyVoid         = 0
+tySize _  Syn.TyFloat        = 4
 tySize _  (Syn.TyPtr _)      = 1
 tySize ss (Syn.TyArray t n)  = tySize ss t * n
 tySize ss (Syn.TyStruct _ n) = case Map.lookup n ss of
@@ -77,6 +78,7 @@ showTy :: Syn.Ty -> Text
 showTy Syn.TyInt           = "int"
 showTy Syn.TyUint          = "unsigned"
 showTy Syn.TyVoid          = "void"
+showTy Syn.TyFloat         = "float"
 showTy (Syn.TyPtr t)       = showTy t <> " *"
 showTy (Syn.TyArray t n)   = showTy t <> " [" <> T.pack (show n) <> "]"
 showTy (Syn.TyStruct _ n)  = "struct " <> n
@@ -127,6 +129,7 @@ checkTyDefined vd = checkTy (Syn.vdTy vd)
     checkTy Syn.TyInt          = pure ()
     checkTy Syn.TyUint         = pure ()
     checkTy Syn.TyVoid         = pure ()
+    checkTy Syn.TyFloat        = pure ()
     checkTy (Syn.TyPtr t)      = checkTy t
     checkTy (Syn.TyArray t _)  = checkTy t
     checkTy (Syn.TyStruct sp n) = do
@@ -138,6 +141,7 @@ checkTyDefinedAt :: Syn.Ty -> M ()
 checkTyDefinedAt Syn.TyInt          = pure ()
 checkTyDefinedAt Syn.TyUint         = pure ()
 checkTyDefinedAt Syn.TyVoid         = pure ()
+checkTyDefinedAt Syn.TyFloat        = pure ()
 checkTyDefinedAt (Syn.TyPtr t)      = checkTyDefinedAt t
 checkTyDefinedAt (Syn.TyArray t _)  = checkTyDefinedAt t
 checkTyDefinedAt (Syn.TyStruct sp n) = do
@@ -264,6 +268,7 @@ inferExpr (Syn.ELit sp n) = do
   when (n < 0 || n > 4095) $
     throwAt sp ("integer literal " <> T.pack (show n) <> " out of range (0..4095)")
   pure Syn.TyInt
+inferExpr (Syn.EFloatLit _ _) = pure Syn.TyFloat
 inferExpr (Syn.EVar sp name) = do
   mv <- lookupVarTy name
   case mv of
@@ -289,17 +294,23 @@ inferExpr (Syn.EBinary sp op l r) = do
   lt <- inferExpr l
   rt <- inferExpr r
   case op of
-    Syn.BAdd -> case (isPtr lt, isPtr rt) of
-      (True, True)  -> throwAt sp "invalid operands to '+': both operands are pointers"
-      (True, False) -> pure lt
-      (False, True) -> pure rt
-      _             -> pure Syn.TyInt
-    Syn.BSub -> case (isPtr lt, isPtr rt) of
-      (True, True)  -> pure Syn.TyInt   -- pointer difference = int
-      (True, False) -> pure lt
-      (False, True) -> throwAt sp "invalid operands to '-': non-pointer minus pointer"
-      _             -> pure Syn.TyInt
-    -- All other binary operators: int-typed result.
+    Syn.BAdd -> case (lt, rt) of
+      (Syn.TyFloat, _) -> pure Syn.TyFloat
+      (_, Syn.TyFloat) -> pure Syn.TyFloat
+      _ -> case (isPtr lt, isPtr rt) of
+        (True, True)  -> throwAt sp "invalid operands to '+': both operands are pointers"
+        (True, False) -> pure lt
+        (False, True) -> pure rt
+        _             -> pure Syn.TyInt
+    Syn.BSub -> case (lt, rt) of
+      (Syn.TyFloat, _) -> pure Syn.TyFloat
+      _ -> case (isPtr lt, isPtr rt) of
+        (True, True)  -> pure Syn.TyInt
+        (True, False) -> pure lt
+        (False, True) -> throwAt sp "invalid operands to '-': non-pointer minus pointer"
+        _             -> pure Syn.TyInt
+    Syn.BMul | lt == Syn.TyFloat -> pure Syn.TyFloat
+    Syn.BDiv | lt == Syn.TyFloat -> pure Syn.TyFloat
     _ -> pure Syn.TyInt
   where
     isPtr (Syn.TyPtr _) = True

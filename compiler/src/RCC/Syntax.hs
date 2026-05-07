@@ -28,6 +28,7 @@ data Ty
   = TyInt                -- int
   | TyUint               -- unsigned
   | TyVoid               -- void
+  | TyFloat              -- float (48-bit, 4 words)
   | TyPtr    Ty          -- T *
   | TyArray  Ty Int      -- T [N]
   | TyStruct Span Text   -- struct S  (Span = position of the name token)
@@ -38,6 +39,7 @@ instance Eq Ty where
   TyInt          == TyInt          = True
   TyUint         == TyUint         = True
   TyVoid         == TyVoid         = True
+  TyFloat        == TyFloat        = True
   TyPtr a        == TyPtr b        = a == b
   TyArray a n    == TyArray b m    = a == b && n == m
   TyStruct _ a   == TyStruct _ b   = a == b
@@ -108,6 +110,7 @@ data Init
 
 data Expr
   = ELit          Span Int
+  | EFloatLit     Span Double           -- 1.5, 3.14  → float48 constant
   | EString       Span Text             -- "hello\n" → rodata, type int*
   | EVar          Span Text
   | EUnary        Span UnOp Expr
@@ -157,6 +160,7 @@ data AssOp
 exprSpan :: Expr -> Span
 exprSpan e = case e of
   ELit         s _       -> s
+  EFloatLit    s _       -> s
   EString      s _       -> s
   EVar         s _       -> s
   EUnary       s _ _     -> s

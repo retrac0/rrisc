@@ -84,7 +84,7 @@ semi = void (symbol ";")
 keywords :: Set Text
 keywords = Set.fromList
   [ "int", "void", "struct", "typedef", "const"
-  , "unsigned", "bool", "true", "false"
+  , "unsigned", "bool", "true", "false", "float"
   , "if", "else", "while", "for", "return"
   , "break", "continue", "sizeof", "asm"
   ]
@@ -102,7 +102,21 @@ keyword :: Text -> Parser ()
 keyword kw = lexeme $ string kw *> notFollowedBy (alphaNumChar <|> char '_')
 
 -- ---------------------------------------------------------------------------
--- Integer literals
+-- Numeric literals
+
+floatLit :: Parser Double
+floatLit = lexeme $ do
+  whole <- some digitChar
+  void (char '.')
+  frac  <- many digitChar
+  expPart <- optional $ do
+    void (oneOf ("eE" :: String))
+    sign   <- optional (oneOf ("+-" :: String))
+    digits <- some digitChar
+    pure (maybe "" (:[]) sign ++ digits)
+  void (optional (oneOf ("fFlL" :: String)))
+  let str = whole ++ "." ++ frac ++ maybe "" ("e"++) expPart
+  pure (read str)
 
 intLit :: Parser Int
 intLit = lexeme $ choice
@@ -160,10 +174,11 @@ parseTy = do
 
 baseTy :: Parser Ty
 baseTy = choice
-  [ TyInt  <$  keyword "int"
-  , TyVoid <$  keyword "void"
-  , TyInt  <$  keyword "bool"
-  , TyUint <$  (keyword "unsigned" <* optional (keyword "int"))
+  [ TyInt   <$  keyword "int"
+  , TyVoid  <$  keyword "void"
+  , TyFloat <$  keyword "float"
+  , TyInt   <$  keyword "bool"
+  , TyUint  <$  (keyword "unsigned" <* optional (keyword "int"))
   , do keyword "struct"
        (sp, name) <- withSpan ident   -- sp = span of the struct-name token
        pure $ TyStruct sp name
@@ -509,7 +524,9 @@ postfixExpr = do
 
 primaryExpr :: Parser Expr
 primaryExpr = choice
-  [ do (sp, n) <- withSpan intLit
+  [ do (sp, d) <- try (withSpan floatLit)
+       pure $ EFloatLit sp d
+  , do (sp, n) <- withSpan intLit
        pure $ ELit sp n
   , do (sp, n) <- withSpan charLit
        pure $ ELit sp n

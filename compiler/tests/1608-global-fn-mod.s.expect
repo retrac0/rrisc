@@ -1,10 +1,8 @@
 ; rcc-generated assembly
-    .org 0o1000
-_start:
-    li r6, 0o100
-    li r1, main
-    jalr r5, r1
-    halt
+%define RCC_CODE_BASE 0o1000
+%define RCC_DATA_BASE 0o0
+%define RCC_STACK_TOP 0o100
+%include "crt0.s"
 
 
 inc:

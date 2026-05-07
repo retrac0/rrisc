@@ -6,7 +6,8 @@ Usage: python asm.py input.asm [-o output.bin]
 Source format:
   %define NAME value     simple text substitution
   %include "file.s"      splice another source file inline
-  %macro NAME [p1, p2]   define a parameterized macro
+  %macro NAME [p1, p2]   define a parameterized macro (named params)
+  %macro NAME N          define a macro with N positional params (%1..%N)
   ...body...
   %endm
   label:                 label (standalone or inline before instruction)
@@ -270,11 +271,12 @@ def _parse_string_literal(s: str, filename: str, lineno: int) -> list:
 
 # -- pipeline stages --
 
-def expand_includes(source: str, src_path, seen=None) -> list:
+def expand_includes(source: str, src_path, seen=None, include_dirs=()) -> list:
     """Stage 1: recursively splice %include directives.
     Returns list[RawLine] including the %include lines themselves (kept for listing).
     src_path is the path of the file containing source (None for stdin/string input).
-    seen is a frozenset of already-included absolute paths for cycle detection."""
+    seen is a frozenset of already-included absolute paths for cycle detection.
+    include_dirs is a sequence of directories to search for non-absolute includes."""
     src_path = os.path.normpath(os.path.abspath(src_path)) if src_path else None
     src_dir  = os.path.dirname(src_path) if src_path else ''
     if seen is None:
@@ -286,8 +288,20 @@ def expand_includes(source: str, src_path, seen=None) -> list:
         if m:
             out.append(RawLine(src_path, lineno, raw))
             inc_rel  = m.group(1)
-            inc_path = inc_rel if os.path.isabs(inc_rel) else os.path.join(src_dir, inc_rel)
-            inc_path = os.path.normpath(inc_path)
+            if os.path.isabs(inc_rel):
+                inc_path = os.path.normpath(inc_rel)
+            else:
+                candidate = os.path.normpath(os.path.join(src_dir, inc_rel))
+                if os.path.exists(candidate):
+                    inc_path = candidate
+                else:
+                    for d in include_dirs:
+                        alt = os.path.normpath(os.path.join(d, inc_rel))
+                        if os.path.exists(alt):
+                            inc_path = alt
+                            break
+                    else:
+                        inc_path = candidate
             if inc_path in seen:
                 raise AsmError(src_path, lineno, f"circular %include of '{inc_rel}'")
             try:
@@ -296,7 +310,8 @@ def expand_includes(source: str, src_path, seen=None) -> list:
             except OSError as e:
                 raise AsmError(src_path, lineno,
                                f"cannot open included file '{inc_rel}': {e}")
-            out.extend(expand_includes(inc_source, inc_path, seen | {inc_path}))
+            out.extend(expand_includes(inc_source, inc_path, seen | {inc_path},
+                                       include_dirs))
         else:
             out.append(RawLine(src_path, lineno, raw))
     return out
@@ -320,11 +335,17 @@ def collect_macro_defs(lines: list) -> tuple:
                 raise AsmError(rl.filename, rl.lineno, "malformed %macro directive")
             macro_name = m.group(1)
             params_str = m.group(2).strip()
-            params = [p.strip() for p in params_str.split(',')] if params_str else []
-            for p in params:
-                if not re.fullmatch(r'[A-Za-z_]\w*', p):
-                    raise AsmError(rl.filename, rl.lineno,
-                                   f"invalid parameter name '{p}' in %macro {macro_name}")
+            if re.fullmatch(r'\d+', params_str):
+                # NASM-style: %macro NAME N  (positional params %1..%N)
+                params = [f'%{i}' for i in range(1, int(params_str) + 1)]
+            elif params_str:
+                params = [p.strip() for p in params_str.split(',')]
+                for p in params:
+                    if not re.fullmatch(r'[A-Za-z_]\w*', p):
+                        raise AsmError(rl.filename, rl.lineno,
+                                       f"invalid parameter name '{p}' in %macro {macro_name}")
+            else:
+                params = []
             if macro_name in macro_table:
                 raise AsmError(rl.filename, rl.lineno,
                                f"redefinition of macro '{macro_name}'")
@@ -408,7 +429,12 @@ def expand_macros(lines: list, macro_table: dict, _expanding=None) -> list:
                 continue
             expanded = bline
             for param, arg in subst.items():
-                expanded = re.sub(r'\b' + re.escape(param) + r'\b', arg, expanded)
+                if param.startswith('%'):
+                    # Positional param (%1, %2, ...): replace %N not followed by digit
+                    expanded = re.sub(re.escape(param) + r'(?!\d)', arg, expanded)
+                else:
+                    # Named param: use word boundaries
+                    expanded = re.sub(r'\b' + re.escape(param) + r'\b', arg, expanded)
             if first_nonempty and label_prefix:
                 expanded = label_prefix + ' ' + expanded
                 first_nonempty = False
@@ -602,8 +628,9 @@ def assign_addresses(lines: list) -> tuple:
 # -- assembler --
 
 class Assembler:
-    def __init__(self, filename):
+    def __init__(self, filename, include_dirs=()):
         self.filename = filename
+        self.include_dirs = include_dirs
         self.macros = {}          # name -> replacement text (%define)
         self.param_macros = {}    # name -> MacroDef (%macro)
         self.labels = {}          # name -> word address
@@ -614,7 +641,8 @@ class Assembler:
     def assemble(self, source):
         raw = expand_includes(source, self.filename,
                               frozenset({os.path.normpath(os.path.abspath(self.filename))})
-                              if self.filename else frozenset())
+                              if self.filename else frozenset(),
+                              self.include_dirs)
         raw, self.param_macros = collect_macro_defs(raw)
         raw = expand_macros(raw, self.param_macros)
         self._flat_lines = raw
@@ -1036,6 +1064,8 @@ def main():
     parser = argparse.ArgumentParser(description='RRISC assembler')
     parser.add_argument('source', help='input .asm file')
     parser.add_argument('-o', '--output', help='output file (default: <source>.bin or .mem)')
+    parser.add_argument('-I', dest='include_dirs', metavar='DIR', action='append', default=[],
+                        help='add directory to include search path (may repeat)')
     parser.add_argument('--format', choices=['bin', 'readmemb'], default='bin',
                         help='output format: bin (raw binary) or readmemb (Verilog $readmemb text)')
     parser.add_argument('--list', action='store_true', help='print assembly listing to stdout')
@@ -1055,7 +1085,7 @@ def main():
         sys.exit(1)
 
     try:
-        asm = Assembler(args.source)
+        asm = Assembler(args.source, include_dirs=args.include_dirs)
         words = asm.assemble(source)
         if args.format == 'readmemb':
             write_readmemb(words, out)

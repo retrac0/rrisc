@@ -4,8 +4,9 @@ import Control.Monad (when)
 import Data.Char (isDigit)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import System.Environment (getArgs, getProgName)
+import System.Environment (getArgs, getProgName, getExecutablePath)
 import System.Exit (exitFailure, exitSuccess)
+import System.FilePath (takeDirectory, (</>))
 import System.IO (hPutStrLn, stderr)
 import System.Process (readProcess)
 
@@ -26,6 +27,7 @@ data Options = Options
   , optDataBase     :: Int
   , optStackTop     :: Maybe Int
   , optPreprocessor :: Maybe String
+  , optLibDir       :: Maybe FilePath
   , optDumpAst      :: Bool
   , optDumpTac      :: Bool
   } deriving (Show)
@@ -38,6 +40,7 @@ defaultOptions = Options
   , optDataBase     = 0o0000
   , optStackTop     = Just 0o0100
   , optPreprocessor = Nothing
+  , optLibDir       = Nothing
   , optDumpAst      = False
   , optDumpTac      = False
   }
@@ -54,6 +57,7 @@ parseArgs = go defaultOptions
     go opts ("--data-base"    : a : rest) = go opts{ optDataBase     = read a }        rest
     go opts ("--stack-top"    : a : rest) = go opts{ optStackTop     = Just (read a) } rest
     go opts ("--preprocessor" : c : rest) = go opts{ optPreprocessor = Just c }        rest
+    go opts ("--lib-dir"      : d : rest) = go opts{ optLibDir       = Just d }        rest
     go opts ("--dump-ast"         : rest) = go opts{ optDumpAst      = True }          rest
     go opts ("--dump-tac"         : rest) = go opts{ optDumpTac      = True }          rest
     go _    (('-' : flag)         : _   ) = Left ("unknown flag: -" <> flag)
@@ -119,10 +123,17 @@ main = do
 
   when (optDumpTac opts) $ print tac' >> exitSuccess
 
+  resolvedLib <- case optLibDir opts of
+    Just d  -> pure d
+    Nothing -> do
+      exe <- getExecutablePath
+      pure (takeDirectory exe </> "../lib")
+
   let cgopts = Codegen.CodegenOpts
         { Codegen.codeBase = optCodeBase opts
         , Codegen.dataBase = optDataBase opts
         , Codegen.stackTop = maybe (optDataBase opts) id (optStackTop opts)
+        , Codegen.libDir   = resolvedLib
         }
   let asm = Codegen.codegen cgopts tac'
 

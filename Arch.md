@@ -10,7 +10,7 @@ into four 3-bit octal digits.
 |----------|-------|-------|
 | r0 | 0 | Hardwired zero. Reads always return 0; writes are silently ignored. |
 | r1-r6 | -- | General purpose. |
-| r7 | 0o7777 (-1) | Hardwired -1. `add rX, rX, r7` is the idiomatic decrement. |
+| r7 | 0o7777 (-1) | Hardwired -1. |
 
 All registers store 12-bit values; results are masked to 12 bits on write.
 
@@ -27,8 +27,8 @@ Two formats share this layout:
 
 | Format | Fields | Used by |
 |--------|--------|---------|
-| **R3** | op \| rd \| ra \| rb | add, sub, and, jalr, ror, rol, lwr, swr |
-| **RI** | op \| rd \| imm[5:3] \| imm[2:0] | lw, sw, lui, addi, bf, bt |
+| **R3** | op \| rd \| ra \| rb | and, sub, add, addc, jalr, ror, rol, lwr, swr |
+| **RI** | op \| rd \| imm[5:3] \| imm[2:0] | lui, addi, subi, bf, bt |
 
 In RI format the 6-bit immediate occupies bits 5-0 (the ra and rb fields combined).
 
@@ -38,396 +38,291 @@ In RI format the 6-bit immediate occupies bits 5-0 (the ra and rb fields combine
 |----|--------|----------|--------|
 | 0 | 000 | **and** | R3 |
 | 1 | 001 | **sub** | R3 |
-| 2 | 010 | **sw** | RI |
-| 3 | 011 | **lw** | RI |
+| 2 | 010 | **add** | R3 |
+| 3 | 011 | **addc** | R3 |
 | 4 | 100 | **lui** / **bf** | RI |
 | 5 | 101 | **addi** / **bt** | RI |
-| 6 | 110 | **add / addc** | R3 |
+| 6 | 110 | **subi** | RI |
 | 7 | 111 | **spec** | R3 |
-
-Encoding regularity: every op differs from its bit-2-complement by exactly 1 bit
-(000<->100, 001<->101, 010<->110, 011<->111), and adjacent pairs (and/sub, sw/lw, lui/addi,
-addc/spec) also differ by 1 bit.
 
 ---
 
 ## ALU Instructions (R3 format)
 
-### and -- Bitwise AND  `(op=0, 0b000)`
+### and -- Bitwise AND  `(op=0)`
 
 ```
-and rd, ra, rb
+and rd, ra, rb    ; rd = ra & rb
 ```
 
-```
-Example: and r1, r2, r3
-Bits:  000 001 010 011
-Octal: 0   1   2   3  = 0o0123
-```
-
-`rd = ra & rb` (masked to 12 bits). T is preserved.
+T is preserved. `and r0, r0, r0` = **nop** (0o0000).
 
 ---
 
-### sub -- Subtract  `(op=1, 0b001)`
+### sub -- Subtract  `(op=1)`
 
 ```
-sub rd, ra, rb
+sub rd, ra, rb    ; rd = ra - rb  (12-bit wrapped)
 ```
 
-```
-Example: sub r4, r5, r6
-Bits:  001 100 101 110
-Octal: 1   4   5   6  = 0o1456
-```
+**T = 1** if borrow occurred (ra < rb unsigned). T = 0 otherwise.
 
-`rd = ra - rb` (12-bit wrapped). **T = 1** if bit 12 of the full result is set, i.e. when
-ra < rb unsigned (a borrow occurred). **T = 0** otherwise.
-
-`sub r0, ra, rb` compares ra and rb without writing a result (r0 is hardwired 0),
-giving a pure compare-and-branch idiom.
+`sub r0, ra, rb` compares without storing (r0 is hardwired 0), giving a pure
+compare-and-branch idiom.
 
 ---
 
-### add / addc -- Add with Carry  `(op=6, 0b110)`
+### add -- Add  `(op=2)`
 
 ```
-addc rd, ra, rb
+add rd, ra, rb    ; rd = ra + rb  (12-bit wrapped, no carry-in)
 ```
 
-```
-Example: addc r1, r2, r3
-Bits:  110 001 010 011
-Octal: 6   1   2   3  = 0o6123
-```
-
-`rd = ra + rb + T` (12-bit wrapped). T = 1 if the full result carries out of bit 11.
-`add r0, r0, r0` and `addc r0, r0, r0` both clear T (CLRT).
+**T = 1** if carry out of bit 11. T = 0 otherwise. T is not used as input.
 
 ---
 
-## Page-Addressed Memory Instructions (RI format)
-
-These instructions use the **rd field as a base/page register**, not a destination.
-The effective address is formed by combining bits 11-6 of `reg[rd]` with the 6-bit
-immediate as bits 5-0.  The data register is always **r1** (source for sw, destination for lw).
+### addc -- Add with Carry  `(op=3)`
 
 ```
-addr = (reg[rd] & 0o7700) | imm6
+addc rd, ra, rb   ; rd = ra + rb + T  (12-bit wrapped)
 ```
 
-### lw -- Load Word  `(op=3, 0b011)`
+**T = 1** if carry out of bit 11. Chains after `add` or `sub` for multi-word arithmetic.
 
-```
-lw rd, imm6
-```
-
-```
-Example: lw r2, 5
-Bits:  011 010 000 101
-Octal: 3   2   0   5  = 0o3205
-```
-
-`r1 = mem[addr]` where `addr = (reg[rd] & 0o7700) | imm6`.
-
-The rd field selects the page; imm6 is the offset within that 64-word page.
-The loaded value always goes into **r1** regardless of rd.  T is not affected.
-
-Common idiom -- access I/O page via r7 (hardwired 0o7777):
-```asm
-lw r7, 0   ; r1 = mem[0o7700]  (first I/O register)
-```
-
----
-
-### sw -- Store Word  `(op=2, 0b010)`
-
-```
-sw rd, imm6
-```
-
-```
-Example: sw r2, 5
-Bits:  010 010 000 101
-Octal: 2   2   0   5  = 0o2205
-```
-
-`mem[addr] = r1` where `addr = (reg[rd] & 0o7700) | imm6`.
-
-The value stored is always from **r1**.  T is not affected.
+`addc r0, r0, r0` = **clrt** (0o3000): clears T without any other side-effect.
 
 ---
 
 ## Immediate Instructions (RI format)
 
-### lui -- Load Upper Immediate  `(op=4, 0b100)`
+### lui -- Load Upper Immediate  `(op=4)`
 
 ```
-lui rd, imm6        ; rd != r0
+lui rd, imm6      ; rd = imm6 << 6   (rd != r0, rd != r7)
 ```
 
-```
-Example: lui r2, 3
-Bits:  100 010 000 011
-Octal: 4   2   0   3  = 0o4203
-```
-
-`rd = imm6 << 6`. Places the 6-bit immediate into bits 11-6 of rd and clears bits 5-0.
-Used together with addi to load a full 12-bit constant in two instructions:
-
-```asm
-lui  r1, 0o37    ; r1 = 0o3700
-addi r1, 0o56    ; r1 = 0o3756
-```
-
-rd=0 is forbidden for lui; that encoding is reserved for **bf**.
+Places the 6-bit immediate into bits 11-6 of rd; bits 5-0 are cleared.
+rd=0 and rd=7 are reserved for **bf**. T is preserved.
 
 ---
 
-### addi -- Add Immediate  `(op=5, 0b101)`
+### addi -- Add Immediate  `(op=5)`
 
 ```
-addi rd, imm6       ; rd != r0
+addi rd, imm6     ; rd = rd + imm6  (rd != r0, rd != r7)
 ```
 
-```
-Example: addi r1, 5
-Bits:  101 001 000 101
-Octal: 5   1   0   5  = 0o5105
+Adds an **unsigned** 6-bit immediate (0..63) to rd. T is preserved.
+rd=0 and rd=7 are reserved for **bt**.
+
+Used with `lui` to load any 12-bit constant in two words:
+```asm
+lui  r1, upper    ; r1 = upper << 6
+addi r1, lower    ; r1 = r1 + lower   (lower = 0..63)
 ```
 
-`rd = rd + sign_extend(imm6)`. The 6-bit immediate is sign-extended to 12 bits
-(range -32..31 as signed, 0..63 as unsigned). T is not affected.
+---
 
-rd=0 is forbidden for addi; that encoding is reserved for **bt**.
+### subi -- Subtract Immediate  `(op=6)`
+
+```
+subi rd, imm6     ; rd = rd - imm6
+```
+
+Subtracts an **unsigned** 6-bit immediate (0..63) from rd.
+**T = 1** if borrow (rd < imm6 before subtraction). T = 0 otherwise.
+rd=0 and rd=7 are forbidden.
 
 ---
 
 ## Branch Instructions
 
-Branches are encoded using lui/addi with rd=0 or rd=7, both of which are otherwise
-write-no-ops (r0 is hardwired 0, r7 is hardwired -1).  The rd field selects the sign
-of the offset: **rd=0 (`000`) gives 0..+63, rd=7 (`111`) gives -64..-1**.  The 6-bit
-immediate is always unsigned.  Combined range: **-64..+63 words**.
+Branches are encoded using lui/addi with rd=0 or rd=7. The rd field selects the sign
+of the offset: **rd=0 gives 0..+63, rd=7 gives -64..-1**. Combined range: **-64..+63 words**.
 
-The offset is PC-relative, applied from the address of the branch instruction itself.
+The offset is PC-relative from the branch instruction itself.
 
-Opcode space:
-- `40xx` (op=4, rd=0): **bf**, offsets 0..+63
-- `47xx` (op=4, rd=7): **bf**, offsets -64..-1
-- `50xx` (op=5, rd=0): **bt**, offsets 0..+63
-- `57xx` (op=5, rd=7): **bt**, offsets -64..-1
+### bf -- Branch if False  `(op=4, rd=0 or rd=7)`
 
-### bf -- Branch if False  `(op=4, 0b100, rd=0 or rd=7)`
+If **T = 0**: `pc = pc + offset`. Falls through when T = 1.
 
-```
-bf offset           ; encoded as lui r0, offset   (offset >= 0)
-                    ; encoded as lui r7, offset+64 (offset < 0)
-```
+### bt -- Branch if True  `(op=5, rd=0 or rd=7)`
 
-```
-Example: bf +3
-Bits:  100 000 000 011
-Octal: 4   0   0   3  = 0o4003
-
-Example: bf -40 (decimal)
-Bits:  100 111 011 000
-Octal: 4   7   3   0  = 0o4730
-```
-
-If **T = 0**: `pc = pc + offset`. Otherwise execution falls through to pc+1.
+If **T != 0**: `pc = pc + offset`. Falls through when T = 0.
 
 ---
 
-### bt -- Branch if True  `(op=5, 0b101, rd=0 or rd=7)`
+## Special Instructions  `(op=7, rb = sub-opcode)`
+
+### jalr -- Jump and Link Register  `(rb=0)`
 
 ```
-bt offset           ; encoded as addi r0, offset   (offset >= 0)
-                    ; encoded as addi r7, offset+64 (offset < 0)
+jalr rd, ra       ; rd = pc (next instruction); pc = ra
 ```
 
-```
-Example: bt +0
-Bits:  101 000 000 000
-Octal: 5   0   0   0  = 0o5000
-
-Example: bt -1
-Bits:  101 111 111 111
-Octal: 5   7   7   7  = 0o5777
-```
-
-If **T != 0**: `pc = pc + offset`. Otherwise execution falls through to pc+1.
+`jalr r5, r1` — call: save return address in r5, jump to r1.
+`jalr r0, r5` — return: jump to r5, discard return address.
 
 ---
 
-## Special Operations  `(op=7, 0b111)`
-
-Op=7 uses the rb field as a sub-opcode to select the operation.
-
-### jalr -- Jump and Link Register  `(op=7, rb=0)`
+### ror -- Rotate Right  `(rb=1)`
 
 ```
-jalr rd, ra
+ror rd, ra        ; rd = (T << 11) | (ra >> 1);  T = ra[0]
 ```
 
-```
-Example: jalr r1, r2
-Bits:  111 001 010 000
-Octal: 7   1   2   0  = 0o7120
-```
-
-`rd = pc` (address of the next instruction); `pc = ra`. Used for subroutine calls
-(save return address in rd) and computed jumps (set rd=r0 to discard return address).
+Bit 0 of ra shifts out into T; old T fills bit 11 of rd.
+Chain `ror` to shift a multi-word value right through T.
 
 ---
 
-### ror -- Rotate Right  `(op=7, rb=1)`
+### rol -- Rotate Left  `(rb=2)`
 
 ```
-ror rd, ra
+rol rd, ra        ; rd = (ra << 1) | T;  T = ra[11]
 ```
 
-```
-Example: ror r1, r2
-Bits:  111 001 010 001
-Octal: 7   1   2   1  = 0o7121
-```
-
-`rd = rotate_right(ra, 1)`. Bit 0 of ra is shifted out into T; bit 11 of rd is filled with
-the old value of T. Enables multi-word right-shifts by chaining ror through T.
+Bit 11 of ra shifts out into T; old T fills bit 0 of rd.
+Chain `rol` to shift a multi-word value left through T.
 
 ---
 
-### rol -- Rotate Left  `(op=7, rb=2)`
+### lwr -- Load Word (register-indirect)  `(rb=3)`
 
 ```
-rol rd, ra
+lwr rd, ra        ; rd = mem[ra]
 ```
 
-```
-Example: rol r1, r2
-Bits:  111 001 010 010
-Octal: 7   1   2   2  = 0o7122
-```
-
-`rd = rotate_left(ra, 1)`. Bit 11 of ra is shifted out into T; bit 0 of rd is filled with
-the old value of T. Enables multi-word left-shifts by chaining rol through T.
+T is preserved.
 
 ---
 
-### lwr -- Load Word Register-indirect  `(op=7, rb=3)`
+### swr -- Store Word (register-indirect)  `(rb=4)`
 
 ```
-lwr rd, ra
+swr rd, ra        ; mem[ra] = rd
 ```
 
-```
-Example: lwr r1, r2
-Bits:  111 001 010 011
-Octal: 7   1   2   3  = 0o7123
-```
-
-`rd = mem[ra]`. Loads the 12-bit word at word-address ra into rd.
-The address is masked to 12 bits. T is not affected.
+T is preserved.
 
 ---
 
-### swr -- Store Word Register-indirect  `(op=7, rb=4)`
+## Pseudo-Instructions
 
-```
-swr rd, ra
-```
+| Mnemonic | Expansion | Notes |
+|----------|-----------|-------|
+| `nop` | `and r0, r0, r0` | no-op, T preserved |
+| `clrt` | `addc r0, r0, r0` | clear T flag |
+| `halt` | `0o7777` | stop execution |
+| `li rd, imm` | `lui rd, upper; addi rd, lower` | load 12-bit constant (2 words) |
+| `jmp label` | `li r4, label; jalr r0, r4` | unconditional jump (3 words) |
+| `call label` | `li r4, label; jalr r5, r4` | call, return address in r5 (3 words) |
 
-```
-Example: swr r1, r2
-Bits:  111 001 010 100
-Octal: 7   1   2   4  = 0o7124
-```
-
-`mem[ra] = rd`. Stores rd to the 12-bit word at word-address ra.
-The address is masked to 12 bits. T is not affected.
+**li** encoding: `lower = imm & 0o77`, `upper = (imm >> 6) & 0o77`. Because `addi` is
+unsigned (0..63), no sign-extension compensation is needed.
 
 ---
 
-## Pseudo-Instructions and Special Encodings
+## T Flag Summary
 
-| Encoding | Octal | Meaning |
-|----------|-------|---------|
-| `000 000 000 000` | `0o0000` | **nop** -- no operation (`add r0, r0, r0`); preserves T |
-| `111 111 111 111` | `0o7777` | **halt** -- stop execution |
+| Instruction | T after |
+|-------------|---------|
+| sub rd, ra, rb | 1 if ra < rb (borrow) |
+| add rd, ra, rb | 1 if carry out |
+| addc rd, ra, rb | 1 if carry out (T used as carry-in) |
+| subi rd, imm | 1 if borrow |
+| rol rd, ra | old bit 11 of ra |
+| ror rd, ra | old bit 0 of ra |
+| and, lui, addi, jalr, lwr, swr | **preserved** |
 
-**nop** (`0o0000`) is `add r0, r0, r0`: r0 is hardwired 0 so both operands and the
-destination are discarded, and T is preserved. This is a true unconditional no-operation.
+---
 
-### li -- Load Immediate (synthetic, 2 words)
+## Multi-Word Arithmetic Patterns
 
-```
-li rd, imm          ; rd != r0
-```
-
-Loads any 12-bit immediate into rd. Expands to a `lui`/`addi` pair:
+### Multi-word add: (rhi:rlo) += (shi:slo)
 
 ```asm
-lui  rd, upper      ; rd = upper << 6
-addi rd, lower      ; rd = rd + sign_extend(lower)
+clrt                    ; T = 0 (carry-in for first word)
+addc rlo, rlo, slo      ; low word; T = carry out
+addc rhi, rhi, shi      ; high word + carry; T = final carry
 ```
 
-where `lower = imm & 0o77` and `upper` is adjusted for `addi`'s sign extension: if
-bit 5 of `lower` is set, `addi` would subtract 64, so `upper` is incremented by 1
-(mod 64) to compensate.
+### Multi-word subtract: (rhi:rlo) -= (shi:slo)
+
+Compute a − b = a + (~b) + 1 using two's complement. Set T=1 as the initial +1:
 
 ```asm
-li r1, 0o1234   ; r1 = 0o1234  ->  lui r1, 0o12 ; addi r1, 0o34
-li r1, 0o3777   ; r1 = 0o3777  ->  lui r1, 0o40 ; addi r1, 0o77  (upper adjusted)
+sub r0, r0, r7          ; 0 − (−1) overflows: T = 1
+sub tmp_lo,  r7, slo    ; ~slo = r7 − slo  (T=0 after, r7 >= slo always)
+sub tmp_hi,  r7, shi    ; ~shi
+addc rlo, rlo, tmp_lo   ; rlo += ~slo + 1  (using T=1)
+addc rhi, rhi, tmp_hi   ; rhi += ~shi + carry
 ```
 
-Consumes two consecutive instruction words.
+### Multi-word left shift by 1
 
----
-
-## T Flag
-
-1-bit condition flag. T is the output of arithmetic and shift operations; pure data
-movement and bitwise instructions preserve it.
-
-- **sub** -- T = 1 on unsigned borrow (ra < rb). T = 0 otherwise.
-- **and** -- preserves T.
-- **ror** -- T = the bit shifted out of bit 0 (old bit 0 of ra).
-- **rol** -- T = the bit shifted out of bit 11 (old bit 11 of ra).
-
-**Read by:**
-- **bf / bt** -- branch on T=0 / T=1
-- **ror / rol** -- old T feeds into the vacated bit of the rotated result
-
-**Preserved by:** addi, lui, jalr, lw, sw, lwr, swr, nop, halt.
-
-Design intent: because add uses T as carry-in, a carry computed by a sub comparison
-survives across subsequent add operations, enabling multi-word arithmetic carry
-chains without extra bookkeeping.
-
-Typical patterns:
 ```asm
-sub r0, r2, r5   ; compare: T=1 if r2 < r5 (discard result)
-bt  less_than    ; branch if T=1
+clrt                    ; T = 0 (fill bit)
+rol rlo,  rlo           ; T = old bit 11 of rlo
+rol rmid, rmid          ; T = old bit 11 of rmid
+rol rhi,  rhi           ; T = old bit 11 of rhi  (overflow / carry-out bit)
+```
 
-sub r0, r0, r3   ; zero test: T=1 iff r3 != 0
-bf  is_zero      ; branch taken when r3 == 0
+### Multi-word right shift by 1 (logical)
 
-; multi-word add: (r3:r2) += (r5:r4)
-add  r2, r2, r4        ; low word sum
-sub  r0, r2, r4        ; T=1 if low sum overflowed (carry out)
-add  r3, r3, r5        ; high word sum (T preserved)
-bf   no_carry
-addi r3, 1             ; apply carry
-no_carry:
+```asm
+clrt                    ; T = 0 (fill bit)
+ror rhi,  rhi           ; T = old bit 0 of rhi
+ror rmid, rmid          ; T = old bit 0 of rmid
+ror rlo,  rlo           ; T = old bit 0 of rlo
+```
+
+### Multi-word right shift by 1 (arithmetic — sign-extend)
+
+```asm
+; Set T = sign bit of rhi before shifting:
+and r1,   rhi,  r7      ; r1 = rhi
+rol r1,   r1            ; T = bit 11 of rhi (sign)
+ror rhi,  rhi           ; bit 11 filled with old T = sign
+ror rmid, rmid
+ror rlo,  rlo
 ```
 
 ---
 
 ## Memory Model
 
-- **Address space:** 4096 12-bit words (addresses 0o0000-0o7777).
-- **Word-addressed:** lw/sw/lwr/swr operate on whole 12-bit words; there is no byte addressing.
-- **Binary file format:** each word packed little-endian into 2 bytes
-  (byte 0 = bits 7-0, byte 1 bits 3-0 = bits 11-8; upper 4 bits of byte 1 unused).
-- All addresses are masked to 12 bits on access.
+- **Address space:** 4096 12-bit words (addresses 0o0000–0o7777).
+- **Word-addressed:** lwr/swr operate on whole 12-bit words; no byte addressing.
+- **Default layout:** ROM at 0o1000 (1024 words), RAM at 0o0000 (64 words stack).
+- **Binary format:** each word packed little-endian into 2 bytes
+  (byte 0 = bits 7–0; byte 1 bits 3–0 = bits 11–8; upper 4 bits of byte 1 unused).
+
+---
+
+## Calling Convention (rcc compiler)
+
+| Register | Role |
+|----------|------|
+| r0 | Zero (hardwired) |
+| r1 | Scratch / address scratch |
+| r2 | Arg 1 / return value |
+| r3 | Arg 2 |
+| r4 | Arg 3 |
+| r5 | Link register (callee-saved) |
+| r6 | Stack pointer (grows down) |
+| r7 | −1 (hardwired) |
+
+Arguments beyond 3 are pushed right-to-left and popped by the callee's epilogue.
+
+---
+
+## I/O Memory Map
+
+| Address | Name | Direction | Description |
+|---------|------|-----------|-------------|
+| 0o7770 | TXRDY | read | 1 = UART transmit ready |
+| 0o7771 | RXRDY | read | 1 = UART receive ready |
+| 0o7772 | TXBUF | write | Write character to transmit |
+| 0o7773 | RXBUF | read | Read received character |

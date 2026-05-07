@@ -9,7 +9,52 @@ import qualified Data.Set as Set
 import qualified RCC.TAC as TAC
 
 optimize :: TAC.TACProg -> TAC.TACProg
-optimize = foldBranches . foldConstants . eliminateDeadCode
+optimize = foldBranches . foldConstants . elimFloatCopies . eliminateDeadCode
+
+-- ---------------------------------------------------------------------------
+-- Float copy elimination
+-- Pattern: IAllocLocal t; ICall f (OLocalAddr t : args); ICall __fcopy [dst, OLocalAddr t]
+-- Collapse to: ICall f (dst : args)  (also drops the IAllocLocal)
+
+elimFloatCopies :: TAC.TACProg -> TAC.TACProg
+elimFloatCopies prog = prog { TAC.tacProcs = map elimProc (TAC.tacProcs prog) }
+
+elimProc :: TAC.Proc -> TAC.Proc
+elimProc p = p { TAC.procInstrs = elim eliminable (TAC.procInstrs p) }
+  where
+    eliminable = findEliminableTemps (TAC.procInstrs p)
+
+-- A local-addr temp is eliminable if OLocalAddr t appears exactly twice:
+--   once as the first arg of some ICall (the float op writes its result there)
+--   once as the second arg of ICall "__fcopy" (reads it as source)
+findEliminableTemps :: [TAC.Instr] -> Set.Set TAC.Temp
+findEliminableTemps instrs = Set.fromList
+    [ t | (t, 2) <- Map.toList useCounts
+        , Set.member t fcopyArgs
+        , Set.member t floatDsts ]
+  where
+    useCounts  = Map.unionWith (+) floatDstMap fcopyArgMap
+    floatDsts  = Map.keysSet floatDstMap
+    floatDstMap = Map.fromListWith (+)
+        [ (t, 1) | TAC.ICall _ _ (TAC.OLocalAddr t : _) <- instrs ]
+    fcopyArgMap = Map.fromListWith (+)
+        [ (t, 1) | TAC.ICall _ "__fcopy" [_, TAC.OLocalAddr t] <- instrs ]
+    fcopyArgs   = Map.keysSet fcopyArgMap
+
+elim :: Set.Set TAC.Temp -> [TAC.Instr] -> [TAC.Instr]
+elim _   [] = []
+-- Drop IAllocLocal for eliminable temps
+elim eli (TAC.IAllocLocal t : rest)
+    | Set.member t eli = elim eli rest
+-- Collapse: ICall f (OLocalAddr t:args) followed immediately by ICall __fcopy [dst, OLocalAddr t]
+elim eli (TAC.ICall mt f (TAC.OLocalAddr t : args)
+        : TAC.ICall _ "__fcopy" [dst, TAC.OLocalAddr t2]
+        : rest)
+    | t == t2, Set.member t eli =
+        TAC.ICall mt f (dst : args) : elim eli rest
+elim eli (i : rest) = i : elim eli rest
+
+-- ---------------------------------------------------------------------------
 
 type ConstMap = Map TAC.Temp Int
 

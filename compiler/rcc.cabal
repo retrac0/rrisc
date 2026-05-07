@@ -15,6 +15,7 @@ common rcc-common
         , containers >= 0.6  && < 1
         , mtl        >= 2.3  && < 3
         , process    >= 1.6  && < 2
+        , filepath   >= 1.4  && < 2
 
 library
     import:          rcc-common

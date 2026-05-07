@@ -29,7 +29,7 @@ done
 # ---- locate tools ----
 cabal build 2>&1 | grep -v "^Up to date" || true
 RCC=$(cabal list-bin rcc 2>/dev/null)
-ASM="python3 ../asm.py"
+ASM="python3 ../asm.py -I ../lib"
 SIM="python3 ../sim.py"
 SIM_FLAGS="--summary --start 0o1000 --maxcycle 100000"
 
@@ -117,7 +117,12 @@ run_one() {
     # Stage 4: simulate
     local extra_flags=""
     [ -f "tests/$base.simflags" ] && extra_flags=$(cat "tests/$base.simflags")
-    $SIM $SIM_FLAGS $extra_flags "$bin_out" > "$actual" 2>&1
+    if [ -f "tests/$base.input" ]; then
+        $SIM $SIM_FLAGS --terminal $extra_flags "$bin_out" \
+            < "tests/$base.input" > "$actual" 2>&1
+    else
+        $SIM $SIM_FLAGS $extra_flags "$bin_out" > "$actual" 2>&1
+    fi
 
     if [ ! -f "$expect" ]; then
         echo "SKIP (no .output.expect)"   >> "$result_file"

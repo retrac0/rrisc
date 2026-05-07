@@ -23,10 +23,11 @@ data CodegenOpts = CodegenOpts
   { codeBase :: Int
   , dataBase :: Int
   , stackTop :: Int
+  , libDir   :: FilePath   -- path to rcc lib/ directory (for %include)
   } deriving (Show)
 
 defaultOpts :: CodegenOpts
-defaultOpts = CodegenOpts 0o1000 0o3000 0o3000
+defaultOpts = CodegenOpts 0o1000 0o3000 0o3000 ""
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -71,20 +72,36 @@ slotOf t = do
 codegen :: CodegenOpts -> TAC.TACProg -> Text
 codegen opts (TAC.TACProg globals procs) = T.unlines $
   prelude
-  ++ concatMap (genProc) procs
+  ++ concatMap genProc procs
   ++ rodata
   ++ data_
   where
+    inc p = "%include \"" <> T.pack p <> "\""
+
+    -- Collect which float builtins are called across all procs
+    calledFuncs = Set.fromList
+      [ lbl | p <- procs, TAC.ICall _ lbl _ <- TAC.procInstrs p ]
+    needFloat f = Set.member f calledFuncs
+    floatIncludes = concatMap (\(nm, path) ->
+        if needFloat nm then [inc path] else [])
+      [ ("__fcopy", "float/__fcopy.s")
+      , ("__fneg",  "float/__fneg.s")
+      , ("__fadd",  "float/__fadd.s")
+      , ("__fsub",  "float/__fsub.s")
+      , ("__fmul",  "float/__fmul.s")
+      , ("__fdiv",  "float/__fdiv.s")
+      , ("__fcmp",  "float/__fcmp.s")
+      , ("__ftoi",  "float/__ftoi.s")
+      , ("__itof",  "float/__itof.s")
+      ]
+
     prelude =
       [ "; rcc-generated assembly"
-      , "    .org " <> octT (codeBase opts)
-      , "_start:"
-      , line ("li r6, " <> octT (stackTop opts))
-      , line "li r1, main"
-      , line "jalr r5, r1"
-      , line "halt"
-      , ""
-      ]
+      , "%define RCC_CODE_BASE " <> octT (codeBase opts)
+      , "%define RCC_DATA_BASE " <> octT (dataBase opts)
+      , "%define RCC_STACK_TOP " <> octT (stackTop opts)
+      , inc "crt0.s"
+      ] ++ floatIncludes ++ [""]
 
     roGlobs = filter TAC.globalConst globals
     rwGlobs = filter (not . TAC.globalConst) globals
