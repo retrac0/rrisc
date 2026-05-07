@@ -1,0 +1,43 @@
+cabal-version:      3.0
+name:               hsasm
+version:            0.1.0.0
+synopsis:           RRISC flat assembler (Haskell port of asm.py)
+license:            MIT
+author:             rrisc
+build-type:         Simple
+
+library
+  exposed-modules:
+    RRISC.Asm
+    RRISC.ISA
+    RRISC.Float48
+    RRISC.SixBit
+  other-modules:
+    RRISC.Asm.Types
+    RRISC.Asm.Expr
+    RRISC.Asm.Preprocess
+    RRISC.Asm.Layout
+    RRISC.Asm.Encode
+  hs-source-dirs:   src
+  default-language: GHC2021
+  ghc-options:      -Wall -Wcompat
+  build-depends:
+    base >= 4.16 && < 5,
+    bytestring,
+    containers,
+    directory,
+    filepath,
+    text
+
+
+executable hsasm
+  main-is:          Main.hs
+  hs-source-dirs:   app
+  default-language: GHC2021
+  ghc-options:      -Wall -Wcompat
+  build-depends:
+    base >= 4.16 && < 5,
+    directory,
+    filepath,
+    hsasm,
+    text
