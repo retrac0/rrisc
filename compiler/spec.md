@@ -2,6 +2,10 @@
 
 A simplified C-like language targeting the RRISC 12-bit word-addressed machine.
 
+This is the **language reference** (precedence tables, EBNF, ABI table). For a
+tutorial, cookbook, and toolchain walkthrough aimed at embedded programmers,
+see [`MANUAL.md`](MANUAL.md). The hardware ISA reference is [`Arch.md`](../Arch.md).
+
 ---
 
 ## 1. Design Goals
@@ -18,20 +22,28 @@ A simplified C-like language targeting the RRISC 12-bit word-addressed machine.
 
 ### Primitive
 
-| Type   | Words | Description                          |
-|--------|-------|--------------------------------------|
-| `int`  | 1     | Signed 12-bit word (range -2048..2047 / 0..4095 unsigned) |
-| `void` | —     | No value; used as function return type only |
+| Type       | Words | Description                                                      |
+|------------|-------|------------------------------------------------------------------|
+| `int`      | 1     | Signed 12-bit word; range −2048..2047                            |
+| `unsigned` | 1     | Same storage as `int`; comparisons use unsigned semantics        |
+| `bool`     | 1     | Alias of `int`; `true` and `false` are integer literals 1 and 0  |
+| `void`     | —     | No value; used as function return type only                      |
+| `float`    | 4     | 48-bit `float48`. **Always passed and returned by pointer.**     |
+
+`unsigned int` is accepted as a synonym for `unsigned`. Float arithmetic compiles to
+runtime helper calls (`__fadd`, `__fsub`, `__fmul`, `__fdiv`, `__fcmp`, `__ftoi`,
+`__itof`, `__fcopy`, `__fneg`); the compiler `%include`s only the helpers a program
+actually uses.
 
 ### Derived
 
 | Type            | Words          | Description                                  |
 |-----------------|----------------|----------------------------------------------|
 | `T *`           | 1              | Pointer to T; holds a 12-bit word address    |
-| `T [N]`         | N              | Array of N elements of type T                |
+| `T [N]`         | N × sizeof(T)  | Array of N elements of type T                |
 | `struct S`      | sum of fields  | Aggregate; fields laid out contiguously      |
 
-No `char`, `float`, `double`, `long`, `short`, or `unsigned` in v1.
+No `char`, `double`, `long`, or `short` in v1.
 
 ### sizeof
 
@@ -75,9 +87,35 @@ Literals support the same formats as the RRISC assembler:
 | Hexadecimal   | `0xFF`      | Prefix `0x`               |
 | Binary        | `0b1010`    | Prefix `0b`               |
 
-All literals are 12-bit values (0–4095). Out-of-range literals are a compile error.
+All integer literals are 12-bit values (0–4095). Out-of-range literals are a compile error.
 
-Character literals are not supported (no `char` type).
+### Character Literals
+
+```
+'A'    'a'    '\n'    '\t'    '\r'    '\0'    '\\'    '\''
+```
+
+A character literal is an integer constant equal to the character's Unicode code
+point. Supported escapes: `\n \t \r \0 \\ \'`.
+
+### Floating-Point Literals
+
+```
+1.5    3.14    1.0e-3    2.5f
+```
+
+A float literal has type `float`. The optional `f`/`F`/`l`/`L` suffix is accepted
+and ignored. Float literals are emitted as 4-word constant pools in rodata.
+
+### String Literals
+
+```
+"hello\n"
+```
+
+A string literal has type `int *` and is emitted as a null-terminated array of
+words in rodata, one word per character. Supported escapes: `\n \t \r \0 \\ \"`.
+String literals inside `asm("…")` are treated as raw text — no escape processing.
 
 ---
 
@@ -90,16 +128,19 @@ Operators, in decreasing precedence:
 | 14         | `(expr)`, `f(args)`, `a[i]`, `.`, `->` | left      | primary / postfix                |
 | 13         | `++` `--` (postfix)                | left          |                                  |
 | 12         | `++` `--` (prefix), `-`, `!`, `~`, `*`, `&`, `sizeof` | right | unary  |
-| 11         | `*`  `/`  `%`                      | left          | mul/div compile to `__mul`/`__div` |
+| 12         | `(type) expr`                      | right         | cast                             |
+| 12         | `(type){expr, …}`                  | right         | compound literal                 |
+| 11         | `*`  `/`  `%`                      | left          | mul/div compile to `__mul`/`__div` for `int`; floats use `__fmul`/`__fdiv` |
 | 10         | `+`  `-`                           | left          |                                  |
 | 9          | `<<` `>>`                          | left          |                                  |
-| 8          | `<`  `<=` `>` `>=`                 | left          |                                  |
+| 8          | `<`  `<=` `>` `>=`                 | left          | unsigned for `unsigned`, signed for `int` |
 | 7          | `==` `!=`                          | left          |                                  |
 | 6          | `&`                                | left          | bitwise AND                      |
 | 5          | `^`                                | left          | bitwise XOR                      |
 | 4          | `\|`                               | left          | bitwise OR                       |
 | 3          | `&&`                               | left          | short-circuit                    |
 | 2          | `\|\|`                             | left          | short-circuit                    |
+| 1.5        | `cond ? a : b`                     | right         | ternary                          |
 | 1          | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` | right | assignment |
 
 ### Semantics
@@ -114,7 +155,12 @@ Operators, in decreasing precedence:
 - `&lvalue` takes the address of an lvalue.
 - `a[i]` is `*(a + i)`; word-scaled as noted above.
 - `p->f` is `(*p).f`.
-- `sizeof(T)` is a compile-time `int` constant.
+- `sizeof(T)` is a compile-time `int` constant returning words.
+- `cond ? a : b` evaluates `cond`, then exactly one of the branches.
+- `(type){e1, e2, …}` is a compound literal: it allocates a temporary of `type`
+  with the given initialiser and yields it as an expression.
+- A `"…"` string literal yields type `int *` pointing to a null-terminated word
+  array in rodata; see §3.
 
 ### Casts
 
@@ -153,12 +199,28 @@ for_init    →  decl_stmt | expr ';' | ';'
 ### Inline Assembly
 
 ```c
-asm("addi r2, 1");   // single instruction, verbatim
-asm("li r1, 0o7770\nlwr r2, r1");  // newline-separated multiple instructions
+asm("addi r2, 1");          // single instruction, verbatim
+asm("li r1, 0o7770
+lwr r2, r1");               // multiple instructions: embed a real newline
 ```
 
-The string is emitted verbatim into the output `.s` file. The compiler makes no assumptions
-about register effects; all live values are considered clobbered after `asm`.
+The string is emitted **verbatim** into the output `.s` file. **Escape sequences
+are not processed** inside `asm("…")`; to put two instructions on separate lines,
+either use two `asm()` calls or break the string with a real newline.
+
+The compiler does **not** parse, validate, or analyse the body, **does not save
+or restore any registers** around the block, and **does not invalidate** any
+spilled values. Because codegen uses naive spill-everything register allocation,
+all live C values sit in stack slots between statements; `r1`–`r4` are scratch
+across `asm()` blocks and clobbering them is harmless. The actual hazards are:
+
+- Writing `r5` (link register, saved on entry).
+- Modifying `r6` (stack pointer) without restoring it.
+- Branching out of `asm()` in a way that bypasses the function epilogue.
+- Storing into the function's stack frame at unintended offsets.
+
+There is no GCC extended-`asm` syntax (no operand lists, no clobber list). To
+move a C value in or out, take its address with `&` and use `lwr`/`swr`.
 
 ---
 
@@ -226,11 +288,11 @@ void print(int *buf, int len) { ... }
 ```
 
 - At most 3 register arguments (see §8); additional arguments are pushed right-to-left
-  before the call and popped by the callee.
-- Functions are not variadic in v1.
+  by the **caller** before the call and popped by the **callee** in its epilogue.
+- Functions are not variadic.
 - Recursion is fully supported.
 - Functions may be forward-declared; all definitions must appear in the same translation unit.
-- No function pointers in v1.
+- No function pointers.
 
 ### Entry Point
 
@@ -275,7 +337,11 @@ remain available for the first three arguments.
 Args beyond three are pushed **right-to-left** by the caller; the **callee** pops them in its
 epilogue.
 
-Only pointers to structs may be passed or returned.
+Only pointers to structs may be passed or returned. Floats are likewise always
+passed and returned via a `float *` argument; the compiler-internal helpers
+(`__fadd`/`__fsub`/`__fmul`/`__fdiv`/`__fcmp`/`__ftoi`/`__itof`/`__fcopy`/`__fneg`)
+take pointers in r2/r3/r4 and write their result through the destination
+pointer in r2 (`__fcmp` returns an `int` in r2).
 
 ---
 
@@ -288,7 +354,8 @@ The compiler emits two sections, both configurable via command-line flags:
 | `.text`      | `0o1000`        | Code + `const` globals (rodata)       | Yes       |
 | `.data`      | `0o0000`        | Mutable globals, BSS (zero-init)      | No        |
 
-The stack grows downward from a configurable `STACK_TOP` (default: `.data` base).
+The stack grows downward from a configurable `STACK_TOP` (default: `0o7770`, just
+below the UART region).
 
 Memory access uses `lwr`/`swr` uniformly for both global variables and pointer dereferences:
 - Global at compile-time address A: `li r1, A; lwr rN, r1`
@@ -305,6 +372,20 @@ Memory access uses `lwr`/`swr` uniformly for both global variables and pointer d
 - No dynamic allocation in v1; raw pointer manipulation via `(int *)` casts and `asm` is possible.
 
 ---
+
+## 11a. What is not implemented
+
+The following commonly-expected C features are intentionally absent. See
+[`MANUAL.md`](MANUAL.md) for full discussion.
+
+- `goto`, `switch`/`case`, `do…while`
+- Function pointers
+- Variadic functions (`…`)
+- Multiple translation units / linker / `extern`/`static` visibility
+- `char`, `short`, `long`, `double`
+- Dynamic allocation (no `malloc`/`free`)
+- Struct-by-value (use `struct S *`)
+- GCC extended `asm` (operand/clobber lists)
 
 ## 11. Undefined Behaviour
 
@@ -343,7 +424,7 @@ initialiser  = expr | '{' expr ( ',' expr )* '}'
 
 type         = base_type star*
              | 'struct' IDENT star*
-base_type    = 'int' | 'void'
+base_type    = 'int' | 'void' | 'float' | 'bool' | 'unsigned' ( 'int' )?
 star         = '*'
 
 block        = '{' stmt* '}'
@@ -356,15 +437,15 @@ stmt         = block
              | 'return' expr? ';'
              | 'break' ';'
              | 'continue' ';'
-             | 'asm' '(' STRING ';'
+             | 'asm' '(' STRING ')' ';'
 for_init     = var_decl | expr ';' | ';'
 
 (* Expressions — precedence encoded in grammar levels *)
 expr         = assign
-assign       = cond ( assign_op assign )?
+assign       = ternary ( assign_op assign )?
 assign_op    = '=' | '+=' | '-=' | '*=' | '/=' | '%='
              | '&=' | '|=' | '^=' | '<<=' | '>>='
-cond         = logor
+ternary      = logor ( '?' expr ':' assign )?
 logor        = logand ( '||' logand )*
 logand       = bitor  ( '&&' bitor  )*
 bitor        = bitxor ( '|'  bitxor )*
@@ -377,7 +458,8 @@ addit        = mult   ( ( '+' | '-' ) mult )*
 mult         = unary  ( ( '*' | '/' | '%' ) unary )*
 unary        = ( '-' | '!' | '~' | '*' | '&' | '++' | '--' ) unary
              | 'sizeof' '(' ( type | expr ) ')'
-             | '(' type ')' unary           (* cast *)
+             | '(' type ')' unary                          (* cast *)
+             | '(' type ')' '{' expr (',' expr)* '}'       (* compound literal *)
              | postfix
 postfix      = primary ( postfix_op )*
 postfix_op   = '[' expr ']'
@@ -387,31 +469,49 @@ postfix_op   = '[' expr ']'
              | '++'
              | '--'
 args         = ( expr ( ',' expr )* )?
-primary      = IDENT | INT_LIT | '(' expr ')'
+primary      = IDENT
+             | INT_LIT | FLOAT_LIT | CHAR_LIT | STR_LIT
+             | 'true' | 'false'
+             | '(' expr ')'
 
 (* Lexical *)
 IDENT        = [a-zA-Z_][a-zA-Z0-9_]*
 INT_LIT      = [0-9]+
+             | '0' [0-7]+
              | '0o' [0-7]+
              | '0x' [0-9a-fA-F]+
              | '0b' [01]+
-STRING       = '"' [^"]* '"'       (* no escape sequences in asm strings *)
+FLOAT_LIT    = [0-9]+ '.' [0-9]* ( [eE] [+-]? [0-9]+ )? [fFlL]?
+CHAR_LIT     = "'" ( char | '\\' esc ) "'"
+STR_LIT      = '"' ( char | '\\' esc )* '"'         (* expression context *)
+STRING       = '"' [^"]* '"'                          (* asm("…") body — raw text, no escapes *)
+esc          = 'n' | 't' | 'r' | '0' | '\\' | "'" | '"'
 ```
 
 Comments: `//` to end of line; `/* ... */` block (non-nesting).
 
 ---
 
-## 13. Runtime Library (v1 Sketch)
+## 13. Runtime
 
-The compiler emits calls to these symbols when needed; a hand-written `runtime.s` provides them:
+The compiler emits calls to these symbols when needed; the relevant assembly
+lives in `lib/`. `rcc` `%include`s only the helpers a program actually uses.
 
-| Symbol   | Signature         | Description                      |
-|----------|-------------------|----------------------------------|
-| `__mul`  | `(int, int) int`  | Software multiply                |
-| `__div`  | `(int, int) int`  | Software divide                  |
-| `__mod`  | `(int, int) int`  | Software modulo                  |
-| `_start` | —                 | Entry point; inits stack, calls main |
+| Symbol     | Signature                                        | Description                              | Source                |
+|------------|--------------------------------------------------|------------------------------------------|-----------------------|
+| `_start`   | —                                                | Entry point; inits stack, calls `main`   | `lib/crt0.s` (auto-included) |
+| `__mul`    | `(int, int) int`                                 | Software multiply                        | (linked in by codegen)|
+| `__div`    | `(int, int) int`                                 | Software divide                          |                       |
+| `__mod`    | `(int, int) int`                                 | Software modulo                          |                       |
+| `__fadd`   | `(float *dst, float *a, float *b)`               | `*dst = *a + *b`                         | `lib/float/__fadd.s`  |
+| `__fsub`   | `(float *dst, float *a, float *b)`               | `*dst = *a − *b`                         | `lib/float/__fsub.s`  |
+| `__fmul`   | `(float *dst, float *a, float *b)`               | `*dst = *a × *b`                         | `lib/float/__fmul.s`  |
+| `__fdiv`   | `(float *dst, float *a, float *b)`               | `*dst = *a ÷ *b`                         | `lib/float/__fdiv.s`  |
+| `__fcmp`   | `(float *a, float *b) int`                       | -1 / 0 / +1 in r2                        | `lib/float/__fcmp.s`  |
+| `__ftoi`   | `(float *src) int`                               | Truncate to int                          | `lib/float/__ftoi.s`  |
+| `__itof`   | `(float *dst, int n)`                            | Promote int to float                     | `lib/float/__itof.s`  |
+| `__fcopy`  | `(float *dst, float *src)`                       | Copy 4 words                             | `lib/float/__fcopy.s` |
+| `__fneg`   | `(float *dst, float *src)`                       | Negate                                   | `lib/float/__fneg.s`  |
 
 ---
 
@@ -433,7 +533,10 @@ int main() {
     struct Point p = {3, 4};
     struct Point q = {1, 2};
     int d = dot(&p, &q);
-    asm("swr r2, r1");   // write result to I/O — r1 holds output address
+    /* Write `d` to the UART by going through a real pointer; do NOT rely on
+       r1 holding a particular value across a C statement boundary. */
+    int *txbuf = (int *)0o7772;
+    *txbuf = d;
     return 0;
 }
 ```
