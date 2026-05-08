@@ -16,13 +16,16 @@ The manual is organised in four parts.
 | III  | Cookbook — focused recipes for the common embedded jobs |
 | IV   | Reference — CLI flags, types, ABI, memory layout, inline asm, runtime, omissions |
 
-Two companion documents:
+Companion documents:
 
 - [`Arch.md`](../Arch.md) — the authoritative ISA reference. The manual cites it
   rather than restating bit-fields, opcode tables, or the multi-word arithmetic
   patterns.
 - [`compiler/spec.md`](spec.md) — the language reference (precedence tables, EBNF
   grammar). Read it after this manual when you need a single-page lookup.
+- [`docs/toolchain.md`](../docs/toolchain.md) — building `rcc` and **hstools**
+  (`hsasm`, `hsld`, `rsim`), the **`rcc` → `hsasm` → `hsld`** contract, object-format
+  versioning, and how CI exercises the toolchain.
 
 ---
 
@@ -48,20 +51,25 @@ sizeof(struct P)  == sum of fields, in words
 **Pointer arithmetic is word-scaled.** `p + 1` adds 1 to the address regardless of
 `sizeof(*p)`. `a[i]` is `*(a + i)` — i.e. word `i`, not byte `i*sizeof(*a)`. For
 arrays of structs, the compiler does multiply `i` by `sizeof(struct S)`; if that
-size is a power of two it compiles to a shift, otherwise to a `__mul` call.
-Prefer power-of-two struct sizes in performance-sensitive code.
+size is a power of two it compiles to a shift, otherwise to an inline multiply loop
+in the generated code (no separate runtime `__mul` symbol). Prefer power-of-two
+struct sizes in performance-sensitive code.
 
 **12-bit `int`.** All integer arithmetic wraps at 12 bits. Signed range is
 −2048..2047; unsigned range is 0..4095. There is no `char`, `short`, `long`, or
 `double`.
 
-**No struct-by-value.** Structs are passed and returned **only by pointer**. The
-compiler will reject `struct S f(struct S x)` and `a = b` between struct lvalues.
-Use `struct S *` everywhere.
+**Structs and functions.** Struct **parameters** and **return values** use pointers
+only (`struct S *`). Local variables of struct type — including initialisers and
+compound literals — are supported; whole-struct assignment between variables is not
+in the supported subset (copy fields or work through pointers).
 
-**Single translation unit.** There is no linker. The compiler reads one `.c` file,
-runs it through your chosen preprocessor, and emits one `.s` file. To "include"
-another module, `#include` its source.
+**One C translation unit per `rcc` run.** `rcc` reads one `.c` file (after optional
+host `cpp`) and emits one `.s`. There are no C-level `extern`/`static` or multi-file
+linking inside the compiler; combine C sources with `#include`. To join separately
+assembled **assembly** objects, use **`hsasm --emit-obj`** and **`hsld`** (see
+[`docs/toolchain.md`](../docs/toolchain.md), [§14](#14-cli-hsasm--ras-and-deprecated-asmpy),
+and [compiler/spec.md §11b](spec.md#11b-rrisc-toolchain-rcc-and-hstools)).
 
 **No function pointers, no `goto`, no `switch`, no variadics, no dynamic allocation.**
 See [What is not implemented](#24-what-is-not-implemented) in the reference.
@@ -117,11 +125,16 @@ A few RRISC-isms that bite C programmers:
              cpp (host preprocessor, optional)
                        │
             myprog.c   ▼   pre-processed .c
-               └──► rcc ──► myprog.s  (RRISC assembly)
+               └──► rcc ──► myprog.s  (RRISC assembly; prelude + %include crt0)
                               │
-                              ▼
-                  ras / hsasm  (Haskell; supported)   or   asm.py  (Python; deprecated)
-                              │
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+    ras / hsasm  -o myprog.bin      ras / hsasm --emit-obj → myprog.o
+    (flat assemble)                          │
+              │                               ▼
+              │                         hsld  (link .o → .bin)
+              │                               │
+              └───────────────┬───────────────┘
                               ▼
                           myprog.bin  (12-bit words, 2 bytes each)
                               │
@@ -129,9 +142,13 @@ A few RRISC-isms that bite C programmers:
                   rsim (Haskell)  or  sim.py (Python)  or  sim2 (C)
 ```
 
-The three implementations of the assembler and the three of the simulator are
-**behaviourally identical** for our purposes. Pick one of each based on what you
-have built or installed; the rest of this manual uses `rcc` / `ras` / `rsim`.
+The usual **flat** path is `rcc` → **`ras`/`hsasm`** → `.bin` → simulator. The
+**relocatable** path (`--emit-obj` → **`hsld`**) is how you combine hand-written
+assembly objects with generated code or split asm across files; see
+[`docs/toolchain.md`](../docs/toolchain.md). The three simulator implementations and
+the two assembler implementations (`hsasm` vs deprecated `asm.py`) are
+**behaviourally identical** for our purposes. This manual uses `rcc` / `ras` / `rsim`
+by default.
 
 A typical full build is three commands:
 
@@ -434,10 +451,16 @@ rcc [options] <input.c>
 | `--data-base <n>`       | `0o0000`    | Address of mutable globals (and BSS) |
 | `--stack-top <n>`       | `0o7770`    | Initial value of r6 (stack grows down from here) |
 | `--preprocessor "<cmd>"` | none       | Run `<cmd> <input>` over the source first; line markers stripped |
-| `--optimize`            | on          | TAC optimisation passes (constant folding, DCE) |
-| `--no-optimize`         | off         | Skip optimisation. Warning: large programs may exceed addressable memory without it. Debug only. |
-| `--dump-ast`            | off         | Print lexical AST and exit |
-| `--dump-tac`            | off         | Print three-address IR and exit |
+| `-O0`                   | —           | Disable optimizations (SSA + TAC pipelines) |
+| `-Os`                   | **default** | Optimize for size |
+| `-O2`                   | —           | More aggressive optimizations (pipeline may grow over time) |
+| `--pass +id,-id,…`      | none        | Enable/disable individual SSA/TAC passes (unioned with the `-O` defaults) |
+| `--optimize`            | —           | Compatibility: same as `-Os` |
+| `--no-optimize`         | —           | Compatibility: same as `-O0` |
+| `--dump-ast`            | off         | Print AST and exit |
+| `--dump-ssa`            | off         | Print SSA program (debug) and exit |
+| `--dump-tac`            | off         | Print TAC and exit |
+| `-V`, `--version`       | —           | Print `rcc` version and exit |
 
 Numbers in flags use the same lexical conventions as RRISC source: `0o1000` for
 octal, `0xFF` for hex, decimal otherwise. `rcc` itself does not implement `#include`
@@ -543,7 +566,7 @@ suitable for Verilog's `$readmemb`.
 | `float`   | 4            | 48-bit float48. **Always passed and returned by pointer** |
 | `T *`     | 1            | Pointer to T |
 | `T[N]`    | N×sizeof(T)  | Array. Decays to `T*` in expressions |
-| `struct S`| sum of fields | Contiguous, declaration order. **Pass and return by pointer only.** |
+| `struct S`| sum of fields | Contiguous, declaration order. **Pass and return from functions by pointer only** (locals and compound literals are fine). |
 | `typedef` | —            | Supported (`typedef struct Point Point;`) |
 
 `sizeof` is a compile-time `int` constant returning words.
@@ -628,7 +651,9 @@ If you write asm that calls a function, follow the same idiom.
 (`__fadd`, `__fsub`, `__fmul`, `__fdiv`, `__fcmp`, `__ftoi`, `__itof`,
 `__fcopy`, `__fneg`) take pointer arguments in `r2`/`r3`/`r4` and write their
 result to the destination passed in `r2` (`__fcmp` is the exception: it
-returns an int in `r2`). See `Lower.hs:871-904`.
+returns an int in `r2`). Float calls are lowered in
+[`RCC/LowerToSSA.hs`](../src/RCC/LowerToSSA.hs) (`lowerFloatBinOp` / `floatArith`);
+[`RCC/Codegen.hs`](../src/RCC/Codegen.hs) emits the `jalr` calling sequences.
 
 ### 21. Memory layout
 
@@ -745,15 +770,18 @@ A non-exhaustive list of things a C programmer might reach for and not find:
 - **No `goto`.**
 - **No `switch`/`case`.** Use `if`/`else` chains.
 - **No `do…while`.**
-- **No multi-translation-unit support / no linker.** One `.c` file in, one
-  `.s` file out. To use multiple files, `#include` them.
+- **No C-level multi-file linking or `extern`/`static`.** One `.c` file per `rcc`
+  invocation → one `.s`. Combine C with `#include`. **Assembly-level** linking is
+  supported: `hsasm --emit-obj` → **`hsld`**. See [`docs/toolchain.md`](../docs/toolchain.md)
+  and [spec §11b](spec.md#11b-rrisc-toolchain-rcc-and-hstools).
 - **No `extern` / `static` visibility modifiers.** Every top-level name is
   global to the translation unit.
 - **No `char`, `short`, `long`, `double`.** Use `int` for character codes;
   no integer wider than 12 bits.
 - **No dynamic allocation.** No `malloc`/`free`.
-- **No struct-by-value.** No struct arguments, struct returns, or struct
-  assignment. Use pointers.
+- **No struct passed or returned by value from functions.** Use `struct S *`.
+  Local struct variables and compound literals are supported; whole-struct
+  assignment between variables is not in the supported subset.
 - **No GCC extended `asm`** — see [§22](#22-inline-asm).
 - **No `volatile`, no atomics, no memory barriers.** The machine is uniprocessor
   and the simulators are sequential, so most uses of `volatile` are unnecessary;

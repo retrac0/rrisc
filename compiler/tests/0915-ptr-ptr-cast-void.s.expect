@@ -7,47 +7,24 @@
 
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
-    subi r6, 5
-;; int x = ...
-    li r2, 55
+    subi r6, 3
+_B_main_0:
     and r1, r6, r7
-    swr r2, r1
-;; void* p = ...
-    and r1, r6, r7
+    addi r1, 1
     and r2, r1, r7
     and r1, r6, r7
-    addi r1, 1
     swr r2, r1
     and r1, r6, r7
-    addi r1, 1
+    lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
-;; int* q = ...
     and r1, r6, r7
-    addi r1, 1
+    addi r1, 2
     lwr r2, r1
-    and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
-;; return *q
-    and r1, r6, r7
-    addi r1, 1
-    lwr r1, r1
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 4
-    lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
-    addi r6, 5
-    lwr r5, r6
-    addi r6, 1
+    addi r6, 3
     jalr r0, r5

@@ -11,10 +11,8 @@ arr:
 
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
     subi r6, 10
-;; arr[0]=1
+_B_main_0:
     li r3, arr
     and r2, r0, r0
     add r2, r3, r2
@@ -24,7 +22,6 @@ main:
     and r1, r6, r7
     lwr r1, r1
     swr r2, r1
-;; arr[1]=2
     li r3, arr
     li r2, 1
     add r2, r3, r2
@@ -36,7 +33,6 @@ main:
     addi r1, 1
     lwr r1, r1
     swr r2, r1
-;; arr[2]=3
     li r3, arr
     li r2, 2
     add r2, r3, r2
@@ -48,7 +44,6 @@ main:
     addi r1, 2
     lwr r1, r1
     swr r2, r1
-;; arr[3]=4
     li r3, arr
     li r2, 3
     add r2, r3, r2
@@ -60,7 +55,6 @@ main:
     addi r1, 3
     lwr r1, r1
     swr r2, r1
-;; arr[4]=5
     li r3, arr
     li r2, 4
     add r2, r3, r2
@@ -72,7 +66,6 @@ main:
     addi r1, 4
     lwr r1, r1
     swr r2, r1
-;; return arr[1]+arr[3]
     li r3, arr
     li r2, 1
     add r2, r3, r2
@@ -112,10 +105,8 @@ main:
     and r1, r6, r7
     addi r1, 9
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
     addi r6, 10
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5

@@ -3,6 +3,7 @@ module Main where
 import Control.Monad (when)
 import Data.Char (isDigit)
 import Data.List (intercalate)
+import qualified Data.Map.Strict as Map
 import Data.Version (showVersion)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -16,9 +17,15 @@ import Paths_rcc (version)
 import RCC.CliParse (parseIntArg)
 import qualified RCC.Parser   as Parser
 import qualified RCC.Sema     as Sema
-import qualified RCC.Lower    as Lower
-import qualified RCC.Optimize as Opt
+import qualified RCC.LowerSSA as LowerSSA
 import qualified RCC.Codegen  as Codegen
+import qualified RCC.OptFramework as OF
+import qualified RCC.OptFrameworkSSA as OFSSA
+import qualified RCC.Pass as Pass
+import qualified RCC.Pipeline as Pipe
+import qualified RCC.SSA.Prog as SSA
+import qualified RCC.SSA.ToTACProg as ToTACProg
+import qualified RCC.TAC as TAC
 import RCC.Error (Diagnostic, formatDiagnostic)
 
 -- ---------------------------------------------------------------------------
@@ -31,9 +38,11 @@ data Options = Options
   , optDataBase     :: Int
   , optStackTop     :: Maybe Int
   , optPreprocessor :: Maybe String
-  , optOptimize     :: Bool
+  , optOptLevel     :: Pipe.OptLevel
+  , optPassToggles  :: Maybe String
   , optDumpAst      :: Bool
   , optDumpTac      :: Bool
+  , optDumpSsa      :: Bool
   } deriving (Show)
 
 defaultOptions :: Options
@@ -44,9 +53,11 @@ defaultOptions = Options
   , optDataBase     = 0o0000
   , optStackTop     = Just 0o7770
   , optPreprocessor = Nothing
-  , optOptimize     = True
+  , optOptLevel     = Pipe.Os
+  , optPassToggles  = Nothing
   , optDumpAst      = False
   , optDumpTac      = False
+  , optDumpSsa      = False
   }
 
 parseArgs :: [String] -> Either String Options
@@ -66,8 +77,16 @@ parseArgs = go defaultOptions
     go opts ("--preprocessor" : c : rest) = go opts{ optPreprocessor = Just c } rest
     go opts ("--dump-ast" : rest) = go opts{ optDumpAst = True } rest
     go opts ("--dump-tac" : rest) = go opts{ optDumpTac = True } rest
-    go opts ("--no-optimize" : rest) = go opts{ optOptimize = False } rest
-    go opts ("--optimize" : rest) = go opts{ optOptimize = True } rest
+    go opts ("--dump-ssa" : rest) = go opts{ optDumpSsa = True } rest
+    -- Compatibility flags (map onto -Os / -O0)
+    go opts ("--no-optimize" : rest) = go opts{ optOptLevel = Pipe.O0 } rest
+    go opts ("--optimize" : rest) = go opts{ optOptLevel = Pipe.Os } rest
+    -- New optimization levels
+    go opts ("-O0" : rest) = go opts{ optOptLevel = Pipe.O0 } rest
+    go opts ("-Os" : rest) = go opts{ optOptLevel = Pipe.Os } rest
+    go opts ("-O2" : rest) = go opts{ optOptLevel = Pipe.O2 } rest
+    -- Per-pass overrides
+    go opts ("--pass" : spec : rest) = go opts{ optPassToggles = Just spec } rest
     go _ (('-' : '-' : _) : _) = Left "unknown option (try --help)"
     go _ (('-' : _) : _) = Left "unknown flag"
     go opts (f : rest) = go opts{ optInput = f } rest
@@ -82,10 +101,15 @@ usage prog =
     , "  --data-base <n>       RW globals base address (default: 0o0000)"
     , "  --stack-top <n>       initial stack pointer     (default: 0o7770)"
     , "  --preprocessor <cmd>  run <cmd> on source before compiling (e.g. 'cpp -P')"
-    , "  --optimize            enable TAC optimizations (default; omit with --no-optimize)"
-    , "  --no-optimize         skip TAC optimizations (debug only; large programs may not assemble)"
+    , "  -O0                   disable optimizations"
+    , "  -Os                   optimize for size (default)"
+    , "  -O2                   optimize (future: more aggressive)"
+    , "  --pass +id,-id,...    enable/disable specific passes"
+    , "  --optimize            (compat) same as -Os"
+    , "  --no-optimize         (compat) same as -O0"
     , "  --dump-ast            print lexical AST and exit"
     , "  --dump-tac            print TAC and exit"
+    , "  --dump-ssa            print SSA (debug) and exit"
     , "  -V, --version         print version and exit"
     ]
 
@@ -135,8 +159,34 @@ main = do
     Left  d -> dieDiag d
     Right p -> return p
 
-  let tac  = Lower.lower checked
-  let tac' = Opt.optimizeWhen (optOptimize opts) tac
+  let ssa :: SSA.SSAProg
+      ssa = LowerSSA.lowerSSA checked
+
+  when (optDumpSsa opts) $ print ssa >> exitSuccess
+
+  -- SSA-stage optimization pipeline (new default path).
+  let ssaPipe = Pipe.defaultPipeline (optOptLevel opts) OFSSA.defaultSsaPasses
+  let ssaBaseEnabled = Pipe.pipelineEnabledMap ssaPipe
+  ssaEnabled <- case optPassToggles opts of
+    Nothing -> pure ssaBaseEnabled
+    Just s  ->
+      case Pass.parsePassToggles s of
+        Left e -> die ("--pass: " <> e)
+        Right m -> pure (m `Map.union` ssaBaseEnabled)
+  let ssa' = OFSSA.optimizeSSAWith ssaEnabled (Pipe.plPasses ssaPipe) ssa
+
+  let tac :: TAC.TACProg
+      tac = ToTACProg.toTACProg ssa'
+
+  let pipe0 = Pipe.defaultPipeline (optOptLevel opts) OF.defaultTacPasses
+  let baseEnabled = Pipe.pipelineEnabledMap pipe0
+  passEnabled <- case optPassToggles opts of
+    Nothing -> pure baseEnabled
+    Just s  ->
+      case Pass.parsePassToggles s of
+        Left e -> die ("--pass: " <> e)
+        Right m -> pure (m `Map.union` baseEnabled)
+  let tac' = OF.optimizeWith passEnabled (Pipe.plPasses pipe0) tac
 
   when (optDumpTac opts) $ print tac' >> exitSuccess
 

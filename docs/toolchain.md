@@ -1,5 +1,14 @@
 # RRISC production toolchain
 
+This document describes how to **build and wire together** the Haskell tools:
+**`rcc`** (compiler frontend), **`hsasm`** / **`ras`**, **`hsld`**, and **`rsim`**.
+For the **language** definition (syntax, semantics, ABI summary), see
+[`compiler/spec.md`](../compiler/spec.md) (**§11b** documents **`rcc` + hstools** at language-doc level).
+For a **tutorial and everyday commands** (UART, memory layout, inline asm), see
+[`compiler/MANUAL.md`](../compiler/MANUAL.md) (Part I §3 and Part IV reference).
+[`run_tests.py`](../run_tests.py) and [`rrisc_toolchain.py`](../rrisc_toolchain.py)
+encode the same defaults as CI.
+
 Build everything from the repository root (see [`cabal.project`](../cabal.project)):
 
 ```bash
@@ -13,6 +22,15 @@ Install into a prefix (optional):
 ```bash
 cabal install exe:rcc exe:hsasm exe:hsld exe:rsim --overwrite-policy=always
 ```
+
+## End-to-end flow (`rcc` + hstools)
+
+1. **`rcc`** (`compiler/` cabal package) reads one `.c` file (optional host `cpp`) and prints RRISC **assembly** (`.s`): `%define RCC_CODE_BASE`, `RCC_DATA_BASE`, `RCC_STACK_TOP`, then `%include` of [`lib/crt0.s`](../lib/crt0.s), code, and data sections.
+2. **`hsasm`** (also installed as **`ras`**, `hstools/` package) assembles `.s` to a **flat** raw `.bin` / `$readmemb` **or**, with **`--emit-obj`**, to a relocatable **`.o`** file (`rrisc-obj` text format; see [Object file format versioning](#object-file-format-versioning)).
+3. **`hsld`** (`hstools/`) links one or more `.o` files into a final image; bases must agree with the `%define` lines from step 1 (see contract below).
+4. **`rsim`** (`hstools/`) runs the binary; alternatives are [`sim.py`](../sim.py) and **`sim2`** (built via `make sim2`). CI usually gates on the Python simulator only.
+
+For **`rcc` CLI flags** (`-O0`, `-Os`, `-O2`, dumps, `--pass`, …), see [`compiler/app/Main.hs`](../compiler/app/Main.hs) and [`compiler/MANUAL.md`](../compiler/MANUAL.md) §13.
 
 ## Components
 

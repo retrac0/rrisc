@@ -7,27 +7,27 @@
 
     .global noop
 noop:
-    subi r6, 1
-    swr r5, r6
-    li r1, _epi_noop
-    jalr r0, r1
+_B_noop_0:
+    clrt
+    bf _epi_noop
 _epi_noop:
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5
 
     .global main
 main:
     subi r6, 1
     swr r5, r6
-;; noop()
+    subi r6, 1
+_B_main_0:
     li r1, noop
     jalr r5, r1
-;; return 42
+    and r1, r6, r7
+    swr r2, r1
     li r2, 42
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
+    addi r6, 1
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

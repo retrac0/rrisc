@@ -7,15 +7,13 @@
 
     .global add
 add:
-    subi r6, 1
-    swr r5, r6
     subi r6, 3
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
     addi r1, 1
     swr r3, r1
-;; return a+b
+_B_add_0:
     and r1, r6, r7
     lwr r3, r1
     and r1, r6, r7
@@ -28,12 +26,10 @@ add:
     and r1, r6, r7
     addi r1, 2
     lwr r2, r1
-    li r1, _epi_add
-    jalr r0, r1
+    clrt
+    bf _epi_add
 _epi_add:
     addi r6, 3
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5
 
     .global main
@@ -41,7 +37,7 @@ main:
     subi r6, 1
     swr r5, r6
     subi r6, 1
-;; return add(3,4)
+_B_main_0:
     li r2, 3
     li r3, 4
     li r1, add
@@ -50,8 +46,8 @@ main:
     swr r2, r1
     and r1, r6, r7
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
     addi r6, 1
     lwr r5, r6

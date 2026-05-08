@@ -7,9 +7,7 @@
 
     .global mcpy
 mcpy:
-    subi r6, 1
-    swr r5, r6
-    subi r6, 8
+    subi r6, 10
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
@@ -18,15 +16,16 @@ mcpy:
     and r1, r6, r7
     addi r1, 2
     swr r4, r1
-;; for (...; i<n; ...)
-;; int i = ...
+_B_mcpy_0:
     and r2, r0, r0
     and r1, r6, r7
     addi r1, 3
     swr r2, r1
-_L_for_0:
+    clrt
+    bf _B_mcpy_7
+_B_mcpy_1:
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 5
     lwr r3, r1
     and r1, r6, r7
     addi r1, 2
@@ -35,88 +34,108 @@ _L_for_0:
     add r3, r3, r1
     add r2, r2, r1
     sub r1, r3, r2
-    bf _L_endfor_2
-;; dst[i]=src[i]
+    rol r2, r0
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_mcpy_2
+    clrt
+    bf _B_mcpy_5
+_B_mcpy_2:
     and r1, r6, r7
     addi r1, 1
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 5
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 6
     swr r2, r1
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 6
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 7
     swr r2, r1
     and r1, r6, r7
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 5
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 8
     swr r2, r1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 7
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 8
     lwr r1, r1
     swr r2, r1
-_L_forcont_1:
+    clrt
+    bf _B_mcpy_3
+_B_mcpy_3:
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 5
     lwr r3, r1
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 9
     swr r2, r1
+    clrt
+    bf _B_mcpy_6
+_B_mcpy_5:
+    clrt
+    bf _epi_mcpy
+_B_mcpy_6:
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 9
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 5
     swr r2, r1
-    li r1, _L_for_0
-    jalr r0, r1
-_L_endfor_2:
-    li r1, _epi_mcpy
-    jalr r0, r1
+    clrt
+    bf _B_mcpy_1
+_B_mcpy_7:
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+    clrt
+    bf _B_mcpy_1
 _epi_mcpy:
-    addi r6, 8
-    lwr r5, r6
-    addi r6, 1
+    addi r6, 10
     jalr r0, r5
 
     .global main
 main:
     subi r6, 1
     swr r5, r6
-    subi r6, 14
-;; int[4] src
-;; src[0]=1
+    subi r6, 15
+_B_main_0:
     and r1, r6, r7
+    addi r1, 1
     and r3, r1, r7
     and r2, r0, r0
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 4
     swr r2, r1
     li r2, 1
     and r1, r6, r7
-    addi r1, 4
     lwr r1, r1
     swr r2, r1
-;; src[1]=2
     and r1, r6, r7
+    addi r1, 1
     and r3, r1, r7
     li r2, 1
     add r2, r3, r2
@@ -128,8 +147,8 @@ main:
     addi r1, 5
     lwr r1, r1
     swr r2, r1
-;; src[2]=3
     and r1, r6, r7
+    addi r1, 1
     and r3, r1, r7
     li r2, 2
     add r2, r3, r2
@@ -141,8 +160,8 @@ main:
     addi r1, 6
     lwr r1, r1
     swr r2, r1
-;; src[3]=4
     and r1, r6, r7
+    addi r1, 1
     and r3, r1, r7
     li r2, 3
     add r2, r3, r2
@@ -154,39 +173,40 @@ main:
     addi r1, 7
     lwr r1, r1
     swr r2, r1
-;; int[4] dst
-;; mcpy(dst,src,4)
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 9
     and r2, r1, r7
     and r1, r6, r7
+    addi r1, 1
     and r3, r1, r7
     li r4, 4
     li r1, mcpy
     jalr r5, r1
-;; return dst[2]
     and r1, r6, r7
     addi r1, 8
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 9
     and r3, r1, r7
     li r2, 2
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 12
+    addi r1, 13
     swr r2, r1
     and r1, r6, r7
-    addi r1, 12
+    addi r1, 13
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 13
+    addi r1, 14
     swr r2, r1
     and r1, r6, r7
-    addi r1, 13
+    addi r1, 14
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
-    addi r6, 14
+    addi r6, 15
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

@@ -1,0 +1,20 @@
+# Linked .bin size baseline (12-bit words; 2 bytes per word)
+# Format: <test-stem> <words>
+
+0090-fib 611
+0226-div-4095-2 534
+1605-global-arr-sum 88
+1708-scope-fn-shadow 56
+1802-edge-wrap-mul 543
+1811-edge-mod-by-zero 532
+1900-complex-stack-push-pop 255
+1901-complex-linked-list-sum 243
+1902-complex-isqrt-16 626
+1903-complex-isqrt-100 626
+1904-complex-caesar-sum 759
+1905-complex-popcount-0xFF 609
+1906-complex-selection-sort 848
+1907-complex-gcd-iter 620
+1908-complex-memcpy-check 697
+1909-complex-dot-product 722
+1910-complex-longest-run 814

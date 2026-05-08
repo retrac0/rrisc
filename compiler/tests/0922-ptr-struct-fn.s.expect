@@ -7,12 +7,10 @@
 
     .global sum
 sum:
-    subi r6, 1
-    swr r5, r6
     subi r6, 5
     and r1, r6, r7
     swr r2, r1
-;; return p->a+p->b
+_B_sum_0:
     and r1, r6, r7
     lwr r1, r1
     lwr r2, r1
@@ -46,12 +44,10 @@ sum:
     and r1, r6, r7
     addi r1, 4
     lwr r2, r1
-    li r1, _epi_sum
-    jalr r0, r1
+    clrt
+    bf _epi_sum
 _epi_sum:
     addi r6, 5
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5
 
     .global main
@@ -59,12 +55,10 @@ main:
     subi r6, 1
     swr r5, r6
     subi r6, 5
-;; struct P p
-;; p.a=10
+_B_main_0:
     li r2, 10
     and r1, r6, r7
     swr r2, r1
-;; p.b=20
     and r1, r6, r7
     and r3, r1, r7
     li r2, 1
@@ -77,7 +71,6 @@ main:
     addi r1, 2
     lwr r1, r1
     swr r2, r1
-;; return sum(&p)
     and r1, r6, r7
     and r2, r1, r7
     and r1, r6, r7
@@ -94,8 +87,8 @@ main:
     and r1, r6, r7
     addi r1, 4
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
     addi r6, 5
     lwr r5, r6

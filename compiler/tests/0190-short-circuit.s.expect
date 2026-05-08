@@ -9,104 +9,57 @@ side_effect_called:
 
     .section text
 
-    .global set_flag
-set_flag:
-    subi r6, 1
-    swr r5, r6
-    subi r6, 1
-    and r1, r6, r7
-    swr r2, r1
-;; side_effect_called=1
-    li r2, 1
-    li r1, side_effect_called
-    swr r2, r1
-;; return val
-    and r1, r6, r7
-    lwr r2, r1
-    li r1, _epi_set_flag
-    jalr r0, r1
-_epi_set_flag:
-    addi r6, 1
-    lwr r5, r6
-    addi r6, 1
-    jalr r0, r5
-
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
     subi r6, 5
-;; if (0&&set_flag(1))
-    li r1, _L_and_false_0
-    jalr r0, r1
-    li r2, 1
-    li r1, set_flag
-    jalr r5, r1
-    and r1, r6, r7
-    swr r2, r1
-    and r1, r6, r7
-    lwr r2, r1
-    sub r0, r0, r2
-    bf _L_and_false_0
-    li r2, 1
-    and r1, r6, r7
-    addi r1, 1
-    swr r2, r1
-    li r1, _L_and_end_1
-    jalr r0, r1
-_L_and_false_0:
+_B_main_0:
+    clrt
+    bf _B_main_4
+_B_main_4:
     and r2, r0, r0
     and r1, r6, r7
-    addi r1, 1
     swr r2, r1
-_L_and_end_1:
+    clrt
+    bf _B_main_15
+_B_main_5:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_endif_2
-;; side_effect_called=99
+    bt _B_main_6
+    clrt
+    bf _B_main_7
+_B_main_6:
     li r2, 99
     li r1, side_effect_called
     swr r2, r1
-_L_endif_2:
-;; if (1||set_flag(0))
-    li r1, _L_or_true_3
-    jalr r0, r1
-    and r2, r0, r0
-    li r1, set_flag
-    jalr r5, r1
-    and r1, r6, r7
-    addi r1, 2
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 2
-    lwr r2, r1
-    sub r0, r0, r2
-    bt _L_or_true_3
-    and r2, r0, r0
-    and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
-    li r1, _L_or_end_4
-    jalr r0, r1
-_L_or_true_3:
+    clrt
+    bf _B_main_7
+_B_main_7:
+    clrt
+    bf _B_main_11
+_B_main_11:
     li r2, 1
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 2
     swr r2, r1
-_L_or_end_4:
+    clrt
+    bf _B_main_16
+_B_main_12:
     and r1, r6, r7
     addi r1, 3
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_endif_5
-;; side_effect_called=0
+    bt _B_main_13
+    clrt
+    bf _B_main_14
+_B_main_13:
     and r2, r0, r0
     li r1, side_effect_called
     swr r2, r1
-_L_endif_5:
-;; return side_effect_called
+    clrt
+    bf _B_main_14
+_B_main_14:
     li r1, side_effect_called
     lwr r2, r1
     and r1, r6, r7
@@ -115,10 +68,25 @@ _L_endif_5:
     and r1, r6, r7
     addi r1, 4
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
+_B_main_15:
+    and r1, r6, r7
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    clrt
+    bf _B_main_5
+_B_main_16:
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    clrt
+    bf _B_main_12
 _epi_main:
     addi r6, 5
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5

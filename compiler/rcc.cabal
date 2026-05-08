@@ -23,12 +23,24 @@ library
     exposed-modules:
         RCC.Error
         RCC.CliParse
+        RCC.Pass
+        RCC.Pipeline
+        RCC.OptFramework
         RCC.Syntax
         RCC.Parser
         RCC.Sema
         RCC.TAC
-        RCC.Lower
-        RCC.Optimize
+        RCC.LowerToSSA
+        RCC.LowerEmitSSA
+        RCC.LowerSSA
+        RCC.SSA.IR
+        RCC.SSA.CFG
+        RCC.SSA.Dom
+        RCC.SSA.Prog
+        RCC.SSA.ToTAC
+        RCC.SSA.ToTACProg
+        RCC.SSA.Optimize
+        RCC.OptFrameworkSSA
         RCC.Codegen
 
 executable rcc

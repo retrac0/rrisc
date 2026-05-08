@@ -7,40 +7,34 @@
 
     .global setx
 setx:
-    subi r6, 1
-    swr r5, r6
     subi r6, 2
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
     addi r1, 1
     swr r3, r1
-;; p->x=v
+_B_setx_0:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
     and r1, r6, r7
     lwr r1, r1
     swr r2, r1
-    li r1, _epi_setx
-    jalr r0, r1
+    clrt
+    bf _epi_setx
 _epi_setx:
     addi r6, 2
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5
 
     .global main
 main:
     subi r6, 1
     swr r5, r6
-    subi r6, 3
-;; struct P p
-;; p.x=0
+    subi r6, 4
+_B_main_0:
     and r2, r0, r0
     and r1, r6, r7
     swr r2, r1
-;; setx(&p,42)
     and r1, r6, r7
     and r2, r1, r7
     and r1, r6, r7
@@ -52,19 +46,21 @@ main:
     li r3, 42
     li r1, setx
     jalr r5, r1
-;; return p.x
-    and r1, r6, r7
-    lwr r2, r1
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
     and r1, r6, r7
-    addi r1, 2
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    clrt
+    bf _epi_main
 _epi_main:
-    addi r6, 3
+    addi r6, 4
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

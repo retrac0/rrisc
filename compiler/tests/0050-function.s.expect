@@ -7,12 +7,10 @@
 
     .global double_it
 double_it:
-    subi r6, 1
-    swr r5, r6
     subi r6, 2
     and r1, r6, r7
     swr r2, r1
-;; return x+x
+_B_double_it_0:
     and r1, r6, r7
     lwr r3, r1
     and r1, r6, r7
@@ -24,12 +22,10 @@ double_it:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
-    li r1, _epi_double_it
-    jalr r0, r1
+    clrt
+    bf _epi_double_it
 _epi_double_it:
     addi r6, 2
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5
 
     .global quadruple
@@ -39,7 +35,7 @@ quadruple:
     subi r6, 3
     and r1, r6, r7
     swr r2, r1
-;; return double_it(double_it(x))
+_B_quadruple_0:
     and r1, r6, r7
     lwr r2, r1
     li r1, double_it
@@ -58,8 +54,8 @@ quadruple:
     and r1, r6, r7
     addi r1, 2
     lwr r2, r1
-    li r1, _epi_quadruple
-    jalr r0, r1
+    clrt
+    bf _epi_quadruple
 _epi_quadruple:
     addi r6, 3
     lwr r5, r6
@@ -71,7 +67,7 @@ main:
     subi r6, 1
     swr r5, r6
     subi r6, 1
-;; return quadruple(3)
+_B_main_0:
     li r2, 3
     li r1, quadruple
     jalr r5, r1
@@ -79,8 +75,8 @@ main:
     swr r2, r1
     and r1, r6, r7
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
     addi r6, 1
     lwr r5, r6

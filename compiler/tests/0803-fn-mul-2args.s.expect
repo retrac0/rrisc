@@ -7,29 +7,27 @@
 
     .global mul
 mul:
-    subi r6, 1
-    swr r5, r6
     subi r6, 3
     and r1, r6, r7
     swr r2, r1
     and r1, r6, r7
     addi r1, 1
     swr r3, r1
-;; return a*b
+_B_mul_0:
     and r1, r6, r7
     lwr r3, r1
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
     and r1, r0, r0
-_L_mul_mul_loop_17:
+_L_mul_mul_loop_15:
     sub r0, r0, r2
-    bf _L_mul_mul_end_17
+    bf _L_mul_mul_end_15
     add r1, r1, r3
     subi r2, 1
     sub r0, r0, r7
-    bt _L_mul_mul_loop_17
-_L_mul_mul_end_17:
+    bt _L_mul_mul_loop_15
+_L_mul_mul_end_15:
     and r2, r1, r7
     and r1, r6, r7
     addi r1, 2
@@ -37,12 +35,10 @@ _L_mul_mul_end_17:
     and r1, r6, r7
     addi r1, 2
     lwr r2, r1
-    li r1, _epi_mul
-    jalr r0, r1
+    clrt
+    bf _epi_mul
 _epi_mul:
     addi r6, 3
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5
 
     .global main
@@ -50,7 +46,7 @@ main:
     subi r6, 1
     swr r5, r6
     subi r6, 1
-;; return mul(6,7)
+_B_main_0:
     li r2, 6
     li r3, 7
     li r1, mul
@@ -59,8 +55,8 @@ main:
     swr r2, r1
     and r1, r6, r7
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
     addi r6, 1
     lwr r5, r6

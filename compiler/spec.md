@@ -72,8 +72,9 @@ p + 2        // address of arr[2], i.e. &arr + 2
 
 Array indexing `a[i]` is defined as `*(a + i)`.
 For arrays of structs, element `i` is at `base + i * sizeof(struct S)`. Since there is no
-hardware multiply, this compiles to a shift when `sizeof` is a power of two, and to a runtime
-library call (`__mul`) otherwise. Prefer power-of-two struct sizes in performance-sensitive code.
+hardware multiply, the compiler emits a left shift when `sizeof(struct S)` is a power of two,
+and a software multiply loop in the generated code otherwise (no separate `__mul` library
+symbol). Prefer power-of-two struct sizes in performance-sensitive code.
 
 ---
 
@@ -131,7 +132,7 @@ Operators, in decreasing precedence:
 | 12         | `++` `--` (prefix), `-`, `!`, `~`, `*`, `&`, `sizeof` | right | unary  |
 | 12         | `(type) expr`                      | right         | cast                             |
 | 12         | `(type){expr, …}`                  | right         | compound literal                 |
-| 11         | `*`  `/`  `%`                      | left          | mul/div compile to `__mul`/`__div` for `int`; floats use `__fmul`/`__fdiv` |
+| 11         | `*`  `/`  `%`                      | left          | `int` mul/div/mod expand inline in codegen; `float` uses `__fmul`/`__fdiv` (and related helpers) |
 | 10         | `+`  `-`                           | left          |                                  |
 | 9          | `<<` `>>`                          | left          |                                  |
 | 8          | `<`  `<=` `>` `>=`                 | left          | unsigned for `unsigned`, signed for `int` |
@@ -297,14 +298,19 @@ void print(int *buf, int len) { ... }
 
 ### Entry Point
 
-The compiler emits a `_start` label that initialises the stack pointer (r6) and calls `main`:
+The compiler prints `%define` lines for `RCC_CODE_BASE`, `RCC_DATA_BASE`, and `RCC_STACK_TOP`,
+then `%include`s [`lib/crt0.s`](../lib/crt0.s), which sets `_start`, initialises **r6** from
+`RCC_STACK_TOP`, and calls `main` with `jalr`. The logical effect matches:
 
 ```asm
 _start:
-    li   r6, STACK_TOP
-    call main
+    li   r6, RCC_STACK_TOP
+    li   r1, main
+    jalr r5, r1
     halt
 ```
+
+See [`MANUAL.md`](MANUAL.md) for the exact prelude layout and memory options.
 
 `main` has signature `int main()` or `void main()`.
 
@@ -374,20 +380,6 @@ Memory access uses `lwr`/`swr` uniformly for both global variables and pointer d
 
 ---
 
-## 11a. What is not implemented
-
-The following commonly-expected C features are intentionally absent. See
-[`MANUAL.md`](MANUAL.md) for full discussion.
-
-- `goto`, `switch`/`case`, `do…while`
-- Function pointers
-- Variadic functions (`…`)
-- Multiple translation units / linker / `extern`/`static` visibility
-- `char`, `short`, `long`, `double`
-- Dynamic allocation (no `malloc`/`free`)
-- Struct-by-value (use `struct S *`)
-- GCC extended `asm` (operand/clobber lists)
-
 ## 11. Undefined Behaviour
 
 The following are undefined (no diagnostic required):
@@ -395,9 +387,49 @@ The following are undefined (no diagnostic required):
 - Dereferencing a null or invalid pointer
 - Out-of-bounds array access
 - Signed integer overflow (wraps at 12 bits by convention)
-- Using an uninitialised local variable but compiler should emit optional warning)
-- Calling a function through an incompatible declaration but compiler should emit 
-  optional warning when this can be detected
+- Using an uninitialised local variable (an implementation may emit an optional warning)
+- Calling a function through an incompatible declaration (an implementation may emit an
+  optional warning when this can be detected)
+
+---
+
+## 11a. What is not implemented
+
+The following commonly-expected C features are intentionally absent at the **language** level.
+See [`MANUAL.md`](MANUAL.md) for discussion and workarounds.
+
+- `goto`, `switch`/`case`, `do…while`
+- Function pointers
+- Variadic functions (`…`)
+- **`extern` / `static`**, and **multiple C translation units** compiled separately by `rcc`
+  (one `.c` file in → one `.s` file out). Combine sources with `#include` or split work across
+  **assembly** objects (see §11b).
+- `char`, `short`, `long`, `double`
+- Dynamic allocation (no `malloc`/`free`)
+- Structs **passed to or returned from functions by value** (use `struct S *`; local struct
+  variables and compound literals are supported)
+- GCC extended `asm` (operand/clobber lists)
+
+---
+
+## 11b. RRISC toolchain (`rcc` and hstools)
+
+The **language** is implemented by **`rcc`** ([`compiler/`](../compiler)), which emits RRISC
+assembly (`.s`) including the crt0 prelude above.
+
+The **hstools** package ([`hstools/`](../hstools)) provides the supported assembler and linker:
+**`hsasm`** (also installed as **`ras`**) turns `.s` into a flat `.bin`/`.mem` image or, with
+**`--emit-obj`**, into relocatable **`.o`** files; **`hsld`** links one or more `.o` files into a
+final image. **`rsim`** is the Haskell simulator (alternatives: `sim.py`, `sim2`). Bases and
+defines must stay consistent with the `%define` lines `rcc` emits — see
+[`docs/toolchain.md`](../docs/toolchain.md) for the contract, build commands, and object-format
+versioning.
+
+**`rcc` driver (summary).** Typical flags: `-o`, `--code-base`, `--data-base`, `--stack-top`,
+`--preprocessor`, **`-O0`** (no optimizations), **`-Os`** (default, optimize for size),
+**`-O2`**, **`--pass +name,-name`** (per-pass overrides), **`--dump-ast`**, **`--dump-tac`**,
+**`--dump-ssa`**, **`--optimize` / `--no-optimize`** (compat aliases for `-Os` / `-O0`). Full CLI
+and workflow examples are in [`MANUAL.md`](MANUAL.md).
 
 ---
 
@@ -495,17 +527,19 @@ Comments: `//` to end of line; `/* ... */` block (non-nesting).
 
 ## 13. Runtime
 
-The compiler emits calls to these symbols when needed; assembly sources live in `lib/`.
-The compiler output still `%include`s `lib/crt0.s` for `_start`. Soft-float and other
-library subroutines are **not** inlined into the generated `.s`; link `lib/float/*.s`
-(or prebuilt `.o` objects from `lib/float/`) so the linker resolves `__f*` symbols.
+**Integer `*`, `/`, and `%`.** These operators compile to instruction sequences in the
+generated assembly (inline multiply loop, unsigned/signed divide and modulo routines in the
+code generator). There are **no** integer `__mul` / `__div` / `__mod` runtime symbols to link.
+
+The compiler emits calls to the symbols below when needed; assembly sources live in `lib/`.
+The compiler output `%include`s `lib/crt0.s` for `_start`. Soft-float and string helpers are
+**not** inlined into the generated `.s`; link `lib/float/*.s` (or prebuilt `.o` objects from
+`lib/float/`) so **`hsld`** or flat **`hsasm`** resolves `__f*` symbols as documented in
+[`docs/toolchain.md`](../docs/toolchain.md).
 
 | Symbol     | Signature                                        | Description                              | Source                |
 |------------|--------------------------------------------------|------------------------------------------|-----------------------|
 | `_start`   | —                                                | Entry point; inits stack, calls `main`   | `lib/crt0.s` (auto-included) |
-| `__mul`    | `(int, int) int`                                 | Software multiply                        | (linked in by codegen)|
-| `__div`    | `(int, int) int`                                 | Software divide                          |                       |
-| `__mod`    | `(int, int) int`                                 | Software modulo                          |                       |
 | `__fadd`   | `(float *dst, float *a, float *b)`               | `*dst = *a + *b`                         | `lib/float/__fadd.s`  |
 | `__fsub`   | `(float *dst, float *a, float *b)`               | `*dst = *a − *b`                         | `lib/float/__fsub.s`  |
 | `__fmul`   | `(float *dst, float *a, float *b)`               | `*dst = *a × *b`                         | `lib/float/__fmul.s`  |

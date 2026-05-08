@@ -7,142 +7,291 @@
 
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
-    subi r6, 6
-;; int a = ...
-    li r2, 3
+    subi r6, 22
+_B_main_0:
+    li r2, 5
     and r1, r6, r7
     swr r2, r1
-;; int b = ...
-    li r2, 5
+    and r2, r0, r0
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
-;; int result = ...
-    and r2, r0, r0
+    li r2, 1
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
-;; if (a<b&&b>2)
-    li r3, 3
-    li r2, 5
-    li r1, 0o4000
-    add r3, r3, r1
-    add r2, r2, r1
-    sub r1, r3, r2
-    bf _L_and_false_0
-    li r3, 5
-    li r2, 2
-    li r1, 0o4000
-    add r3, r3, r1
-    add r2, r2, r1
-    sub r1, r2, r3
-    bf _L_and_false_0
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_1
+    clrt
+    bf _B_main_4
+_B_main_1:
     li r2, 1
     and r1, r6, r7
     addi r1, 3
     swr r2, r1
-    li r1, _L_and_end_1
-    jalr r0, r1
-_L_and_false_0:
-    and r2, r0, r0
-    and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
-_L_and_end_1:
     and r1, r6, r7
     addi r1, 3
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_endif_2
-;; if (a==3||b==10)
+    bt _B_main_2
+    clrt
+    bf _B_main_4
+_B_main_2:
+    li r2, 1
     and r1, r6, r7
-    lwr r3, r1
-    li r2, 3
-    sub r1, r3, r2
-    sub r0, r0, r1
-    bf _L_or_true_3
+    addi r1, 4
+    swr r2, r1
+    clrt
+    bf _B_main_23
+_B_main_4:
+    and r2, r0, r0
     and r1, r6, r7
-    addi r1, 1
+    addi r1, 5
+    swr r2, r1
+    clrt
+    bf _B_main_22
+_B_main_5:
+    and r1, r6, r7
+    addi r1, 6
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_6
+    clrt
+    bf _B_main_29
+_B_main_6:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 7
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 7
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_10
+    clrt
+    bf _B_main_7
+_B_main_7:
+    and r1, r6, r7
     lwr r3, r1
     li r2, 10
     sub r1, r3, r2
     sub r0, r0, r1
-    bf _L_or_true_3
-    and r2, r0, r0
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
-    li r1, _L_or_end_4
-    jalr r0, r1
-_L_or_true_3:
     li r2, 1
+    bf _L_main_ne_75
+    li r2, 0
+_L_main_ne_75:
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 8
     swr r2, r1
-_L_or_end_4:
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 8
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_endif_5
-;; result=1
-    li r2, 1
-    and r1, r6, r7
-    addi r1, 2
-    swr r2, r1
-_L_endif_5:
-_L_endif_2:
-;; if (a>b||b==0)
-    and r1, r6, r7
-    lwr r3, r1
-    and r1, r6, r7
-    addi r1, 1
-    lwr r2, r1
-    li r1, 0o4000
-    add r3, r3, r1
-    add r2, r2, r1
-    sub r1, r2, r3
-    bt _L_or_true_6
-    and r1, r6, r7
-    addi r1, 1
-    lwr r3, r1
-    and r2, r0, r0
-    sub r1, r3, r2
-    sub r0, r0, r1
-    bf _L_or_true_6
+    bt _B_main_10
+    clrt
+    bf _B_main_8
+_B_main_8:
     and r2, r0, r0
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 9
     swr r2, r1
-    li r1, _L_or_end_7
-    jalr r0, r1
-_L_or_true_6:
+    clrt
+    bf _B_main_25
+_B_main_10:
     li r2, 1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 10
     swr r2, r1
-_L_or_end_7:
+    clrt
+    bf _B_main_24
+_B_main_11:
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 11
     lwr r2, r1
     sub r0, r0, r2
-    bf _L_endif_8
-;; result=99
+    bt _B_main_12
+    clrt
+    bf _B_main_27
+_B_main_12:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 12
+    swr r2, r1
+    clrt
+    bf _B_main_26
+_B_main_13:
+    clrt
+    bf _B_main_28
+_B_main_14:
+    and r2, r0, r0
+    and r1, r6, r7
+    addi r1, 13
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 13
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_18
+    clrt
+    bf _B_main_15
+_B_main_15:
+    and r2, r0, r0
+    and r1, r6, r7
+    addi r1, 14
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 14
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_18
+    clrt
+    bf _B_main_16
+_B_main_16:
+    and r2, r0, r0
+    and r1, r6, r7
+    addi r1, 15
+    swr r2, r1
+    clrt
+    bf _B_main_31
+_B_main_18:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 16
+    swr r2, r1
+    clrt
+    bf _B_main_30
+_B_main_19:
+    and r1, r6, r7
+    addi r1, 17
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_20
+    clrt
+    bf _B_main_33
+_B_main_20:
     li r2, 99
     and r1, r6, r7
-    addi r1, 2
+    addi r1, 18
     swr r2, r1
-_L_endif_8:
-;; return result
+    clrt
+    bf _B_main_32
+_B_main_21:
     and r1, r6, r7
-    addi r1, 2
+    addi r1, 19
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
+_B_main_22:
+    and r1, r6, r7
+    addi r1, 5
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 6
+    swr r2, r1
+    clrt
+    bf _B_main_5
+_B_main_23:
+    and r1, r6, r7
+    addi r1, 4
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 6
+    swr r2, r1
+    clrt
+    bf _B_main_5
+_B_main_24:
+    and r1, r6, r7
+    addi r1, 10
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 11
+    swr r2, r1
+    clrt
+    bf _B_main_11
+_B_main_25:
+    and r1, r6, r7
+    addi r1, 9
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 11
+    swr r2, r1
+    clrt
+    bf _B_main_11
+_B_main_26:
+    and r1, r6, r7
+    addi r1, 12
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 20
+    swr r2, r1
+    clrt
+    bf _B_main_13
+_B_main_27:
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 20
+    swr r2, r1
+    clrt
+    bf _B_main_13
+_B_main_28:
+    and r1, r6, r7
+    addi r1, 20
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 21
+    swr r2, r1
+    clrt
+    bf _B_main_14
+_B_main_29:
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 21
+    swr r2, r1
+    clrt
+    bf _B_main_14
+_B_main_30:
+    and r1, r6, r7
+    addi r1, 16
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 17
+    swr r2, r1
+    clrt
+    bf _B_main_19
+_B_main_31:
+    and r1, r6, r7
+    addi r1, 15
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 17
+    swr r2, r1
+    clrt
+    bf _B_main_19
+_B_main_32:
+    and r1, r6, r7
+    addi r1, 18
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 19
+    swr r2, r1
+    clrt
+    bf _B_main_21
+_B_main_33:
+    and r1, r6, r7
+    addi r1, 21
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 19
+    swr r2, r1
+    clrt
+    bf _B_main_21
 _epi_main:
-    addi r6, 6
-    lwr r5, r6
-    addi r6, 1
+    addi r6, 22
     jalr r0, r5

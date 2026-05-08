@@ -7,15 +7,11 @@
 
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
-    subi r6, 9
-;; struct P p
-;; p.x=3
+    subi r6, 8
+_B_main_0:
     li r2, 3
     and r1, r6, r7
     swr r2, r1
-;; p.y=4
     and r1, r6, r7
     and r3, r1, r7
     li r2, 1
@@ -28,7 +24,6 @@ main:
     addi r1, 2
     lwr r1, r1
     swr r2, r1
-;; struct P* q = ...
     and r1, r6, r7
     and r2, r1, r7
     and r1, r6, r7
@@ -36,17 +31,10 @@ main:
     swr r2, r1
     and r1, r6, r7
     addi r1, 3
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
-;; return q->x+q->y
-    and r1, r6, r7
-    addi r1, 3
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 4
     swr r2, r1
     and r1, r6, r7
     addi r1, 3
@@ -54,32 +42,30 @@ main:
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 6
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 6
-    lwr r1, r1
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 7
+    addi r1, 5
     swr r2, r1
     and r1, r6, r7
     addi r1, 5
+    lwr r1, r1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 6
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 4
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 6
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 7
     swr r2, r1
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 7
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
-    addi r6, 9
-    lwr r5, r6
-    addi r6, 1
+    addi r6, 8
     jalr r0, r5

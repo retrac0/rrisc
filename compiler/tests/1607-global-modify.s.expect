@@ -11,10 +11,8 @@ g:
 
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
     subi r6, 3
-;; g=g+5
+_B_main_0:
     li r1, g
     lwr r2, r1
     and r1, r6, r7
@@ -31,7 +29,6 @@ main:
     lwr r2, r1
     li r1, g
     swr r2, r1
-;; return g
     li r1, g
     lwr r2, r1
     and r1, r6, r7
@@ -40,10 +37,8 @@ main:
     and r1, r6, r7
     addi r1, 2
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
     addi r6, 3
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5

@@ -7,51 +7,41 @@
 
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
-    subi r6, 1
-;; int x = ...
-    li r2, 2
+    subi r6, 2
+_B_main_0:
+    and r2, r0, r0
     and r1, r6, r7
     swr r2, r1
-;; if (x==1)
-    li r3, 2
-    li r2, 1
-    sub r1, r3, r2
-    sub r0, r0, r1
-    bt _L_else_0
-;; return 1
-    li r2, 1
-    li r1, _epi_main
-    jalr r0, r1
-    li r1, _L_endif_1
-    jalr r0, r1
-_L_else_0:
-;; if (x==2)
     and r1, r6, r7
-    lwr r3, r1
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_1
+    clrt
+    bf _B_main_4
+_B_main_1:
+    li r2, 1
+    clrt
+    bf _epi_main
+_B_main_4:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_5
+    clrt
+    bf _B_main_8
+_B_main_5:
     li r2, 2
-    sub r1, r3, r2
-    sub r0, r0, r1
-    bt _L_else_2
-;; return 2
-    li r2, 2
-    li r1, _epi_main
-    jalr r0, r1
-    li r1, _L_endif_3
-    jalr r0, r1
-_L_else_2:
-;; return 3
+    clrt
+    bf _epi_main
+_B_main_8:
     li r2, 3
-    li r1, _epi_main
-    jalr r0, r1
-_L_endif_3:
-_L_endif_1:
-    and r2, r0, r0
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
-    addi r6, 1
-    lwr r5, r6
-    addi r6, 1
+    addi r6, 2
     jalr r0, r5

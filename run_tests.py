@@ -18,6 +18,11 @@ Run from the repository root:
 
 Golden UART tests (manual expectations; never run --bless-output on these):
   compiler/tests/io/*.stdout.expect — compare simulator terminal + host gcc stdout.
+  Optional: --bless-io-host refreshes those goldens from gcc only; still run --only io before commit.
+
+Numbered RCC tests with simulator output goldens use a pair of files (both required if either exists):
+  stem.output.expect      — stdout from linked binary built with default optimized rcc (-Os/--optimize)
+  stem.output.expect.O0   — stdout from the same program built with -O0
 """
 
 from __future__ import annotations
@@ -194,168 +199,109 @@ def replace_argv_flag(argv: list[str], flag: str, value: str) -> list[str]:
     return out
 
 
-# --- RCC tests -------------------------------------------------------------
-
-def run_rcc_error_test(cfg: RunConfig, src: Path) -> TResult:
-    base = src.stem
-    expect = cfg.root / "compiler" / "tests" / f"{base}.err.expect"
-    rcc = cfg.rcc_path
-    if not rcc:
-        return TResult(False, f"rccerr:{base}", "rcc not found (build with: cd compiler && cabal build exe:rcc)")
-    flags = list(cfg.default_rcc_flags)
-    r = run_capture(
-        [str(rcc), *flags, rcc_src_arg(cfg.root, src), "-o", os.devnull],
-        cwd=cfg.root / "compiler",
-    )
-    if r.returncode == 0:
-        return TResult(False, f"rccerr:{base}", "compiler accepted invalid program")
-    if not expect.is_file():
-        return TResult(True, f"rccerr:{base}", "(no .err.expect; skipped compare)")
-    err = r.stderr or ""
-    exp = expect.read_text(encoding="utf-8")
-    if err != exp:
-        return TResult(
-            False,
-            f"rccerr:{base}",
-            diff_text(exp, err, str(expect), "stderr"),
-        )
-    return TResult(True, f"rccerr:{base}")
+# Fallback RCC_* addresses when linking (matches typical rcc output for each suite).
+RCC_LINK_FALLBACK_NUMBERED: tuple[str, str, str] = ("0o1000", "0o3000", "0o3000")
+RCC_LINK_FALLBACK_IO: tuple[str, str, str] = ("0o100", "0o6600", "0o7770")
 
 
-def run_rcc_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]:
-    """Compile once, assemble with each backend, simulate with each backend."""
-    base = src.stem
-    name = f"rcc:{base}"
-    results: list[TResult] = []
-    compiler_tests = cfg.root / "compiler" / "tests"
-    rcc = cfg.rcc_path
-    if not rcc:
-        return [
-            TResult(False, name, "rcc not found (build with: cd compiler && cabal build exe:rcc)")
-        ]
-
-    per_test = parse_flags_file(compiler_tests / f"{base}.rccflags")
-    asm_out = tmp_root / f"{base}.s"
+def compile_rcc_to_asm(
+    cfg: RunConfig,
+    src: Path,
+    asm_out: Path,
+    *,
+    extra_rcc_flags: Sequence[str] = (),
+) -> tuple[bool, str]:
+    """Run rcc with cfg.default_rcc_flags; cwd is compiler/."""
+    if not cfg.rcc_path:
+        return False, "rcc not found (build with: cd compiler && cabal build exe:rcc)"
     rcc_argv = [
-        str(rcc),
+        str(cfg.rcc_path),
         *cfg.default_rcc_flags,
-        *per_test,
+        *extra_rcc_flags,
         rcc_src_arg(cfg.root, src),
         "-o",
         str(asm_out),
     ]
-    r = run_capture(rcc_argv, cwd=cfg.root / "compiler")
-    if r.returncode != 0:
-        return [
-            TResult(
-                False,
-                name,
-                "rcc failed:\n" + (r.stderr or r.stdout or ""),
-            )
-        ]
+    rc = run_capture(rcc_argv, cwd=cfg.root / "compiler")
+    if rc.returncode != 0:
+        return False, "rcc failed:\n" + (rc.stderr or rc.stdout or "")
+    return True, ""
 
-    s_expect = compiler_tests / f"{base}.s.expect"
-    if s_expect.is_file():
-        got = asm_out.read_text(encoding="utf-8")
-        exp = s_expect.read_text(encoding="utf-8")
-        if got != exp:
-            results.append(
-                TResult(
-                    False,
-                    name,
-                    diff_text(exp, got, str(s_expect), "generated asm"),
-                    sub="s.expect",
-                )
-            )
-            return results
 
-    out_expect = compiler_tests / f"{base}.output.expect"
-    sim_extra = parse_flags_file(compiler_tests / f"{base}.simflags")
-    input_path = compiler_tests / f"{base}.input"
-    has_input = input_path.is_file()
-
-    lib = lib_dir(cfg.root)
-    crt0_s = cfg.root / "lib" / "crt0.s"
-
-    if not cfg.hsasm_path or not cfg.hsld_path:
-        msg = "hsasm+hsld required to link crt0 with rcc output (cabal build exe:hsasm exe:hsld in hstools/)"
-        if cfg.skip_unavailable:
-            return [TResult(True, name, f"(skipped) {msg}")]
-        return [TResult(False, name, msg)]
-
-    asm_txt = asm_out.read_text()
+def rcc_asm_bases(
+    asm_txt: str,
+    *,
+    code_fb: str,
+    data_fb: str,
+    stack_fb: str,
+) -> tuple[str, str | None, str, dict[str, str]]:
     defs = parse_rcc_defines(asm_txt)
-    code_b = defs.get("RCC_CODE_BASE", "0o1000")
-    data_opt = defs.get("RCC_DATA_BASE", "0o3000") if ".section data" in asm_txt else None
-    stack_t = defs.get("RCC_STACK_TOP", "0o3000")
+    code_b = defs.get("RCC_CODE_BASE", code_fb)
+    data_opt = defs.get("RCC_DATA_BASE", data_fb) if ".section data" in asm_txt else None
+    stack_t = defs.get("RCC_STACK_TOP", stack_fb)
+    return code_b, data_opt, stack_t, defs
 
-    bin_path = tmp_root / f"{base}.bin"
-    crt0_o = tmp_root / f"{base}.crt0.o"
-    user_o = tmp_root / f"{base}.rcc.o"
 
-    ar0 = run_capture(
-        hsasm_emit_obj_cmd(
-            cfg.hsasm_path,
-            crt0_s,
-            crt0_o,
-            cli_defines=[("RCC_STACK_TOP", stack_t)],
-        ),
-        cwd=cfg.root,
+def rcc_output_expect_path(compiler_tests: Path, base: str) -> Path:
+    return compiler_tests / f"{base}.output.expect"
+
+
+def rcc_output_expect_o0_path(compiler_tests: Path, base: str) -> Path:
+    return compiler_tests / f"{base}.output.expect.O0"
+
+
+def _run_rcc_output_variant_sims(
+    cfg: RunConfig,
+    *,
+    name: str,
+    base: str,
+    tmp_root: Path,
+    asm_path: Path,
+    out_expect: Path | None,
+    variant_label: str,
+    sim_extra: list[str],
+    input_path: Path | None,
+    has_input: bool,
+) -> list[TResult]:
+    """Link asm_path, run each configured simulator, optionally compare stdout to out_expect."""
+    results: list[TResult] = []
+    code_fb, data_fb, stack_fb = RCC_LINK_FALLBACK_NUMBERED
+    asm_txt = asm_path.read_text()
+    code_b, data_opt, stack_t, defs = rcc_asm_bases(
+        asm_txt, code_fb=code_fb, data_fb=data_fb, stack_fb=stack_fb
     )
-    if ar0.returncode != 0:
-        return [
-            TResult(
-                False,
-                name,
-                "hsasm (crt0) failed:\n" + (ar0.stderr or ar0.stdout or ""),
-                sub="crt0.o",
-            )
-        ]
 
-    aru = run_capture(
-        hsasm_emit_obj_cmd(cfg.hsasm_path, asm_out, user_o, include_dirs=[lib]),
-        cwd=cfg.root / "compiler",
-    )
-    if aru.returncode != 0:
-        return [
-            TResult(
-                False,
-                name,
-                "hsasm (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""),
-                sub="user.o",
-            )
-        ]
+    bin_path = tmp_root / f"{base}.{variant_label}.bin"
+    crt0_o = tmp_root / f"{base}.{variant_label}.crt0.o"
+    user_o = tmp_root / f"{base}.{variant_label}.rcc.o"
 
-    arl = run_capture(
-        hsld_cmd(
-            cfg.hsld_path,
-            [crt0_o, user_o],
-            bin_path,
-            code_base=code_b,
-            data_base=data_opt,
-        ),
-        cwd=cfg.root,
+    ok_l, err_l, sub_l = link_rcc_asm_with_crt0(
+        cfg,
+        asm_path,
+        bin_path,
+        crt0_o,
+        user_o,
+        code_base=code_b,
+        data_base=data_opt,
+        stack_top=stack_t,
     )
-    if arl.returncode != 0:
-        return [
-            TResult(
-                False,
-                name,
-                "hsld failed:\n" + (arl.stderr or arl.stdout or ""),
-                sub="hsld",
-            )
-        ]
+    if not ok_l:
+        return [TResult(False, name, err_l, sub=f"{variant_label}/{sub_l}")]
 
     for sim_id in cfg.simulators:
         if sim_id == "c" and not cfg.sim2_path:
             if cfg.skip_unavailable:
                 continue
-            results.append(TResult(False, name, "sim2 not found", sub="link/csim"))
+            results.append(
+                TResult(False, name, "sim2 not found", sub=f"{variant_label}/link/csim")
+            )
             continue
         if sim_id == "hs" and not cfg.rsim_path:
             if cfg.skip_unavailable:
                 continue
-            results.append(TResult(False, name, "rsim not found", sub="link/rsim"))
+            results.append(
+                TResult(False, name, "rsim not found", sub=f"{variant_label}/link/rsim")
+            )
             continue
 
         sim_argv: list[str]
@@ -394,6 +340,7 @@ def run_rcc_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
             cwd=cfg.root / "compiler",
             stdin_path=input_path if has_input else None,
         )
+        sub = f"{variant_label}/link/{sim_id}sim"
         if sr.returncode != 0:
             results.append(
                 TResult(
@@ -401,15 +348,13 @@ def run_rcc_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
                     name,
                     f"simulator ({sim_id}) exit {sr.returncode}:\n"
                     + (sr.stderr or sr.stdout or ""),
-                    sub=f"link/{sim_id}sim",
+                    sub=sub,
                 )
             )
             continue
 
-        if not out_expect.is_file():
-            results.append(
-                TResult(True, name, "no .output.expect", sub=f"link/{sim_id}sim")
-            )
+        if out_expect is None or not out_expect.is_file():
+            results.append(TResult(True, name, "no .output.expect", sub=sub))
             continue
 
         actual = sr.stdout or ""
@@ -420,11 +365,370 @@ def run_rcc_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
                     False,
                     name,
                     diff_text(expected, actual, str(out_expect), "sim stdout"),
-                    sub=f"link/{sim_id}sim",
+                    sub=sub,
                 )
             )
         else:
-            results.append(TResult(True, name, sub=f"link/{sim_id}sim"))
+            results.append(TResult(True, name, sub=sub))
+
+    return results
+
+
+def link_rcc_asm_with_crt0(
+    cfg: RunConfig,
+    asm_out: Path,
+    bin_path: Path,
+    crt0_o: Path,
+    user_o: Path,
+    *,
+    code_base: str,
+    data_base: str | None,
+    stack_top: str,
+) -> tuple[bool, str, str]:
+    """Assemble crt0 + one rcc .s and hsld-link. On failure, third element is TResult.sub."""
+    if not cfg.hsasm_path or not cfg.hsld_path:
+        return (
+            False,
+            "hsasm+hsld required (cabal build exe:hsasm exe:hsld in hstools/)",
+            "",
+        )
+    lib = lib_dir(cfg.root)
+    crt0_s = cfg.root / "lib" / "crt0.s"
+    ar0 = run_capture(
+        hsasm_emit_obj_cmd(
+            cfg.hsasm_path,
+            crt0_s,
+            crt0_o,
+            cli_defines=[("RCC_STACK_TOP", stack_top)],
+        ),
+        cwd=cfg.root,
+    )
+    if ar0.returncode != 0:
+        return False, "hsasm (crt0) failed:\n" + (ar0.stderr or ar0.stdout or ""), "crt0.o"
+    aru = run_capture(
+        hsasm_emit_obj_cmd(cfg.hsasm_path, asm_out, user_o, include_dirs=[lib]),
+        cwd=cfg.root / "compiler",
+    )
+    if aru.returncode != 0:
+        return False, "hsasm (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""), "user.o"
+    arl = run_capture(
+        hsld_cmd(
+            cfg.hsld_path,
+            [crt0_o, user_o],
+            bin_path,
+            code_base=code_base,
+            data_base=data_base,
+        ),
+        cwd=cfg.root,
+    )
+    if arl.returncode != 0:
+        return False, "hsld failed:\n" + (arl.stderr or arl.stdout or ""), "hsld"
+    return True, "", ""
+
+
+# --- code size regression (linked .bin words) -------------------------------
+
+SIZE_BASELINE = Path("tests") / "size_baseline.txt"
+
+# Keep this corpus stable and representative. These are compiler/tests/*.c stems.
+SIZE_CORPUS: tuple[str, ...] = (
+    "0090-fib",
+    "0226-div-4095-2",
+    "1605-global-arr-sum",
+    "1708-scope-fn-shadow",
+    "1802-edge-wrap-mul",
+    "1811-edge-mod-by-zero",
+    "1900-complex-stack-push-pop",
+    "1901-complex-linked-list-sum",
+    "1902-complex-isqrt-16",
+    "1903-complex-isqrt-100",
+    "1904-complex-caesar-sum",
+    "1905-complex-popcount-0xFF",
+    "1906-complex-selection-sort",
+    "1907-complex-gcd-iter",
+    "1908-complex-memcpy-check",
+    "1909-complex-dot-product",
+    "1910-complex-longest-run",
+)
+
+
+def _bin_word_count(p: Path) -> int:
+    n = p.stat().st_size
+    if n % 2 != 0:
+        raise ValueError(f"bin length not multiple of 2: {p} ({n} bytes)")
+    return n // 2
+
+
+def _parse_size_baseline(txt: str) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for raw in txt.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) != 2:
+            raise ValueError(f"bad baseline line: {raw!r}")
+        stem, words_s = parts
+        out[stem] = int(words_s)
+    return out
+
+
+def _format_size_baseline(m: dict[str, int]) -> str:
+    lines = [
+        "# Linked .bin size baseline (12-bit words; 2 bytes per word)",
+        "# Format: <test-stem> <words>",
+        "",
+    ]
+    for k in sorted(m):
+        lines.append(f"{k} {m[k]}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def collect_size_tests(cfg: RunConfig) -> list[Path]:
+    d = cfg.root / "compiler" / "tests"
+    xs: list[Path] = []
+    for stem in SIZE_CORPUS:
+        p = d / f"{stem}.c"
+        if not p.is_file():
+            continue
+        if cfg.filter_re and not cfg.filter_re.search(stem):
+            continue
+        xs.append(p)
+    return xs
+
+
+def build_rcc_linked_bin(cfg: RunConfig, src: Path, tmp_root: Path) -> tuple[bool, Path | None, str]:
+    """Build a linked .bin (crt0 + rcc output) and return (ok, bin_path, detail)."""
+    base = src.stem
+    if not cfg.hsasm_path or not cfg.hsld_path:
+        return False, None, "hsasm+hsld required (cabal build exe:hsasm exe:hsld in hstools/)"
+
+    compiler_tests = cfg.root / "compiler" / "tests"
+    per_test = parse_flags_file(compiler_tests / f"{base}.rccflags")
+    asm_out = tmp_root / f"{base}.s"
+    ok, err = compile_rcc_to_asm(cfg, src, asm_out, extra_rcc_flags=per_test)
+    if not ok:
+        return False, None, err
+
+    code_fb, data_fb, stack_fb = RCC_LINK_FALLBACK_NUMBERED
+    asm_txt = asm_out.read_text()
+    code_b, data_opt, stack_t, _ = rcc_asm_bases(
+        asm_txt, code_fb=code_fb, data_fb=data_fb, stack_fb=stack_fb
+    )
+
+    bin_path = tmp_root / f"{base}.bin"
+    crt0_o = tmp_root / f"{base}.crt0.o"
+    user_o = tmp_root / f"{base}.rcc.o"
+
+    ok_link, err_link, _sub = link_rcc_asm_with_crt0(
+        cfg,
+        asm_out,
+        bin_path,
+        crt0_o,
+        user_o,
+        code_base=code_b,
+        data_base=data_opt,
+        stack_top=stack_t,
+    )
+    if not ok_link:
+        return False, None, err_link
+
+    return True, bin_path, ""
+
+
+def run_size_suite(cfg: RunConfig, tmp_root: Path) -> list[TResult]:
+    tests = collect_size_tests(cfg)
+    if not tests:
+        return [TResult(True, "size", "(no size tests selected)")]
+
+    baseline_path = cfg.root / SIZE_BASELINE
+    if not baseline_path.is_file():
+        return [TResult(False, "size", f"missing baseline: {baseline_path} (run: python3 run_tests.py --bless-size)")]
+
+    baseline = _parse_size_baseline(baseline_path.read_text(encoding="utf-8"))
+    results: list[TResult] = []
+    for src in tests:
+        stem = src.stem
+        tdir = Path(tempfile.mkdtemp(dir=tmp_root))
+        ok, bin_path, detail = build_rcc_linked_bin(cfg, src, tdir)
+        if not ok or not bin_path:
+            results.append(TResult(False, f"size:{stem}", detail))
+            continue
+        got = _bin_word_count(bin_path)
+        exp = baseline.get(stem)
+        if exp is None:
+            results.append(TResult(False, f"size:{stem}", "missing baseline entry (run --bless-size)"))
+        elif got > exp:
+            results.append(TResult(False, f"size:{stem}", f"code size regressed: {got} words (baseline {exp})"))
+        else:
+            results.append(TResult(True, f"size:{stem}", f"{got} words" if cfg.verbose else ""))
+    return results
+
+
+def bless_size(cfg: RunConfig) -> int:
+    tests = collect_size_tests(cfg)
+    if not tests:
+        print("bless-size: no tests selected", file=sys.stderr)
+        return 1
+    if not cfg.rcc_path:
+        print("bless-size: rcc not found", file=sys.stderr)
+        return 2
+    if not cfg.hsasm_path or not cfg.hsld_path:
+        print("bless-size: hsasm+hsld required", file=sys.stderr)
+        return 2
+
+    out: dict[str, int] = {}
+    with tempfile.TemporaryDirectory(prefix="rrisc-bless-size-") as td:
+        tmp_root = Path(td)
+        for src in tests:
+            stem = src.stem
+            tdir = Path(tempfile.mkdtemp(dir=tmp_root))
+            ok, bin_path, detail = build_rcc_linked_bin(cfg, src, tdir)
+            if not ok or not bin_path:
+                print(f"bless-size FAIL {stem}:\n{detail}", file=sys.stderr)
+                return 1
+            out[stem] = _bin_word_count(bin_path)
+            print(f"bless-size: {stem} {out[stem]}", flush=True)
+
+    baseline_path = cfg.root / SIZE_BASELINE
+    baseline_path.write_text(_format_size_baseline(out), encoding="utf-8")
+    print(f"bless-size: wrote {baseline_path}", flush=True)
+    return 0
+
+
+# --- RCC tests -------------------------------------------------------------
+
+def run_rcc_error_test(cfg: RunConfig, src: Path) -> TResult:
+    base = src.stem
+    expect = cfg.root / "compiler" / "tests" / f"{base}.err.expect"
+    rcc = cfg.rcc_path
+    if not rcc:
+        return TResult(False, f"rccerr:{base}", "rcc not found (build with: cd compiler && cabal build exe:rcc)")
+    flags = list(cfg.default_rcc_flags)
+    r = run_capture(
+        [str(rcc), *flags, rcc_src_arg(cfg.root, src), "-o", os.devnull],
+        cwd=cfg.root / "compiler",
+    )
+    if r.returncode == 0:
+        return TResult(False, f"rccerr:{base}", "compiler accepted invalid program")
+    if not expect.is_file():
+        return TResult(True, f"rccerr:{base}", "(no .err.expect; skipped compare)")
+    err = r.stderr or ""
+    exp = expect.read_text(encoding="utf-8")
+    if err != exp:
+        return TResult(
+            False,
+            f"rccerr:{base}",
+            diff_text(exp, err, str(expect), "stderr"),
+        )
+    return TResult(True, f"rccerr:{base}")
+
+
+def run_rcc_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]:
+    """Compile, link, simulate; compare stdout to paired opt / -O0 goldens when present."""
+    base = src.stem
+    name = f"rcc:{base}"
+    results: list[TResult] = []
+    compiler_tests = cfg.root / "compiler" / "tests"
+    per_test = parse_flags_file(compiler_tests / f"{base}.rccflags")
+    out_opt = rcc_output_expect_path(compiler_tests, base)
+    out_o0 = rcc_output_expect_o0_path(compiler_tests, base)
+    has_opt_golden = out_opt.is_file()
+    has_o0_golden = out_o0.is_file()
+    if has_opt_golden != has_o0_golden:
+        return [
+            TResult(
+                False,
+                name,
+                "output goldens must come in pairs: "
+                f"both {out_opt.name} and {out_o0.name}, or neither "
+                f"(found {out_opt.name if has_opt_golden else out_o0.name} only)",
+                sub="goldens",
+            )
+        ]
+
+    asm_opt = tmp_root / f"{base}.s"
+    ok_c, err_c = compile_rcc_to_asm(cfg, src, asm_opt, extra_rcc_flags=per_test)
+    if not ok_c:
+        return [TResult(False, name, err_c)]
+
+    s_expect = compiler_tests / f"{base}.s.expect"
+    if s_expect.is_file():
+        got = asm_opt.read_text(encoding="utf-8")
+        exp = s_expect.read_text(encoding="utf-8")
+        if got != exp:
+            results.append(
+                TResult(
+                    False,
+                    name,
+                    diff_text(exp, got, str(s_expect), "generated asm"),
+                    sub="s.expect",
+                )
+            )
+            return results
+
+    sim_extra = parse_flags_file(compiler_tests / f"{base}.simflags")
+    input_path = compiler_tests / f"{base}.input"
+    has_input = input_path.is_file()
+
+    if not cfg.hsasm_path or not cfg.hsld_path:
+        msg = "hsasm+hsld required to link crt0 with rcc output (cabal build exe:hsasm exe:hsld in hstools/)"
+        if cfg.skip_unavailable:
+            return [TResult(True, name, f"(skipped) {msg}")]
+        return [TResult(False, name, msg)]
+
+    if has_opt_golden and has_o0_golden:
+        results.extend(
+            _run_rcc_output_variant_sims(
+                cfg,
+                name=name,
+                base=base,
+                tmp_root=tmp_root,
+                asm_path=asm_opt,
+                out_expect=out_opt,
+                variant_label="opt",
+                sim_extra=sim_extra,
+                input_path=input_path,
+                has_input=has_input,
+            )
+        )
+        asm_o0 = tmp_root / f"{base}.O0.s"
+        ok_o0, err_o0 = compile_rcc_to_asm(
+            cfg, src, asm_o0, extra_rcc_flags=("-O0", *per_test)
+        )
+        if not ok_o0:
+            results.append(TResult(False, name, f"rcc -O0 failed:\n{err_o0}", sub="O0/compile"))
+            return results
+        results.extend(
+            _run_rcc_output_variant_sims(
+                cfg,
+                name=name,
+                base=base,
+                tmp_root=tmp_root,
+                asm_path=asm_o0,
+                out_expect=out_o0,
+                variant_label="O0",
+                sim_extra=sim_extra,
+                input_path=input_path,
+                has_input=has_input,
+            )
+        )
+    else:
+        results.extend(
+            _run_rcc_output_variant_sims(
+                cfg,
+                name=name,
+                base=base,
+                tmp_root=tmp_root,
+                asm_path=asm_opt,
+                out_expect=None,
+                variant_label="opt",
+                sim_extra=sim_extra,
+                input_path=input_path,
+                has_input=has_input,
+            )
+        )
 
     if not results:
         results.append(TResult(True, name, "(all matrix slots skipped)"))
@@ -460,39 +764,16 @@ def run_io_terminal_test(cfg: RunConfig, src: Path, tmp_root: Path, gcc_path: Pa
 
     expected_txt = exp_path.read_text(encoding="utf-8")
 
-    rcc = cfg.rcc_path
-    if not rcc:
-        return [
-            TResult(False, name, "rcc not found (build with: cd compiler && cabal build exe:rcc)")
-        ]
-
     per_rcc = parse_flags_file(io_dir / f"{base}.rccflags")
     per_sim = parse_flags_file(io_dir / f"{base}.simflags")
     input_path = io_dir / f"{base}.input"
     has_input = input_path.is_file()
 
     asm_out = tmp_root / f"{base}.s"
-    rcc_argv = [
-        str(rcc),
-        *cfg.default_rcc_flags,
-        *IO_RCC_EXTRA_DEFAULT,
-        *per_rcc,
-        rcc_src_arg(cfg.root, src),
-        "-o",
-        str(asm_out),
-    ]
-    rc = run_capture(rcc_argv, cwd=cfg.root / "compiler")
-    if rc.returncode != 0:
-        return [
-            TResult(
-                False,
-                name,
-                "rcc failed:\n" + (rc.stderr or rc.stdout or ""),
-            )
-        ]
-
-    lib = lib_dir(cfg.root)
-    crt0_s = cfg.root / "lib" / "crt0.s"
+    io_extra = (*IO_RCC_EXTRA_DEFAULT, *per_rcc)
+    ok_c, err_c = compile_rcc_to_asm(cfg, src, asm_out, extra_rcc_flags=io_extra)
+    if not ok_c:
+        return [TResult(False, name, err_c)]
 
     if not cfg.hsasm_path or not cfg.hsld_path:
         msg = "hsasm+hsld required (cabal build exe:hsasm exe:hsld in hstools/)"
@@ -500,70 +781,30 @@ def run_io_terminal_test(cfg: RunConfig, src: Path, tmp_root: Path, gcc_path: Pa
             return [TResult(True, name, f"(skipped) {msg}")]
         return [TResult(False, name, msg)]
 
+    code_fb, data_fb, stack_fb = RCC_LINK_FALLBACK_IO
     asm_txt = asm_out.read_text()
-    defs = parse_rcc_defines(asm_txt)
-    code_b = defs.get("RCC_CODE_BASE", "0o100")
-    data_opt = defs.get("RCC_DATA_BASE", "0o6600") if ".section data" in asm_txt else None
-    stack_t = defs.get("RCC_STACK_TOP", "0o7770")
+    code_b, data_opt, stack_t, defs = rcc_asm_bases(
+        asm_txt, code_fb=code_fb, data_fb=data_fb, stack_fb=stack_fb
+    )
 
     bin_path = tmp_root / f"io-{base}.bin"
     crt0_o = tmp_root / f"io-{base}.crt0.o"
     user_o = tmp_root / f"io-{base}.rcc.o"
 
-    ar0 = run_capture(
-        hsasm_emit_obj_cmd(
-            cfg.hsasm_path,
-            crt0_s,
-            crt0_o,
-            cli_defines=[("RCC_STACK_TOP", stack_t)],
-        ),
-        cwd=cfg.root,
+    ok_l, err_l, sub_l = link_rcc_asm_with_crt0(
+        cfg,
+        asm_out,
+        bin_path,
+        crt0_o,
+        user_o,
+        code_base=code_b,
+        data_base=data_opt,
+        stack_top=stack_t,
     )
-    if ar0.returncode != 0:
-        return [
-            TResult(
-                False,
-                name,
-                "hsasm (crt0) failed:\n" + (ar0.stderr or ar0.stdout or ""),
-                sub="crt0.o",
-            )
-        ]
+    if not ok_l:
+        return [TResult(False, name, err_l, sub=sub_l)]
 
-    aru = run_capture(
-        hsasm_emit_obj_cmd(cfg.hsasm_path, asm_out, user_o, include_dirs=[lib]),
-        cwd=cfg.root / "compiler",
-    )
-    if aru.returncode != 0:
-        return [
-            TResult(
-                False,
-                name,
-                "hsasm (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""),
-                sub="user.o",
-            )
-        ]
-
-    arl = run_capture(
-        hsld_cmd(
-            cfg.hsld_path,
-            [crt0_o, user_o],
-            bin_path,
-            code_base=code_b,
-            data_base=data_opt,
-        ),
-        cwd=cfg.root,
-    )
-    if arl.returncode != 0:
-        return [
-            TResult(
-                False,
-                name,
-                "hsld failed:\n" + (arl.stderr or arl.stdout or ""),
-                sub="hsld",
-            )
-        ]
-
-    start_addr = defs.get("RCC_CODE_BASE", "0o100")
+    start_addr = defs.get("RCC_CODE_BASE", code_fb)
     io_sim_base = replace_argv_flag(list(IO_SIM_EXTRA_DEFAULT), "--start", start_addr)
 
     for sim_id in cfg.simulators:
@@ -708,7 +949,7 @@ def run_io_terminal_test(cfg: RunConfig, src: Path, tmp_root: Path, gcc_path: Pa
 
 
 def bless_rcc_output(cfg: RunConfig) -> int:
-    """Rewrite compiler/tests/[0-9]*.output.expect using rcc + hsasm (or asm.py) + Python sim.
+    """Rewrite compiler/tests/[0-9]*.output.expect and paired .output.expect.O0 via rcc + hsld + py sim.
 
     Golden UART expectations live under compiler/tests/io/*.stdout.expect and are maintained by hand.
     """
@@ -737,108 +978,178 @@ def bless_rcc_output(cfg: RunConfig) -> int:
             base = src.stem
             if cfg.filter_re and not cfg.filter_re.search(base):
                 continue
-            dest = compiler_tests / f"{base}.output.expect"
+            dest = rcc_output_expect_path(compiler_tests, base)
+            dest_o0 = rcc_output_expect_o0_path(compiler_tests, base)
             if not dest.is_file():
                 n_skip += 1
                 continue
             per_test = parse_flags_file(compiler_tests / f"{base}.rccflags")
-            asm_out = tdir / f"{base}.s"
-            bin_out = tdir / f"{base}.bin"
-            rcc_argv = [
-                str(rcc),
-                *cfg.default_rcc_flags,
-                *per_test,
-                rcc_src_arg(cfg.root, src),
-                "-o",
-                str(asm_out),
-            ]
-            r = run_capture(rcc_argv, cwd=cfg.root / "compiler")
-            if r.returncode != 0:
-                print(f"bless-output FAIL compile {base}:\n{r.stderr}", file=sys.stderr)
-                n_fail += 1
-                continue
-            asm_txt = asm_out.read_text()
-            defs = parse_rcc_defines(asm_txt)
-            if cfg.hsasm_path and cfg.hsld_path:
-                crt0_s = cfg.root / "lib" / "crt0.s"
-                crt0_o = tdir / f"{base}.crt0.o"
-                user_o = tdir / f"{base}.rcc.o"
-                stack_t = defs.get("RCC_STACK_TOP", "0o3000")
-                ar0 = run_capture(
-                    hsasm_emit_obj_cmd(
-                        cfg.hsasm_path,
-                        crt0_s,
-                        crt0_o,
-                        cli_defines=[("RCC_STACK_TOP", stack_t)],
-                    ),
-                    cwd=cfg.root,
-                )
-                aru = run_capture(
-                    hsasm_emit_obj_cmd(cfg.hsasm_path, asm_out, user_o, include_dirs=[lib]),
-                    cwd=cfg.root / "compiler",
-                )
-                if ar0.returncode != 0 or aru.returncode != 0:
-                    print(
-                        f"bless-output FAIL asm obj {base}:\n{ar0.stderr or ''}{aru.stderr or ''}",
-                        file=sys.stderr,
-                    )
-                    n_fail += 1
-                    continue
-                arl = run_capture(
-                    hsld_cmd(
-                        cfg.hsld_path,
-                        [crt0_o, user_o],
-                        bin_out,
-                        code_base=defs.get("RCC_CODE_BASE", "0o1000"),
-                        data_base=(
-                            defs.get("RCC_DATA_BASE", "0o3000")
-                            if ".section data" in asm_txt
-                            else None
-                        ),
-                    ),
-                    cwd=cfg.root,
-                )
-                ar = arl
-            elif cfg.hsasm_path:
-                ar = run_capture(
-                    hsasm_cmd(cfg.root, cfg.hsasm_path, src=asm_out, out=bin_out, include_dirs=[lib]),
-                    cwd=cfg.root / "compiler",
-                )
-            else:
-                ar = run_capture(
-                    py_asm_cmd(cfg.root, src=asm_out, out=bin_out, include_dirs=[lib]),
-                    cwd=cfg.root / "compiler",
-                )
-            if ar.returncode != 0:
-                print(f"bless-output FAIL asm {base}:\n{ar.stderr}", file=sys.stderr)
-                n_fail += 1
-                continue
             sim_extra = parse_flags_file(compiler_tests / f"{base}.simflags")
             input_path = compiler_tests / f"{base}.input"
             has_input = input_path.is_file()
-            sim_argv = [
-                python_exe(),
-                str(sim_py_path(cfg.root)),
-                *sim_runner_base(cfg, defs),
-                *sim_extra,
-            ]
-            if has_input:
-                sim_argv.append("--terminal")
-            sim_argv.append(str(bin_out))
-            sr = run_capture(
-                sim_argv,
-                cwd=cfg.root / "compiler",
-                stdin_path=input_path if has_input else None,
-            )
-            if sr.returncode != 0:
-                print(f"bless-output FAIL sim {base}:\n{sr.stderr}", file=sys.stderr)
-                n_fail += 1
+
+            variant_failed = False
+            for label, rcc_xf, out_dest in (
+                ("opt", per_test, dest),
+                ("O0", ("-O0", *per_test), dest_o0),
+            ):
+                asm_out = tdir / f"{base}.{label}.s"
+                bin_out = tdir / f"{base}.{label}.bin"
+                ok_c, err_c = compile_rcc_to_asm(cfg, src, asm_out, extra_rcc_flags=rcc_xf)
+                if not ok_c:
+                    print(
+                        f"bless-output FAIL compile {base} ({label}):\n{err_c}",
+                        file=sys.stderr,
+                    )
+                    n_fail += 1
+                    variant_failed = True
+                    break
+                asm_txt = asm_out.read_text()
+                code_fb, data_fb, stack_fb = RCC_LINK_FALLBACK_NUMBERED
+                code_b, data_opt, stack_t, defs = rcc_asm_bases(
+                    asm_txt, code_fb=code_fb, data_fb=data_fb, stack_fb=stack_fb
+                )
+                if cfg.hsasm_path and cfg.hsld_path:
+                    crt0_o = tdir / f"{base}.{label}.crt0.o"
+                    user_o = tdir / f"{base}.{label}.rcc.o"
+                    ok_l, err_l, _ = link_rcc_asm_with_crt0(
+                        cfg,
+                        asm_out,
+                        bin_out,
+                        crt0_o,
+                        user_o,
+                        code_base=code_b,
+                        data_base=data_opt,
+                        stack_top=stack_t,
+                    )
+                    if not ok_l:
+                        print(
+                            f"bless-output FAIL asm obj {base} ({label}):\n{err_l}",
+                            file=sys.stderr,
+                        )
+                        n_fail += 1
+                        variant_failed = True
+                        break
+                elif cfg.hsasm_path:
+                    ar = run_capture(
+                        hsasm_cmd(
+                            cfg.root, cfg.hsasm_path, src=asm_out, out=bin_out, include_dirs=[lib]
+                        ),
+                        cwd=cfg.root / "compiler",
+                    )
+                    if ar.returncode != 0:
+                        print(
+                            f"bless-output FAIL asm {base} ({label}):\n{ar.stderr}",
+                            file=sys.stderr,
+                        )
+                        n_fail += 1
+                        variant_failed = True
+                        break
+                else:
+                    ar = run_capture(
+                        py_asm_cmd(cfg.root, src=asm_out, out=bin_out, include_dirs=[lib]),
+                        cwd=cfg.root / "compiler",
+                    )
+                    if ar.returncode != 0:
+                        print(
+                            f"bless-output FAIL asm {base} ({label}):\n{ar.stderr}",
+                            file=sys.stderr,
+                        )
+                        n_fail += 1
+                        variant_failed = True
+                        break
+                sim_argv = [
+                    python_exe(),
+                    str(sim_py_path(cfg.root)),
+                    *sim_runner_base(cfg, defs),
+                    *sim_extra,
+                ]
+                if has_input:
+                    sim_argv.append("--terminal")
+                sim_argv.append(str(bin_out))
+                sr = run_capture(
+                    sim_argv,
+                    cwd=cfg.root / "compiler",
+                    stdin_path=input_path if has_input else None,
+                )
+                if sr.returncode != 0:
+                    print(
+                        f"bless-output FAIL sim {base} ({label}):\n{sr.stderr}",
+                        file=sys.stderr,
+                    )
+                    n_fail += 1
+                    variant_failed = True
+                    break
+                out_dest.write_text(sr.stdout or "", encoding="utf-8")
+            if variant_failed:
                 continue
-            dest.write_text(sr.stdout or "", encoding="utf-8")
-            print(f"bless-output: {base}")
+            print(f"bless-output: {base} (opt + O0)")
             n_ok += 1
     print(f"bless-output: updated {n_ok}, failures {n_fail}, skipped (no file) {n_skip}")
     return 0 if n_fail == 0 else 1
+
+
+def bless_io_host(cfg: RunConfig) -> int:
+    """Rewrite io/*.stdout.expect using host gcc + the same flags as run_io_terminal_test."""
+    io_dir = cfg.root / "compiler" / "tests" / "io"
+    gcc = resolve_gcc()
+    if gcc is None:
+        print("bless-io-host: gcc not found on PATH", file=sys.stderr)
+        return 2
+    print(
+        "bless-io-host: goldens from host gcc only — run `python3 run_tests.py --only io` "
+        "with simulators before commit.",
+        file=sys.stderr,
+    )
+    tests = collect_io_tests(cfg)
+    if not tests:
+        print("bless-io-host: no tests selected", file=sys.stderr)
+        return 1
+    n_ok = 0
+    with tempfile.TemporaryDirectory(prefix="rrisc-bless-io-host-") as td:
+        tmp_root = Path(td)
+        for src in tests:
+            base = src.stem
+            dest = io_dir / f"{base}.stdout.expect"
+            if not dest.is_file():
+                print(f"bless-io-host: skip {base} (no {dest.name})", file=sys.stderr)
+                continue
+            input_path = io_dir / f"{base}.input"
+            has_input = input_path.is_file()
+            host_exe = tmp_root / f"io-{base}.host.bin"
+            gcc_argv = [
+                str(gcc),
+                "-std=c99",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-DRRISC_IO_TEST_HOST",
+                f"-I{io_dir}",
+                f"-I{cfg.root / 'lib'}",
+                str(src.resolve()),
+                "-o",
+                str(host_exe),
+            ]
+            gr = run_capture(gcc_argv, cwd=cfg.root)
+            if gr.returncode != 0:
+                print(f"bless-io-host FAIL compile {base}:\n{gr.stderr or gr.stdout}", file=sys.stderr)
+                return 1
+            hr = run_capture(
+                [str(host_exe)],
+                cwd=cfg.root / "compiler",
+                stdin_path=input_path if has_input else None,
+            )
+            if hr.returncode != 0:
+                print(
+                    f"bless-io-host FAIL run {base}:\n{hr.stderr or hr.stdout}",
+                    file=sys.stderr,
+                )
+                return 1
+            dest.write_text(hr.stdout or "", encoding="utf-8")
+            print(f"bless-io-host: {base}", flush=True)
+            n_ok += 1
+    print(f"bless-io-host: updated {n_ok} file(s)", flush=True)
+    return 0
 
 
 def bless_rcc_asm(cfg: RunConfig) -> int:
@@ -1263,10 +1574,22 @@ def main() -> int:
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--filter", metavar="REGEX", help="only tests whose stem matches")
     ap.add_argument("--bless-asm", action="store_true", help="rewrite compiler/tests/*.s.expect")
+    ap.add_argument("--bless-size", action="store_true", help="rewrite tests/size_baseline.txt")
     ap.add_argument(
         "--bless-output",
         action="store_true",
-        help="rewrite compiler/tests/[0-9]*.output.expect only (never touches compiler/tests/io/*.stdout.expect)",
+        help=(
+            "rewrite compiler/tests/[0-9]*.output.expect and .output.expect.O0 "
+            "(never touches compiler/tests/io/*.stdout.expect)"
+        ),
+    )
+    ap.add_argument(
+        "--bless-io-host",
+        action="store_true",
+        help=(
+            "rewrite compiler/tests/io/*.stdout.expect from host gcc only "
+            "(still run --only io with simulators before commit)"
+        ),
     )
     ap.add_argument("--skip-unavailable", action="store_true", help="skip hsasm/rsim/sim2 if missing")
     ap.add_argument("--keep", action="store_true", help="keep temp dirs (print path)")
@@ -1301,7 +1624,7 @@ def main() -> int:
         metavar="SUITE,...",
         default="rcc,asm,examples",
         help=(
-        "comma-separated suites: rcc, asm, examples, io, float, toolchain "
+        "comma-separated suites: rcc, asm, examples, io, float, toolchain, size "
         "(default: rcc,asm,examples)"
     ),
     )
@@ -1309,7 +1632,7 @@ def main() -> int:
 
     only_parts = {x.strip() for x in args.only.split(",") if x.strip()}
     for p in only_parts:
-        if p not in ("rcc", "asm", "examples", "io", "float", "toolchain"):
+        if p not in ("rcc", "asm", "examples", "io", "float", "toolchain", "size"):
             print(f"unknown suite in --only: {p!r}", file=sys.stderr)
             return 2
     want_rcc = "rcc" in only_parts
@@ -1318,6 +1641,7 @@ def main() -> int:
     want_io = "io" in only_parts
     want_float = "float" in only_parts
     want_toolchain = "toolchain" in only_parts
+    want_size = "size" in only_parts
 
     root = repo_root()
     filt = re.compile(args.filter) if args.filter else None
@@ -1367,6 +1691,10 @@ def main() -> int:
         return bless_rcc_asm(cfg)
     if args.bless_output:
         return bless_rcc_output(cfg)
+    if args.bless_io_host:
+        return bless_io_host(cfg)
+    if args.bless_size:
+        return bless_size(cfg)
 
     if not args.skip_unavailable:
         missing = []
@@ -1468,6 +1796,12 @@ def main() -> int:
             float_results = run_float_suite(cfg)
             all_results.extend(float_results)
             emit_verbose(cfg, float_results)
+
+        # linked .bin code size baseline
+        if want_size:
+            size_results = run_size_suite(cfg, tmp_root)
+            all_results.extend(size_results)
+            emit_verbose(cfg, size_results)
 
         # hsasm .o round-trip + hsld flat equivalence (see toolchain_checks.py)
         if want_toolchain:

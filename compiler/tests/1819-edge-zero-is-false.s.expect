@@ -7,21 +7,12 @@
 
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
-;; if (0)
-    li r1, _L_endif_0
-    jalr r0, r1
-;; return 1
-    li r2, 1
-    li r1, _epi_main
-    jalr r0, r1
-_L_endif_0:
-;; return 0
+_B_main_0:
+    clrt
+    bf _B_main_3
+_B_main_3:
     and r2, r0, r0
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5

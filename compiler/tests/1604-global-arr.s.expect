@@ -11,10 +11,8 @@ a:
 
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
     subi r6, 2
-;; return a[1]
+_B_main_0:
     li r3, a
     li r2, 1
     add r2, r3, r2
@@ -29,10 +27,8 @@ main:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
     addi r6, 2
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5

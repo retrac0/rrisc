@@ -7,8 +7,6 @@
 
     .global f
 f:
-    subi r6, 1
-    swr r5, r6
     subi r6, 9
     and r1, r6, r7
     swr r2, r1
@@ -19,18 +17,18 @@ f:
     addi r1, 2
     swr r4, r1
     and r1, r6, r7
-    addi r1, 10
+    addi r1, 9
     lwr r2, r1
     and r1, r6, r7
     addi r1, 3
     swr r2, r1
     and r1, r6, r7
-    addi r1, 11
+    addi r1, 10
     lwr r2, r1
     and r1, r6, r7
     addi r1, 4
     swr r2, r1
-;; return a+b+c+d+e
+_B_f_0:
     and r1, r6, r7
     lwr r3, r1
     and r1, r6, r7
@@ -73,12 +71,10 @@ f:
     and r1, r6, r7
     addi r1, 8
     lwr r2, r1
-    li r1, _epi_f
-    jalr r0, r1
+    clrt
+    bf _epi_f
 _epi_f:
     addi r6, 9
-    lwr r5, r6
-    addi r6, 1
     addi r6, 2
     jalr r0, r5
 
@@ -87,7 +83,7 @@ main:
     subi r6, 1
     swr r5, r6
     subi r6, 1
-;; return f(1,2,3,4,5)
+_B_main_0:
     li r2, 5
     subi r6, 1
     swr r2, r6
@@ -103,8 +99,8 @@ main:
     swr r2, r1
     and r1, r6, r7
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
     addi r6, 1
     lwr r5, r6

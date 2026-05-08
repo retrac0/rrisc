@@ -1,2 +1,2 @@
-T: 0 PC: 0016 r0: 0000 r1: 0553 r2: 0003 r3: 0007 r4: 0000 r5: 0015 r6: 7770 r7: 7777 
-Instructions retired: 295 (357 cycles)
+T: 0 PC: 0016 r0: 0000 r1: 7766 r2: 0003 r3: 0007 r4: 0500 r5: 0015 r6: 7770 r7: 7777 
+Instructions retired: 322 (386 cycles)

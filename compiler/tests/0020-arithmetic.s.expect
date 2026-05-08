@@ -8,50 +8,14 @@
     .global main
 main:
     subi r6, 1
-    swr r5, r6
-    subi r6, 8
-;; int a = ...
-    li r2, 15
-    and r1, r6, r7
-    swr r2, r1
-;; int b = ...
-    li r2, 5
-    and r1, r6, r7
-    addi r1, 1
-    swr r2, r1
-;; int c = ...
+_B_main_0:
     li r2, 10
     and r1, r6, r7
-    addi r1, 2
     swr r2, r1
-    li r2, 10
     and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
-;; int d = ...
-    li r2, 15
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
-    li r2, 15
-    and r1, r6, r7
-    addi r1, 5
-    swr r2, r1
-;; int e = ...
-    li r2, 10
-    and r1, r6, r7
-    addi r1, 6
-    swr r2, r1
-    li r2, 10
-    and r1, r6, r7
-    addi r1, 7
-    swr r2, r1
-;; return e
-    li r2, 10
-    li r1, _epi_main
-    jalr r0, r1
+    lwr r2, r1
+    clrt
+    bf _epi_main
 _epi_main:
-    addi r6, 8
-    lwr r5, r6
     addi r6, 1
     jalr r0, r5

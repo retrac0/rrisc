@@ -7,24 +7,22 @@
 
     .global dbl
 dbl:
-    subi r6, 1
-    swr r5, r6
     subi r6, 2
     and r1, r6, r7
     swr r2, r1
-;; return x*2
+_B_dbl_0:
     and r1, r6, r7
     lwr r3, r1
     li r2, 2
     and r1, r0, r0
-_L_dbl_mul_loop_12:
+_L_dbl_mul_loop_10:
     sub r0, r0, r2
-    bf _L_dbl_mul_end_12
+    bf _L_dbl_mul_end_10
     add r1, r1, r3
     subi r2, 1
     sub r0, r0, r7
-    bt _L_dbl_mul_loop_12
-_L_dbl_mul_end_12:
+    bt _L_dbl_mul_loop_10
+_L_dbl_mul_end_10:
     and r2, r1, r7
     and r1, r6, r7
     addi r1, 1
@@ -32,34 +30,30 @@ _L_dbl_mul_end_12:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
-    li r1, _epi_dbl
-    jalr r0, r1
+    clrt
+    bf _epi_dbl
 _epi_dbl:
     addi r6, 2
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5
 
     .global tri
 tri:
-    subi r6, 1
-    swr r5, r6
     subi r6, 2
     and r1, r6, r7
     swr r2, r1
-;; return x*3
+_B_tri_0:
     and r1, r6, r7
     lwr r3, r1
     li r2, 3
     and r1, r0, r0
-_L_tri_mul_loop_12:
+_L_tri_mul_loop_10:
     sub r0, r0, r2
-    bf _L_tri_mul_end_12
+    bf _L_tri_mul_end_10
     add r1, r1, r3
     subi r2, 1
     sub r0, r0, r7
-    bt _L_tri_mul_loop_12
-_L_tri_mul_end_12:
+    bt _L_tri_mul_loop_10
+_L_tri_mul_end_10:
     and r2, r1, r7
     and r1, r6, r7
     addi r1, 1
@@ -67,12 +61,10 @@ _L_tri_mul_end_12:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
-    li r1, _epi_tri
-    jalr r0, r1
+    clrt
+    bf _epi_tri
 _epi_tri:
     addi r6, 2
-    lwr r5, r6
-    addi r6, 1
     jalr r0, r5
 
     .global main
@@ -80,7 +72,7 @@ main:
     subi r6, 1
     swr r5, r6
     subi r6, 2
-;; return dbl(tri(4))
+_B_main_0:
     li r2, 4
     li r1, tri
     jalr r5, r1
@@ -96,8 +88,8 @@ main:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
     addi r6, 2
     lwr r5, r6

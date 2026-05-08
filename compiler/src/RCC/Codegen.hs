@@ -160,14 +160,16 @@ genProc p =
       epi     = "_epi_" <> TAC.procName p
       initSt  = CGState [] slots epi (TAC.procName p)
       numStack = max 0 (length (TAC.procParams p) - 3)
+      isLeaf   = not (any isCallInstr (TAC.procInstrs p))
+      usedTemps = collectUsedTemps (TAC.procInstrs p)
       action  = do
         emit ""
         emit ("    .global " <> TAC.procName p)
         emit (TAC.procName p <> ":")
-        genPrologue p n
+        genPrologue p n isLeaf usedTemps
         mapM_ genInstr (TAC.procInstrs p)
         emit (epi <> ":")
-        genEpilogue n numStack
+        genEpilogue n numStack isLeaf
   in reverse $ cgLines (execState action initSt)
 
 -- Stack slot assignment order: parameters first, then temps in instruction order.
@@ -201,6 +203,15 @@ operandLocal (TAC.OTemp t)      = [t]
 operandLocal (TAC.OLocalAddr t)   = [t]
 operandLocal _                  = []
 
+isCallInstr :: TAC.Instr -> Bool
+isCallInstr (TAC.ICall _ _ _) = True
+isCallInstr _                 = False
+
+collectUsedTemps :: [TAC.Instr] -> Set.Set TAC.Temp
+collectUsedTemps instrs =
+  Set.fromList $
+    concatMap instrOperandTemps instrs
+
 instrOperands :: TAC.Instr -> [TAC.Operand]
 instrOperands (TAC.IAssign _ o)       = [o]
 instrOperands (TAC.IBinOp _ _ a b)    = [a, b]
@@ -227,11 +238,13 @@ buildSlotMap locSzs = go 0 []
 
 -- Prologue: save r5, allocate slots, spill r2–r4 (and stack args) into frame slots.
 -- r1–r4 are caller-saved at calls; expression code may use them freely between calls.
-genPrologue :: TAC.Proc -> Int -> CG ()
-genPrologue p n = do
-  -- Save r5
-  emitL "subi r6, 1"
-  emitL "swr r5, r6"
+genPrologue :: TAC.Proc -> Int -> Bool -> Set.Set TAC.Temp -> CG ()
+genPrologue p n isLeaf usedTemps = do
+  let saveR5 = not isLeaf
+  -- Save r5 for non-leaf functions.
+  when saveR5 $ do
+    emitL "subi r6, 1"
+    emitL "swr r5, r6"
   -- Allocate slots for all temps (addi unsigned 0..63; subi for decrements)
   when (n > 0) $
     if n <= 63
@@ -241,28 +254,31 @@ genPrologue p n = do
         emitL "sub r6, r6, r1"
   -- Save parameters into their slots: r2/r3/r4 for the first three, stack for the rest.
   -- Stack args were pushed right-to-left by the caller; arg 4 is closest to the frame
-  -- (at offset n+1 from r6), arg 5 at n+2, etc.
+  -- (at offset n+1 from r6 when r5 is saved, otherwise offset n), arg 5 at +1, etc.
   forM_ (zip [0..] (TAC.procParams p)) $ \(i, paramName) -> do
-    case (i :: Int) of
-      0 -> storeRegToTemp 2 paramName
-      1 -> storeRegToTemp 3 paramName
-      2 -> storeRegToTemp 4 paramName
-      _ -> do
-        let stackOffset = n + 1 + (i - 3)
-        addrOfSlot stackOffset
-        emitL "lwr r2, r1"
-        storeRegToTemp 2 paramName
+    when (Set.member paramName usedTemps) $
+      case (i :: Int) of
+        0 -> storeRegToTemp 2 paramName
+        1 -> storeRegToTemp 3 paramName
+        2 -> storeRegToTemp 4 paramName
+        _ -> do
+          let stackBase   = n + (if saveR5 then 1 else 0)
+              stackOffset = stackBase + (i - 3)
+          addrOfSlot stackOffset
+          emitL "lwr r2, r1"
+          storeRegToTemp 2 paramName
 
-genEpilogue :: Int -> Int -> CG ()
-genEpilogue n numStack = do
+genEpilogue :: Int -> Int -> Bool -> CG ()
+genEpilogue n numStack isLeaf = do
   when (n > 0) $
     if n <= 63
       then emitL ("addi r6, " <> tshow n)
       else do
         emitLoadConst 1 n
         emitL "add r6, r6, r1"
-  emitL "lwr r5, r6"
-  emitL "addi r6, 1"
+  when (not isLeaf) $ do
+    emitL "lwr r5, r6"
+    emitL "addi r6, 1"
   when (numStack > 0) $ emitL ("addi r6, " <> tshow numStack)
   emitL "jalr r0, r5"
 
@@ -379,8 +395,8 @@ genInstr (TAC.IStore addr val) = do
   emitL "swr r2, r1"              -- mem[r1] = r2
 
 genInstr (TAC.IGoto lbl) = do
-  emitL ("li r1, " <> lbl)
-  emitL "jalr r0, r1"
+  emitL "clrt"
+  emitL ("bf " <> lbl)
 
 genInstr (TAC.IIfCmp op a b lbl) = do
   emitCmpToT op a b >>= \inv ->
@@ -422,14 +438,14 @@ genInstr (TAC.ICall mt fname args) = do
 
 genInstr (TAC.IReturn Nothing) = do
   epi <- gets cgEpiLabel
-  emitL ("li r1, " <> epi)
-  emitL "jalr r0, r1"
+  emitL "clrt"
+  emitL ("bf " <> epi)
 
 genInstr (TAC.IReturn (Just op)) = do
   loadOpInto 2 op                 -- return value in r2
   epi <- gets cgEpiLabel
-  emitL ("li r1, " <> epi)
-  emitL "jalr r0, r1"
+  emitL "clrt"
+  emitL ("bf " <> epi)
 
 -- ---------------------------------------------------------------------------
 -- Compare helpers for IIfCmp/IIfNCmp

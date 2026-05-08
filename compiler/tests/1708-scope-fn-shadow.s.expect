@@ -12,19 +12,15 @@ v:
     .global f
 f:
     subi r6, 1
-    swr r5, r6
-    subi r6, 1
-;; int v = ...
+_B_f_0:
     li r2, 2
     and r1, r6, r7
     swr r2, r1
-;; return v
-    li r2, 2
-    li r1, _epi_f
-    jalr r0, r1
+    and r1, r6, r7
+    lwr r2, r1
+    clrt
+    bf _epi_f
 _epi_f:
-    addi r6, 1
-    lwr r5, r6
     addi r6, 1
     jalr r0, r5
 
@@ -33,7 +29,7 @@ main:
     subi r6, 1
     swr r5, r6
     subi r6, 3
-;; return v+f()
+_B_main_0:
     li r1, v
     lwr r2, r1
     and r1, r6, r7
@@ -55,8 +51,8 @@ main:
     and r1, r6, r7
     addi r1, 2
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
     addi r6, 3
     lwr r5, r6

@@ -7,45 +7,31 @@
 
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
-    subi r6, 4
-;; struct P p
-;; p.v=0
+    subi r6, 3
+_B_main_0:
     and r2, r0, r0
     and r1, r6, r7
     swr r2, r1
-;; struct P* q = ...
     and r1, r6, r7
     and r2, r1, r7
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
-    and r1, r6, r7
-    addi r1, 1
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 2
-    swr r2, r1
-;; q->v=99
     li r2, 99
     and r1, r6, r7
     addi r1, 1
     lwr r1, r1
     swr r2, r1
-;; return p.v
     and r1, r6, r7
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 2
     swr r2, r1
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 2
     lwr r2, r1
-    li r1, _epi_main
-    jalr r0, r1
+    clrt
+    bf _epi_main
 _epi_main:
-    addi r6, 4
-    lwr r5, r6
-    addi r6, 1
+    addi r6, 3
     jalr r0, r5

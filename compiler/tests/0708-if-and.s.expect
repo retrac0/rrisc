@@ -7,61 +7,77 @@
 
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
-    subi r6, 3
-;; int a = ...
-    li r2, 5
+    subi r6, 5
+_B_main_0:
+    li r2, 1
     and r1, r6, r7
     swr r2, r1
-;; int b = ...
-    li r2, 3
+    and r1, r6, r7
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_1
+    clrt
+    bf _B_main_4
+_B_main_1:
+    li r2, 1
     and r1, r6, r7
     addi r1, 1
     swr r2, r1
-;; if (a>0&&b>0)
-    li r3, 5
-    and r2, r0, r0
-    li r1, 0o4000
-    add r3, r3, r1
-    add r2, r2, r1
-    sub r1, r2, r3
-    bf _L_and_false_0
-    li r3, 3
-    and r2, r0, r0
-    li r1, 0o4000
-    add r3, r3, r1
-    add r2, r2, r1
-    sub r1, r2, r3
-    bf _L_and_false_0
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_2
+    clrt
+    bf _B_main_4
+_B_main_2:
     li r2, 1
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
-    li r1, _L_and_end_1
-    jalr r0, r1
-_L_and_false_0:
+    clrt
+    bf _B_main_10
+_B_main_4:
     and r2, r0, r0
     and r1, r6, r7
-    addi r1, 2
+    addi r1, 3
     swr r2, r1
-_L_and_end_1:
+    clrt
+    bf _B_main_9
+_B_main_5:
+    and r1, r6, r7
+    addi r1, 4
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_6
+    clrt
+    bf _B_main_8
+_B_main_6:
+    li r2, 1
+    clrt
+    bf _epi_main
+_B_main_8:
+    and r2, r0, r0
+    clrt
+    bf _epi_main
+_B_main_9:
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    clrt
+    bf _B_main_5
+_B_main_10:
     and r1, r6, r7
     addi r1, 2
     lwr r2, r1
-    sub r0, r0, r2
-    bf _L_endif_2
-;; return 1
-    li r2, 1
-    li r1, _epi_main
-    jalr r0, r1
-_L_endif_2:
-;; return 0
-    and r2, r0, r0
-    li r1, _epi_main
-    jalr r0, r1
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    clrt
+    bf _B_main_5
 _epi_main:
-    addi r6, 3
-    lwr r5, r6
-    addi r6, 1
+    addi r6, 5
     jalr r0, r5
