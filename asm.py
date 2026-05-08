@@ -573,6 +573,10 @@ def assign_addresses(lines: list) -> tuple:
         mnem = stmt.mnemonic
         ops  = stmt.operands_str
 
+        if mnem.lower() in ('.global', '.globl', '.local'):
+            stmts.append(stmt)
+            continue
+
         if mnem == '.org':
             if not ops:
                 raise AsmError(sl.filename, sl.lineno, ".org requires an address")
@@ -662,7 +666,7 @@ class Assembler:
         mnem = stmt.mnemonic
         ops  = stmt.operands_str
         f, n = stmt.filename, stmt.lineno
-        if mnem in ('', '.base', '.align'):
+        if mnem in ('', '.base', '.align') or mnem.lower() in ('.global', '.globl', '.local'):
             return 0
         if mnem == 'li':
             return 2
@@ -770,6 +774,9 @@ class Assembler:
         ops     = [o.strip() for o in ops_str.split(',')] if ops_str else []
         f, n    = stmt.filename, stmt.lineno
         addr    = stmt.addr
+
+        if mnem.lower() in ('.global', '.globl', '.local'):
+            return []
 
         match mnem:
             case 'nop':
@@ -912,11 +919,7 @@ class Assembler:
                     raise AsmError(f, n, "li cannot target r0")
                 val = _eval_expr(ops[1], self.labels, f, n)
                 if val < -2048 or val > WORD_MASK:
-                    raise AsmError(
-                        f, n,
-                        f"li value {val} out of 12-bit range (max word address {WORD_MASK}); "
-                        "program + rodata likely exceeds the flat 4k-word address space"
-                    )
+                    raise AsmError(f, n, f"li value {val} out of 12-bit range")
                 val &= WORD_MASK
                 lower = val & IMM6_MASK   # bits 5:0  (0..63)
                 upper = (val >> 6) & IMM6_MASK  # bits 11:6 (0..63)
@@ -1072,6 +1075,10 @@ def format_listing(flat_lines, listing_entries):
 # -- main --
 
 def main():
+    print(
+        "asm.py: deprecated: use hsasm instead (cd hstools && cabal run hsasm -- …).",
+        file=sys.stderr,
+    )
     parser = argparse.ArgumentParser(description='RRISC assembler')
     parser.add_argument('source', help='input .asm file')
     parser.add_argument('-o', '--output', help='output file (default: <source>.bin or .mem)')

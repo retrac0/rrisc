@@ -2,9 +2,10 @@
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
 %define RCC_STACK_TOP 0o7770
-%include "crt0.s"
 
+    .section text
 
+    .global main
 main:
     subi r6, 1
     swr r5, r6
@@ -43,9 +44,9 @@ main:
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_main_ne_38
+    bf _L_main_ne_39
     li r2, 0
-_L_main_ne_38:
+_L_main_ne_39:
     and r1, r6, r7
     addi r1, 5
     swr r2, r1

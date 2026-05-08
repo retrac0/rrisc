@@ -23,11 +23,10 @@ data CodegenOpts = CodegenOpts
   { codeBase :: Int
   , dataBase :: Int
   , stackTop :: Int
-  , libDir   :: FilePath   -- path to rcc lib/ directory (for %include)
   } deriving (Show)
 
 defaultOpts :: CodegenOpts
-defaultOpts = CodegenOpts 0o1000 0o3000 0o3000 ""
+defaultOpts = CodegenOpts 0o1000 0o3000 0o3000
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -79,59 +78,22 @@ slotOf t = do
 codegen :: CodegenOpts -> TAC.TACProg -> Text
 codegen opts (TAC.TACProg globals procs) = T.unlines $
   prelude
+  ++ rwPackedData
+  ++ textSectionDecl
   ++ concatMap genProc procs
   ++ rodata
-  ++ rwTrailer
+  ++ rwSplitData
   where
-    inc p = "%include \"" <> T.pack p <> "\""
-
-    -- Collect which float builtins (and libc float I/O) are called across all procs
-    calledFuncs = Set.fromList
-      [ lbl | p <- procs, TAC.ICall _ lbl _ <- TAC.procInstrs p ]
-    -- Hand-written lib/float/__ftoa.s and __atof.s call __* helpers without appearing as
-    -- ICall in TAC; pull their object code in whenever ftoa/atof is referenced.
-    libIoFloatDeps :: Map TAC.Label [TAC.Label]
-    libIoFloatDeps = Map.fromList
-      [ ("ftoa", ["__fcopy", "__fneg", "__ftoi", "__itof", "__fsub", "__fmul"])
-      , ("atof", ["__itof", "__fadd", "__fmul", "__fdiv", "__fneg", "__fcopy"])
-      ]
-    extraFloatForLibIo = Set.fromList
-      [ d | root <- Set.toList calledFuncs
-          , Just ds <- [Map.lookup root libIoFloatDeps]
-          , d <- ds
-          ]
-    needFloat f = Set.member f calledFuncs || Set.member f extraFloatForLibIo
-    floatIncludes = concatMap (\(nm, path) ->
-        if needFloat nm then [inc path] else [])
-      [ ("__fcopy", "float/__fcopy.s")
-      , ("__fneg",  "float/__fneg.s")
-      , ("__fadd",  "float/__fadd.s")
-      , ("__fsub",  "float/__fsub.s")
-      , ("__fmul",  "float/__fmul.s")
-      , ("__fdiv",  "float/__fdiv.s")
-      , ("__fcmp",  "float/__fcmp.s")
-      , ("__ftoi",  "float/__ftoi.s")
-      , ("__itof",  "float/__itof.s")
-      ]
-      ++ (if Set.member "ftoa" calledFuncs then [inc "float/__ftoa.s"] else [])
-      ++ (if Set.member "atof" calledFuncs then [inc "float/__atof.s"] else [])
-
     roGlobs = filter TAC.globalConst globals
     rwGlobs = filter (not . TAC.globalConst) globals
     rwWords = sum $ map TAC.globalSize rwGlobs
-    -- Code vs RW globals layout: when codeBase < dataBase, emit crt0+text+rodata
-    -- first at codeBase, then .org dataBase for mutable globals (split layout).
-    -- Otherwise emit RW globals first and start code at dataBase+rwWords (packed).
+    -- Code vs RW globals: split layout puts RW after code (separate .section data).
+    -- Packed layout puts RW first (.section data) then code (.section text).
     splitMemLayout = not (null rwGlobs) && codeBase opts < dataBase opts
     effectiveCodeBase
       | null rwGlobs   = codeBase opts
       | splitMemLayout = codeBase opts
       | otherwise      = dataBase opts + rwWords
-
-    rwPreamble =
-      if null rwGlobs || splitMemLayout
-        then []
-        else "" : ("    .org " <> octT (dataBase opts)) : concatMap genGlobal rwGlobs
 
     prelude =
       [ "; rcc-generated assembly"
@@ -139,13 +101,26 @@ codegen opts (TAC.TACProg globals procs) = T.unlines $
       , "%define RCC_DATA_BASE " <> octT (dataBase opts)
       , "%define RCC_STACK_TOP " <> octT (stackTop opts)
       ]
-      ++ rwPreamble
-      ++ [inc "crt0.s"]
-      ++ floatIncludes ++ [""]
 
-    rwTrailer =
+    rwPackedData =
+      if null rwGlobs || splitMemLayout
+        then []
+        else
+          "" :
+          "    .section data" :
+          concatMap genGlobal rwGlobs
+
+    textSectionDecl =
+      [ ""
+      , "    .section text"
+      ]
+
+    rwSplitData =
       if splitMemLayout && not (null rwGlobs)
-        then "" : ("    .org " <> octT (dataBase opts)) : concatMap genGlobal rwGlobs
+        then
+          "" :
+          "    .section data" :
+          concatMap genGlobal rwGlobs
         else []
 
     rodata = if null roGlobs then [] else
@@ -186,6 +161,7 @@ genProc p =
       numStack = max 0 (length (TAC.procParams p) - 3)
       action  = do
         emit ""
+        emit ("    .global " <> TAC.procName p)
         emit (TAC.procName p <> ":")
         genPrologue p n
         mapM_ genInstr (TAC.procInstrs p)

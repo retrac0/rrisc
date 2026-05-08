@@ -2,9 +2,10 @@
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
 %define RCC_STACK_TOP 0o7770
-%include "crt0.s"
 
+    .section text
 
+    .global double_it
 double_it:
     subi r6, 1
     swr r5, r6
@@ -31,6 +32,7 @@ _epi_double_it:
     addi r6, 1
     jalr r0, r5
 
+    .global quadruple
 quadruple:
     subi r6, 1
     swr r5, r6
@@ -64,6 +66,7 @@ _epi_quadruple:
     addi r6, 1
     jalr r0, r5
 
+    .global main
 main:
     subi r6, 1
     swr r5, r6

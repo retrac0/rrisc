@@ -13,6 +13,9 @@ library
     RRISC.Float48
     RRISC.SixBit
     RRISC.Disasm
+    RRISC.Obj.Format
+    RRISC.Obj.Emit
+    RRISC.Link
     RRISC.Sim.Bus
     RRISC.Sim.Memory
     RRISC.Sim.CPU
@@ -45,7 +48,20 @@ executable hsasm
   ghc-options:      -Wall -Wcompat
   build-depends:
     base >= 4.16 && < 5,
+    containers,
     directory,
+    filepath,
+    hstools,
+    text
+
+
+executable hsld
+  main-is:          HsldMain.hs
+  hs-source-dirs:   app
+  default-language: GHC2021
+  ghc-options:      -Wall -Wcompat
+  build-depends:
+    base >= 4.16 && < 5,
     filepath,
     hstools,
     text

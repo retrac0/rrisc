@@ -79,11 +79,11 @@ tokenizeLine fp ln raw si =
           | otherwise -> finish labels l
     finish labels l =
       if T.null l
-        then Just $ Stmt fp ln labels "" "" 0 si
+        then Just $ Stmt fp ln labels "" "" 0 si "text"
         else
           let (mnem, rest) = T.break isSpace l
               ops = T.strip (T.dropWhile isSpace rest)
-           in Just $ Stmt fp ln labels mnem ops 0 si
+           in Just $ Stmt fp ln labels mnem ops 0 si "text"
 
 isLabelStart :: Char -> Bool
 isLabelStart c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'

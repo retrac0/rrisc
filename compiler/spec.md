@@ -32,8 +32,9 @@ see [`MANUAL.md`](MANUAL.md). The hardware ISA reference is [`Arch.md`](../Arch.
 
 `unsigned int` is accepted as a synonym for `unsigned`. Float arithmetic compiles to
 runtime helper calls (`__fadd`, `__fsub`, `__fmul`, `__fdiv`, `__fcmp`, `__ftoi`,
-`__itof`, `__fcopy`, `__fneg`); the compiler `%include`s only the helpers a program
-actually uses.
+`__itof`, `__fcopy`, `__fneg`). Implementations live under `lib/float/`. The compiler
+does not embed those files; supply them when assembling (for example list the needed
+`.s` files or link prebuilt `.o` objects with `hsld`).
 
 ### Derived
 
@@ -494,8 +495,10 @@ Comments: `//` to end of line; `/* ... */` block (non-nesting).
 
 ## 13. Runtime
 
-The compiler emits calls to these symbols when needed; the relevant assembly
-lives in `lib/`. `rcc` `%include`s only the helpers a program actually uses.
+The compiler emits calls to these symbols when needed; assembly sources live in `lib/`.
+The compiler output still `%include`s `lib/crt0.s` for `_start`. Soft-float and other
+library subroutines are **not** inlined into the generated `.s`; link `lib/float/*.s`
+(or prebuilt `.o` objects from `lib/float/`) so the linker resolves `__f*` symbols.
 
 | Symbol     | Signature                                        | Description                              | Source                |
 |------------|--------------------------------------------------|------------------------------------------|-----------------------|

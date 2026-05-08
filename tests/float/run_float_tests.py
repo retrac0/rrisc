@@ -24,9 +24,7 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -37,22 +35,12 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
+from rrisc_toolchain import lib_dir, py_asm_cmd, python_exe, sim_py_path  # noqa: E402
+
 import float48 as f48  # noqa: E402
 
 
 # -- helpers ------------------------------------------------------------------
-
-def _python_exe() -> str:
-    """Interpreter for asm.py / sim.py (avoid broken sys.executable in some IDEs)."""
-    p = Path(sys.executable) if sys.executable else None
-    if p and p.is_file() and os.access(p, os.X_OK):
-        # Some hosts (e.g. AppImage launchers) point sys.executable at a
-        # non-Python binary; sniff for python by name.
-        if "python" in p.name.lower():
-            return str(p)
-    w = shutil.which("python3") or shutil.which("python")
-    return w or "python3"
-
 
 # Float source files each routine pulls in. The driver %includes these in
 # order at the bottom of every test program so labels resolve once. (Asm
@@ -339,20 +327,18 @@ class Outcome:
 
 
 def assemble_and_run(asm_text: str, work: Path, idx: int) -> tuple[str, str]:
-    asm = ROOT / "asm.py"
-    sim = ROOT / "sim.py"
     s = work / f"t{idx}.s"
     s.write_text(asm_text)
     bin_path = work / f"t{idx}.bin"
     cp = subprocess.run(
-        [_python_exe(), str(asm), "-I", str(ROOT / "lib"), str(s), "-o", str(bin_path)],
+        py_asm_cmd(ROOT, src=s, out=bin_path, include_dirs=[lib_dir(ROOT)]),
         capture_output=True,
     )
     if cp.returncode:
         return "", "asm: " + cp.stderr.decode("utf-8", "replace")
     cp = subprocess.run(
         [
-            _python_exe(), str(sim),
+            python_exe(), str(sim_py_path(ROOT)),
             "--terminal",
             "--start", "0o1000",
             "--mem", "ram:0:0o7770",

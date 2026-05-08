@@ -3,12 +3,13 @@
 %define RCC_DATA_BASE 0o0
 %define RCC_STACK_TOP 0o7770
 
-    .org 0o0
+    .section data
 flag:
     .word 0
-%include "crt0.s"
 
+    .section text
 
+    .global set_flag
 set_flag:
     subi r6, 1
     swr r5, r6
@@ -25,6 +26,7 @@ _epi_set_flag:
     addi r6, 1
     jalr r0, r5
 
+    .global main
 main:
     subi r6, 1
     swr r5, r6

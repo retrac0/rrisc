@@ -3,12 +3,13 @@
 %define RCC_DATA_BASE 0o0
 %define RCC_STACK_TOP 0o7770
 
-    .org 0o0
+    .section data
 v:
     .fill 2
-%include "crt0.s"
 
+    .section text
 
+    .global sum_vec
 sum_vec:
     subi r6, 1
     swr r5, r6
@@ -57,6 +58,7 @@ _epi_sum_vec:
     addi r6, 1
     jalr r0, r5
 
+    .global main
 main:
     subi r6, 1
     swr r5, r6

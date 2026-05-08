@@ -2,9 +2,10 @@
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
 %define RCC_STACK_TOP 0o3000
-%include "crt0.s"
 
+    .section text
 
+    .global odd_
 odd_:
     subi r6, 1
     swr r5, r6
@@ -50,6 +51,7 @@ _epi_odd_:
     addi r6, 1
     jalr r0, r5
 
+    .global even_
 even_:
     subi r6, 1
     swr r5, r6
@@ -95,6 +97,7 @@ _epi_even_:
     addi r6, 1
     jalr r0, r5
 
+    .global main
 main:
     subi r6, 1
     swr r5, r6

@@ -4,7 +4,8 @@ Unified RRISC test runner: RCC compiler tests, flat-assembler tests, and example
 
 Replaces compiler/run_tests.sh and runtests.sh with one subprocess-based harness:
   - Correct argv handling (no shell splitting bugs)
-  - Optional matrix over Python + Haskell assembler and Python + C + Haskell simulators
+  - Optional matrix over the Haskell assembler (default) and deprecated Python asm.py
+    plus Python, C, and Haskell (rsim) simulators by default; use --simulators to trim
   - Parallel execution via ThreadPoolExecutor
 
 Run from the repository root:
@@ -24,152 +25,49 @@ import argparse
 import difflib
 import os
 import re
-import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable, Sequence, TextIO
+from typing import Sequence, TextIO
 
-
-# --- paths -----------------------------------------------------------------
-
-def repo_root() -> Path:
-    return Path(__file__).resolve().parent
-
-
-def parse_flags_file(path: Path) -> list[str]:
-    if not path.is_file():
-        return []
-    out: list[str] = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        out.extend(shlex.split(line))
-    return out
-
-
-def rcc_src_arg(root: Path, src: Path) -> str:
-    """Input path for rcc so diagnostics match compiler/tests/*.err.expect (cwd=compiler/)."""
-    comp = (root / "compiler").resolve()
-    try:
-        return str(src.resolve().relative_to(comp))
-    except ValueError:
-        return str(src)
-
-
-def which_or_path(p: str | None) -> Path | None:
-    if not p:
-        return None
-    x = Path(p)
-    if x.is_file():
-        return x.resolve()
-    w = shutil.which(p)
-    return Path(w).resolve() if w else None
-
-
-def cabal_list_bin(project_dir: Path, exe: str) -> Path | None:
-    try:
-        r = subprocess.run(
-            ["cabal", "list-bin", exe],
-            cwd=project_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if r.returncode != 0:
-            return None
-        line = (r.stdout or "").strip().splitlines()[-1].strip()
-        p = Path(line)
-        return p if p.is_file() else None
-    except OSError:
-        return None
-
-
-def _usable_exe(p: Path | None) -> Path | None:
-    if not p:
-        return None
-    try:
-        r = p.resolve()
-    except OSError:
-        return None
-    return r if r.is_file() and os.access(r, os.X_OK) else None
-
-
-def python_exe() -> str:
-    """Interpreter to run asm.py / sim.py (avoid broken sys.executable in some IDEs)."""
-    if _usable_exe(Path(sys.executable)):
-        return sys.executable
-    w = shutil.which("python3") or shutil.which("python")
-    return w or "python3"
-
-
-def resolve_rcc(root: Path, override: str | None) -> Path | None:
-    w = _usable_exe(which_or_path(override))
-    if w:
-        return w
-    built = _usable_exe(cabal_list_bin(root / "compiler", "exe:rcc"))
-    if built:
-        return built
-    return _usable_exe(root / "rcc")
-
-
-def resolve_hsasm(root: Path, override: str | None) -> Path | None:
-    w = _usable_exe(which_or_path(override))
-    if w:
-        return w
-    built = _usable_exe(cabal_list_bin(root / "hstools", "exe:hsasm"))
-    if built:
-        return built
-    return _usable_exe(root / "ras")
-
-
-def resolve_rsim(root: Path, override: str | None) -> Path | None:
-    w = _usable_exe(which_or_path(override))
-    if w:
-        return w
-    built = _usable_exe(cabal_list_bin(root / "hstools", "exe:rsim"))
-    if built:
-        return built
-    return _usable_exe(root / "rsim")
-
-
-def resolve_sim2(root: Path, override: str | None) -> Path | None:
-    w = _usable_exe(which_or_path(override))
-    if w:
-        return w
-    return _usable_exe(root / "sim2")
-
-
-def resolve_gcc() -> Path | None:
-    w = shutil.which("gcc")
-    return Path(w).resolve() if w else None
-
-
-# Layout / UART flags for compiler/tests/io/*.c (matches demos/Makefile defaults).
-IO_RCC_EXTRA_DEFAULT: tuple[str, ...] = (
-    "--code-base",
-    "0o100",
-    "--data-base",
-    "0o6600",
-    "--stack-top",
-    "0o7770",
-    "--preprocessor",
-    "cpp -P -I ../lib -I tests/io",
+from rrisc_toolchain import (
+    IO_RCC_EXTRA_DEFAULT,
+    IO_SIM_EXTRA_DEFAULT,
+    asm_py_path,
+    hsasm_cmd,
+    hsasm_emit_obj_cmd,
+    hsld_cmd,
+    lib_dir,
+    parse_flags_file,
+    parse_rcc_defines,
+    py_asm_cmd,
+    python_exe,
+    repo_root,
+    rcc_src_arg,
+    resolve_gcc,
+    resolve_hsasm,
+    resolve_hsld,
+    resolve_rcc,
+    resolve_rsim,
+    resolve_sim2,
+    sim_py_path,
 )
-IO_SIM_EXTRA_DEFAULT: tuple[str, ...] = (
-    "--mem",
-    "ram:0:0o7770",
-    "--start",
-    "0o100",
-    "--terminal",
-    "--maxcycle",
-    "2000000",
+
+PY_ASM_IN_MATRIX_DEPRECATION = (
+    "run_tests: warning: --assemblers py (asm.py) is deprecated; "
+    "use hsasm (default --assemblers hs). Example: cabal run hsasm -- from hstools/."
 )
+
+
+def _stderr_without_py_asm_deprecation(stderr: str) -> str:
+    """asm.py prints a one-line deprecation to stderr before diagnostics; strip it for golden compares."""
+    lines = stderr.splitlines(keepends=True)
+    if lines and lines[0].startswith("asm.py:") and "deprecated" in lines[0]:
+        return "".join(lines[1:])
+    return stderr
 
 
 # --- subprocess helpers ----------------------------------------------------
@@ -250,6 +148,7 @@ class RunConfig:
     keep_temps: bool
     rcc_path: Path | None
     hsasm_path: Path | None
+    hsld_path: Path | None
     sim2_path: Path | None
     rsim_path: Path | None
     default_rcc_flags: list[str] = field(default_factory=lambda: ["--optimize"])
@@ -257,6 +156,36 @@ class RunConfig:
         default_factory=lambda: ["--summary", "--start", "0o1000", "--maxcycle", "500000"]
     )
     asm_test_maxcycle: int = 200_000
+
+
+def sim_runner_base(cfg: RunConfig, rcc_defs: dict[str, str]) -> list[str]:
+    """Argv prefix for simulators: `--start` follows RCC_CODE_BASE from the linked image."""
+    start = rcc_defs.get("RCC_CODE_BASE", "0o1000")
+    maxcycle = "500000"
+    b = cfg.compiler_sim_base
+    for i, x in enumerate(b):
+        if x == "--maxcycle" and i + 1 < len(b):
+            maxcycle = b[i + 1]
+            break
+    return ["--summary", "--start", start, "--maxcycle", maxcycle]
+
+
+def replace_argv_flag(argv: list[str], flag: str, value: str) -> list[str]:
+    """Replace `--flag <value>` if present; otherwise append `--flag value`."""
+    out: list[str] = []
+    i = 0
+    replaced = False
+    while i < len(argv):
+        if argv[i] == flag and i + 1 < len(argv):
+            out.extend([flag, value])
+            i += 2
+            replaced = True
+        else:
+            out.append(argv[i])
+            i += 1
+    if not replaced:
+        out.extend([flag, value])
+    return out
 
 
 # --- RCC tests -------------------------------------------------------------
@@ -339,112 +268,157 @@ def run_rcc_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
     input_path = compiler_tests / f"{base}.input"
     has_input = input_path.is_file()
 
-    lib_inc = str(cfg.root / "lib")
-    py_asm = cfg.root / "asm.py"
+    lib = lib_dir(cfg.root)
+    crt0_s = cfg.root / "lib" / "crt0.s"
 
-    for asm_id in cfg.assemblers:
-        if asm_id == "hs" and not cfg.hsasm_path:
+    if not cfg.hsasm_path or not cfg.hsld_path:
+        msg = "hsasm+hsld required to link crt0 with rcc output (cabal build exe:hsasm exe:hsld in hstools/)"
+        if cfg.skip_unavailable:
+            return [TResult(True, name, f"(skipped) {msg}")]
+        return [TResult(False, name, msg)]
+
+    asm_txt = asm_out.read_text()
+    defs = parse_rcc_defines(asm_txt)
+    code_b = defs.get("RCC_CODE_BASE", "0o1000")
+    data_opt = defs.get("RCC_DATA_BASE", "0o3000") if ".section data" in asm_txt else None
+    stack_t = defs.get("RCC_STACK_TOP", "0o3000")
+
+    bin_path = tmp_root / f"{base}.bin"
+    crt0_o = tmp_root / f"{base}.crt0.o"
+    user_o = tmp_root / f"{base}.rcc.o"
+
+    ar0 = run_capture(
+        hsasm_emit_obj_cmd(
+            cfg.hsasm_path,
+            crt0_s,
+            crt0_o,
+            cli_defines=[("RCC_STACK_TOP", stack_t)],
+        ),
+        cwd=cfg.root,
+    )
+    if ar0.returncode != 0:
+        return [
+            TResult(
+                False,
+                name,
+                "hsasm (crt0) failed:\n" + (ar0.stderr or ar0.stdout or ""),
+                sub="crt0.o",
+            )
+        ]
+
+    aru = run_capture(
+        hsasm_emit_obj_cmd(cfg.hsasm_path, asm_out, user_o, include_dirs=[lib]),
+        cwd=cfg.root / "compiler",
+    )
+    if aru.returncode != 0:
+        return [
+            TResult(
+                False,
+                name,
+                "hsasm (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""),
+                sub="user.o",
+            )
+        ]
+
+    arl = run_capture(
+        hsld_cmd(
+            cfg.hsld_path,
+            [crt0_o, user_o],
+            bin_path,
+            code_base=code_b,
+            data_base=data_opt,
+        ),
+        cwd=cfg.root,
+    )
+    if arl.returncode != 0:
+        return [
+            TResult(
+                False,
+                name,
+                "hsld failed:\n" + (arl.stderr or arl.stdout or ""),
+                sub="hsld",
+            )
+        ]
+
+    for sim_id in cfg.simulators:
+        if sim_id == "c" and not cfg.sim2_path:
             if cfg.skip_unavailable:
                 continue
-            results.append(TResult(False, name, "hsasm not found", sub="hsasm"))
+            results.append(TResult(False, name, "sim2 not found", sub="link/csim"))
+            continue
+        if sim_id == "hs" and not cfg.rsim_path:
+            if cfg.skip_unavailable:
+                continue
+            results.append(TResult(False, name, "rsim not found", sub="link/rsim"))
             continue
 
-        bin_path = tmp_root / f"{base}.{asm_id}.bin"
-        if asm_id == "py":
-            argv = [python_exe(), str(py_asm), "-I", lib_inc, str(asm_out), "-o", str(bin_path)]
-            ar = run_capture(argv, cwd=cfg.root / "compiler")
+        sim_argv: list[str]
+        sim_base = sim_runner_base(cfg, defs)
+        if sim_id == "py":
+            sim_argv = [
+                python_exe(),
+                str(sim_py_path(cfg.root)),
+                *sim_base,
+                *sim_extra,
+            ]
+            if has_input:
+                sim_argv.append("--terminal")
+            sim_argv.append(str(bin_path))
+        elif sim_id == "hs":
+            sim_argv = [
+                str(cfg.rsim_path),
+                *sim_base,
+                *sim_extra,
+            ]
+            if has_input:
+                sim_argv.append("--terminal")
+            sim_argv.append(str(bin_path))
         else:
-            argv = [str(cfg.hsasm_path), str(asm_out), "-o", str(bin_path), "-I", lib_inc]
-            ar = run_capture(argv, cwd=cfg.root / "compiler")
-        if ar.returncode != 0:
+            sim_argv = [
+                str(cfg.sim2_path),
+                *sim_base,
+                *sim_extra,
+            ]
+            if has_input:
+                sim_argv.append("--terminal")
+            sim_argv.append(str(bin_path))
+
+        sr = run_capture(
+            sim_argv,
+            cwd=cfg.root / "compiler",
+            stdin_path=input_path if has_input else None,
+        )
+        if sr.returncode != 0:
             results.append(
                 TResult(
                     False,
                     name,
-                    f"assembler ({asm_id}) failed:\n" + (ar.stderr or ar.stdout or ""),
-                    sub=f"{asm_id}asm",
+                    f"simulator ({sim_id}) exit {sr.returncode}:\n"
+                    + (sr.stderr or sr.stdout or ""),
+                    sub=f"link/{sim_id}sim",
                 )
             )
             continue
 
-        for sim_id in cfg.simulators:
-            if sim_id == "c" and not cfg.sim2_path:
-                if cfg.skip_unavailable:
-                    continue
-                results.append(TResult(False, name, "sim2 not found", sub=f"{asm_id}/csim"))
-                continue
-            if sim_id == "hs" and not cfg.rsim_path:
-                if cfg.skip_unavailable:
-                    continue
-                results.append(TResult(False, name, "rsim not found", sub=f"{asm_id}/rsim"))
-                continue
-
-            sim_argv: list[str]
-            if sim_id == "py":
-                sim_argv = [
-                    python_exe(),
-                    str(cfg.root / "sim.py"),
-                    *cfg.compiler_sim_base,
-                    *sim_extra,
-                ]
-                if has_input:
-                    sim_argv.append("--terminal")
-                sim_argv.append(str(bin_path))
-            elif sim_id == "hs":
-                sim_argv = [
-                    str(cfg.rsim_path),
-                    *cfg.compiler_sim_base,
-                    *sim_extra,
-                ]
-                if has_input:
-                    sim_argv.append("--terminal")
-                sim_argv.append(str(bin_path))
-            else:
-                sim_argv = [
-                    str(cfg.sim2_path),
-                    *cfg.compiler_sim_base,
-                    *sim_extra,
-                ]
-                if has_input:
-                    sim_argv.append("--terminal")
-                sim_argv.append(str(bin_path))
-
-            sr = run_capture(
-                sim_argv,
-                cwd=cfg.root / "compiler",
-                stdin_path=input_path if has_input else None,
+        if not out_expect.is_file():
+            results.append(
+                TResult(True, name, "no .output.expect", sub=f"link/{sim_id}sim")
             )
-            if sr.returncode != 0:
-                results.append(
-                    TResult(
-                        False,
-                        name,
-                        f"simulator ({sim_id}) exit {sr.returncode}:\n"
-                        + (sr.stderr or sr.stdout or ""),
-                        sub=f"{asm_id}asm/{sim_id}sim",
-                    )
-                )
-                continue
+            continue
 
-            if not out_expect.is_file():
-                results.append(
-                    TResult(True, name, "no .output.expect", sub=f"{asm_id}asm/{sim_id}sim")
+        actual = sr.stdout or ""
+        expected = out_expect.read_text(encoding="utf-8")
+        if actual != expected:
+            results.append(
+                TResult(
+                    False,
+                    name,
+                    diff_text(expected, actual, str(out_expect), "sim stdout"),
+                    sub=f"link/{sim_id}sim",
                 )
-                continue
-
-            actual = sr.stdout or ""
-            expected = out_expect.read_text(encoding="utf-8")
-            if actual != expected:
-                results.append(
-                    TResult(
-                        False,
-                        name,
-                        diff_text(expected, actual, str(out_expect), "sim stdout"),
-                        sub=f"{asm_id}asm/{sim_id}sim",
-                    )
-                )
-            else:
-                results.append(TResult(True, name, sub=f"{asm_id}asm/{sim_id}sim"))
+            )
+        else:
+            results.append(TResult(True, name, sub=f"link/{sim_id}sim"))
 
     if not results:
         results.append(TResult(True, name, "(all matrix slots skipped)"))
@@ -511,106 +485,146 @@ def run_io_terminal_test(cfg: RunConfig, src: Path, tmp_root: Path, gcc_path: Pa
             )
         ]
 
-    lib_inc = str(cfg.root / "lib")
-    py_asm = cfg.root / "asm.py"
+    lib = lib_dir(cfg.root)
+    crt0_s = cfg.root / "lib" / "crt0.s"
 
-    for asm_id in cfg.assemblers:
-        if asm_id == "hs" and not cfg.hsasm_path:
+    if not cfg.hsasm_path or not cfg.hsld_path:
+        msg = "hsasm+hsld required (cabal build exe:hsasm exe:hsld in hstools/)"
+        if cfg.skip_unavailable:
+            return [TResult(True, name, f"(skipped) {msg}")]
+        return [TResult(False, name, msg)]
+
+    asm_txt = asm_out.read_text()
+    defs = parse_rcc_defines(asm_txt)
+    code_b = defs.get("RCC_CODE_BASE", "0o100")
+    data_opt = defs.get("RCC_DATA_BASE", "0o6600") if ".section data" in asm_txt else None
+    stack_t = defs.get("RCC_STACK_TOP", "0o7770")
+
+    bin_path = tmp_root / f"io-{base}.bin"
+    crt0_o = tmp_root / f"io-{base}.crt0.o"
+    user_o = tmp_root / f"io-{base}.rcc.o"
+
+    ar0 = run_capture(
+        hsasm_emit_obj_cmd(
+            cfg.hsasm_path,
+            crt0_s,
+            crt0_o,
+            cli_defines=[("RCC_STACK_TOP", stack_t)],
+        ),
+        cwd=cfg.root,
+    )
+    if ar0.returncode != 0:
+        return [
+            TResult(
+                False,
+                name,
+                "hsasm (crt0) failed:\n" + (ar0.stderr or ar0.stdout or ""),
+                sub="crt0.o",
+            )
+        ]
+
+    aru = run_capture(
+        hsasm_emit_obj_cmd(cfg.hsasm_path, asm_out, user_o, include_dirs=[lib]),
+        cwd=cfg.root / "compiler",
+    )
+    if aru.returncode != 0:
+        return [
+            TResult(
+                False,
+                name,
+                "hsasm (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""),
+                sub="user.o",
+            )
+        ]
+
+    arl = run_capture(
+        hsld_cmd(
+            cfg.hsld_path,
+            [crt0_o, user_o],
+            bin_path,
+            code_base=code_b,
+            data_base=data_opt,
+        ),
+        cwd=cfg.root,
+    )
+    if arl.returncode != 0:
+        return [
+            TResult(
+                False,
+                name,
+                "hsld failed:\n" + (arl.stderr or arl.stdout or ""),
+                sub="hsld",
+            )
+        ]
+
+    start_addr = defs.get("RCC_CODE_BASE", "0o100")
+    io_sim_base = replace_argv_flag(list(IO_SIM_EXTRA_DEFAULT), "--start", start_addr)
+
+    for sim_id in cfg.simulators:
+        if sim_id == "c" and not cfg.sim2_path:
             if cfg.skip_unavailable:
                 continue
-            results.append(TResult(False, name, "hsasm not found", sub="hsasm"))
+            results.append(TResult(False, name, "sim2 not found", sub="link/csim"))
+            continue
+        if sim_id == "hs" and not cfg.rsim_path:
+            if cfg.skip_unavailable:
+                continue
+            results.append(TResult(False, name, "rsim not found", sub="link/rsim"))
             continue
 
-        bin_path = tmp_root / f"io-{base}.{asm_id}.bin"
-        if asm_id == "py":
-            argv = [python_exe(), str(py_asm), "-I", lib_inc, str(asm_out), "-o", str(bin_path)]
-            ar = run_capture(argv, cwd=cfg.root / "compiler")
-        else:
-            argv = [
-                str(cfg.hsasm_path),
-                str(asm_out),
-                "-o",
+        sim_argv: list[str]
+        if sim_id == "py":
+            sim_argv = [
+                python_exe(),
+                str(sim_py_path(cfg.root)),
+                *io_sim_base,
+                *per_sim,
                 str(bin_path),
-                "-I",
-                lib_inc,
             ]
-            ar = run_capture(argv, cwd=cfg.root / "compiler")
-        if ar.returncode != 0:
+        elif sim_id == "hs":
+            sim_argv = [
+                str(cfg.rsim_path),
+                *io_sim_base,
+                *per_sim,
+                str(bin_path),
+            ]
+        else:
+            sim_argv = [
+                str(cfg.sim2_path),
+                *io_sim_base,
+                *per_sim,
+                str(bin_path),
+            ]
+
+        sr = run_capture(
+            sim_argv,
+            cwd=cfg.root / "compiler",
+            stdin_path=input_path if has_input else None,
+        )
+        if sr.returncode != 0:
             results.append(
                 TResult(
                     False,
                     name,
-                    f"assembler ({asm_id}) failed:\n" + (ar.stderr or ar.stdout or ""),
-                    sub=f"{asm_id}asm",
+                    f"simulator ({sim_id}) exit {sr.returncode}:\n"
+                    + (sr.stderr or sr.stdout or ""),
+                    sub=f"link/{sim_id}sim",
                 )
             )
             continue
 
-        for sim_id in cfg.simulators:
-            if sim_id == "c" and not cfg.sim2_path:
-                if cfg.skip_unavailable:
-                    continue
-                results.append(TResult(False, name, "sim2 not found", sub=f"{asm_id}/csim"))
-                continue
-            if sim_id == "hs" and not cfg.rsim_path:
-                if cfg.skip_unavailable:
-                    continue
-                results.append(TResult(False, name, "rsim not found", sub=f"{asm_id}/rsim"))
-                continue
-
-            sim_argv: list[str]
-            if sim_id == "py":
-                sim_argv = [
-                    python_exe(),
-                    str(cfg.root / "sim.py"),
-                    *IO_SIM_EXTRA_DEFAULT,
-                    *per_sim,
-                    str(bin_path),
-                ]
-            elif sim_id == "hs":
-                sim_argv = [
-                    str(cfg.rsim_path),
-                    *IO_SIM_EXTRA_DEFAULT,
-                    *per_sim,
-                    str(bin_path),
-                ]
-            else:
-                sim_argv = [
-                    str(cfg.sim2_path),
-                    *IO_SIM_EXTRA_DEFAULT,
-                    *per_sim,
-                    str(bin_path),
-                ]
-
-            sr = run_capture(
-                sim_argv,
-                cwd=cfg.root / "compiler",
-                stdin_path=input_path if has_input else None,
+        actual = sr.stdout or ""
+        if actual != expected_txt:
+            results.append(
+                TResult(
+                    False,
+                    name,
+                    diff_text(expected_txt, actual, str(exp_path), "sim uart stdout"),
+                    sub=f"link/{sim_id}sim",
+                )
             )
-            if sr.returncode != 0:
-                results.append(
-                    TResult(
-                        False,
-                        name,
-                        f"simulator ({sim_id}) exit {sr.returncode}:\n"
-                        + (sr.stderr or sr.stdout or ""),
-                        sub=f"{asm_id}asm/{sim_id}sim",
-                    )
-                )
-                continue
-
-            actual = sr.stdout or ""
-            if actual != expected_txt:
-                results.append(
-                    TResult(
-                        False,
-                        name,
-                        diff_text(expected_txt, actual, str(exp_path), "sim uart stdout"),
-                        sub=f"{asm_id}asm/{sim_id}sim",
-                    )
-                )
-            else:
-                results.append(TResult(True, name, sub=f"{asm_id}asm/{sim_id}sim"))
+        else:
+            results.append(TResult(True, name, sub=f"link/{sim_id}sim"))
 
     # Host gcc: same source, same expected UART bytes (stay in 12-bit range).
     if gcc_path is None:
@@ -688,7 +702,7 @@ def run_io_terminal_test(cfg: RunConfig, src: Path, tmp_root: Path, gcc_path: Pa
 
 
 def bless_rcc_output(cfg: RunConfig) -> int:
-    """Rewrite compiler/tests/[0-9]*.output.expect using rcc + Python asm + Python sim.
+    """Rewrite compiler/tests/[0-9]*.output.expect using rcc + hsasm (or asm.py) + Python sim.
 
     Golden UART expectations live under compiler/tests/io/*.stdout.expect and are maintained by hand.
     """
@@ -697,8 +711,19 @@ def bless_rcc_output(cfg: RunConfig) -> int:
         print("bless-output: rcc not found", file=sys.stderr)
         return 1
     compiler_tests = cfg.root / "compiler" / "tests"
-    lib_inc = str(cfg.root / "lib")
-    py_asm = cfg.root / "asm.py"
+    lib = lib_dir(cfg.root)
+    if not cfg.hsasm_path:
+        print(
+            "bless-output: warning: hsasm not found; using deprecated asm.py. "
+            "Build exe:hsasm in hstools/.",
+            file=sys.stderr,
+        )
+    elif not cfg.hsld_path:
+        print(
+            "bless-output: warning: hsld not found; falling back to flat hsasm/asm.py "
+            "(build exe:hsld for crt0 link).",
+            file=sys.stderr,
+        )
     n_ok = n_fail = n_skip = 0
     with tempfile.TemporaryDirectory(prefix="rrisc-bless-out-") as td:
         tdir = Path(td)
@@ -726,10 +751,58 @@ def bless_rcc_output(cfg: RunConfig) -> int:
                 print(f"bless-output FAIL compile {base}:\n{r.stderr}", file=sys.stderr)
                 n_fail += 1
                 continue
-            ar = run_capture(
-                [python_exe(), str(py_asm), "-I", lib_inc, str(asm_out), "-o", str(bin_out)],
-                cwd=cfg.root / "compiler",
-            )
+            asm_txt = asm_out.read_text()
+            defs = parse_rcc_defines(asm_txt)
+            if cfg.hsasm_path and cfg.hsld_path:
+                crt0_s = cfg.root / "lib" / "crt0.s"
+                crt0_o = tdir / f"{base}.crt0.o"
+                user_o = tdir / f"{base}.rcc.o"
+                stack_t = defs.get("RCC_STACK_TOP", "0o3000")
+                ar0 = run_capture(
+                    hsasm_emit_obj_cmd(
+                        cfg.hsasm_path,
+                        crt0_s,
+                        crt0_o,
+                        cli_defines=[("RCC_STACK_TOP", stack_t)],
+                    ),
+                    cwd=cfg.root,
+                )
+                aru = run_capture(
+                    hsasm_emit_obj_cmd(cfg.hsasm_path, asm_out, user_o, include_dirs=[lib]),
+                    cwd=cfg.root / "compiler",
+                )
+                if ar0.returncode != 0 or aru.returncode != 0:
+                    print(
+                        f"bless-output FAIL asm obj {base}:\n{ar0.stderr or ''}{aru.stderr or ''}",
+                        file=sys.stderr,
+                    )
+                    n_fail += 1
+                    continue
+                arl = run_capture(
+                    hsld_cmd(
+                        cfg.hsld_path,
+                        [crt0_o, user_o],
+                        bin_out,
+                        code_base=defs.get("RCC_CODE_BASE", "0o1000"),
+                        data_base=(
+                            defs.get("RCC_DATA_BASE", "0o3000")
+                            if ".section data" in asm_txt
+                            else None
+                        ),
+                    ),
+                    cwd=cfg.root,
+                )
+                ar = arl
+            elif cfg.hsasm_path:
+                ar = run_capture(
+                    hsasm_cmd(cfg.root, cfg.hsasm_path, src=asm_out, out=bin_out, include_dirs=[lib]),
+                    cwd=cfg.root / "compiler",
+                )
+            else:
+                ar = run_capture(
+                    py_asm_cmd(cfg.root, src=asm_out, out=bin_out, include_dirs=[lib]),
+                    cwd=cfg.root / "compiler",
+                )
             if ar.returncode != 0:
                 print(f"bless-output FAIL asm {base}:\n{ar.stderr}", file=sys.stderr)
                 n_fail += 1
@@ -739,8 +812,8 @@ def bless_rcc_output(cfg: RunConfig) -> int:
             has_input = input_path.is_file()
             sim_argv = [
                 python_exe(),
-                str(cfg.root / "sim.py"),
-                *cfg.compiler_sim_base,
+                str(sim_py_path(cfg.root)),
+                *sim_runner_base(cfg, defs),
                 *sim_extra,
             ]
             if has_input:
@@ -802,13 +875,17 @@ def bless_rcc_asm(cfg: RunConfig) -> int:
 def run_asm_error_test(cfg: RunConfig, src: Path) -> TResult:
     base = src.stem
     expect = cfg.root / "tests" / f"{base}.err.expect"
-    py_asm = cfg.root / "asm.py"
-    r = run_capture([python_exe(), str(py_asm), str(src)], cwd=cfg.root)
+    if cfg.hsasm_path:
+        r = run_capture([str(cfg.hsasm_path), str(src)], cwd=cfg.root)
+    else:
+        r = run_capture([python_exe(), str(asm_py_path(cfg.root)), str(src)], cwd=cfg.root)
     if r.returncode == 0:
         return TResult(False, f"asmerr:{base}", "assembler succeeded but should fail")
     if not expect.is_file():
         return TResult(True, f"asmerr:{base}", "(no .err.expect)")
     err = r.stderr or ""
+    if not cfg.hsasm_path:
+        err = _stderr_without_py_asm_deprecation(err)
     exp = expect.read_text(encoding="utf-8")
     if err != exp:
         return TResult(False, f"asmerr:{base}", diff_text(exp, err, str(expect), "stderr"))
@@ -824,7 +901,6 @@ def run_asm_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
     out_expect = test_dir / f"{base}.output.expect"
     flags = parse_flags_file(test_dir / f"{base}.flags")
 
-    py_asm = cfg.root / "asm.py"
     sim_base_py = ["--summary", "--maxcycle", str(cfg.asm_test_maxcycle)]
     sim_base_c = ["--summary", "--maxcycle", str(cfg.asm_test_maxcycle)]
 
@@ -839,12 +915,12 @@ def run_asm_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
         bin_path = tmp_root / f"{base}.{asm_id}.bin"
         if asm_id == "py":
             ar = run_capture(
-                [python_exe(), str(py_asm), str(src), "-o", str(bin_path)],
+                py_asm_cmd(cfg.root, src=src, out=bin_path, include_dirs=()),
                 cwd=cfg.root,
             )
         else:
             ar = run_capture(
-                [str(cfg.hsasm_path), str(src), "-o", str(bin_path)],
+                hsasm_cmd(cfg.root, cfg.hsasm_path, src=src, out=bin_path, include_dirs=()),
                 cwd=cfg.root,
             )
         if ar.returncode != 0:
@@ -899,7 +975,7 @@ def run_asm_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
             continue
 
         if sim_id == "py":
-            sim_argv = [python_exe(), str(cfg.root / "sim.py"), *sim_base_py, *flags, str(primary_bin)]
+            sim_argv = [python_exe(), str(sim_py_path(cfg.root)), *sim_base_py, *flags, str(primary_bin)]
         elif sim_id == "hs":
             sim_argv = [str(cfg.rsim_path), *sim_base_py, *flags, str(primary_bin)]
         else:
@@ -947,9 +1023,8 @@ def run_example_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]
     base = src.stem
     name = f"example:{base}"
     results: list[TResult] = []
-    py_asm = cfg.root / "asm.py"
     bin_path = tmp_root / f"{base}.bin"
-    lib_inc = str(cfg.root / "lib")
+    lib = lib_dir(cfg.root)
     # Optional fixture: examples/<base>.input (or examples/float/<base>.input)
     # is fed to the simulator's stdin under --terminal so RX-driven demos halt.
     input_path = src.with_suffix(".input")
@@ -964,12 +1039,12 @@ def run_example_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]
             continue
         if asm_id == "py":
             ar = run_capture(
-                [python_exe(), str(py_asm), "-I", lib_inc, str(src), "-o", str(bin_path)],
+                py_asm_cmd(cfg.root, src=src, out=bin_path, include_dirs=[lib]),
                 cwd=cfg.root,
             )
         else:
             ar = run_capture(
-                [str(cfg.hsasm_path), "-I", lib_inc, str(src), "-o", str(bin_path)],
+                hsasm_cmd(cfg.root, cfg.hsasm_path, src=src, out=bin_path, include_dirs=[lib]),
                 cwd=cfg.root,
             )
         if ar.returncode != 0:
@@ -1000,7 +1075,7 @@ def run_example_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]
         if sim_id == "py":
             argv = [
                 python_exe(),
-                str(cfg.root / "sim.py"),
+                str(sim_py_path(cfg.root)),
                 "--terminal",
                 "--summary",
                 "--start",
@@ -1138,17 +1213,23 @@ def main() -> int:
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--rcc", metavar="PATH", help="rcc executable")
     ap.add_argument("--hsasm", metavar="PATH", help="Haskell assembler (hsasm/ras)")
+    ap.add_argument("--hsld", metavar="PATH", help="Haskell linker (hsld)")
     ap.add_argument("--rsim", metavar="PATH", help="Haskell simulator (rsim)")
     ap.add_argument("--sim2", metavar="PATH", help="C simulator binary")
     ap.add_argument(
         "--assemblers",
-        default="py,hs",
-        help="comma list: py, hs (default py,hs)",
+        default="hs",
+        help="comma list: hs (default), py (deprecated asm.py)",
+    )
+    ap.add_argument(
+        "--also-rsim",
+        action="store_true",
+        help="append hs (rsim) to --simulators if missing (redundant with default py,c,hs)",
     )
     ap.add_argument(
         "--simulators",
-        default="py,c",
-        help="comma list: py, c, hs (default py,c)",
+        default="py,c,hs",
+        help="comma list: py, c, hs (default py,c,hs)",
     )
     ap.add_argument(
         "--no-optimize",
@@ -1179,10 +1260,14 @@ def main() -> int:
 
     assemblers = tuple(x.strip() for x in args.assemblers.split(",") if x.strip())
     simulators = tuple(x.strip() for x in args.simulators.split(",") if x.strip())
+    if args.also_rsim and "hs" not in simulators:
+        simulators = simulators + ("hs",)
     for a in assemblers:
         if a not in ("py", "hs"):
             print(f"unknown assembler {a!r}", file=sys.stderr)
             return 2
+    if "py" in assemblers:
+        print(PY_ASM_IN_MATRIX_DEPRECATION, file=sys.stderr)
     for s in simulators:
         if s not in ("py", "c", "hs"):
             print(f"unknown simulator {s!r}", file=sys.stderr)
@@ -1190,6 +1275,7 @@ def main() -> int:
 
     rcc_path = resolve_rcc(root, args.rcc)
     hsasm_path = resolve_hsasm(root, args.hsasm)
+    hsld_path = resolve_hsld(root, getattr(args, "hsld", None))
     rsim_path = resolve_rsim(root, args.rsim)
     sim2_path = resolve_sim2(root, args.sim2)
     gcc_path = resolve_gcc()
@@ -1207,6 +1293,7 @@ def main() -> int:
         keep_temps=args.keep,
         rcc_path=rcc_path,
         hsasm_path=hsasm_path,
+        hsld_path=hsld_path,
         sim2_path=sim2_path,
         rsim_path=rsim_path,
         default_rcc_flags=default_rcc,
@@ -1219,6 +1306,8 @@ def main() -> int:
 
     if not args.skip_unavailable:
         missing = []
+        if (want_rcc or want_io) and not hsld_path:
+            missing.append("hsld (cabal build exe:hsld in hstools/)")
         if "hs" in assemblers and not hsasm_path:
             missing.append("hsasm (make ras, or cabal build exe:hsasm in hstools/)")
         if "hs" in simulators and not rsim_path:

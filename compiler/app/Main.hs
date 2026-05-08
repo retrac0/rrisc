@@ -5,9 +5,8 @@ import Data.Char (isDigit)
 import Data.List (intercalate)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import System.Environment (getArgs, getProgName, getExecutablePath)
+import System.Environment (getArgs, getProgName)
 import System.Exit (exitFailure, exitSuccess)
-import System.FilePath (takeDirectory, (</>))
 import System.IO (hPutStrLn, stderr)
 import System.Process (readProcess)
 
@@ -28,7 +27,6 @@ data Options = Options
   , optDataBase     :: Int
   , optStackTop     :: Maybe Int
   , optPreprocessor :: Maybe String
-  , optLibDir       :: Maybe FilePath
   , optOptimize     :: Bool
   , optDumpAst      :: Bool
   , optDumpTac      :: Bool
@@ -42,7 +40,6 @@ defaultOptions = Options
   , optDataBase     = 0o0000
   , optStackTop     = Just 0o7770
   , optPreprocessor = Nothing
-  , optLibDir       = Nothing
   , optOptimize     = True
   , optDumpAst      = False
   , optDumpTac      = False
@@ -60,7 +57,6 @@ parseArgs = go defaultOptions
     go opts ("--data-base"    : a : rest) = go opts{ optDataBase     = read a }        rest
     go opts ("--stack-top"    : a : rest) = go opts{ optStackTop     = Just (read a) } rest
     go opts ("--preprocessor" : c : rest) = go opts{ optPreprocessor = Just c }        rest
-    go opts ("--lib-dir"      : d : rest) = go opts{ optLibDir       = Just d }        rest
     go opts ("--dump-ast"         : rest) = go opts{ optDumpAst      = True }          rest
     go opts ("--dump-tac"         : rest) = go opts{ optDumpTac      = True }          rest
     go opts ("--no-optimize"      : rest) = go opts{ optOptimize     = False }        rest
@@ -78,7 +74,6 @@ usage prog =
     , "  --data-base <n>       RW globals base address (default: 0o0000)"
     , "  --stack-top <n>       initial stack pointer     (default: 0o7770)"
     , "  --preprocessor <cmd>  run <cmd> on source before compiling (e.g. 'cpp -P')"
-    , "  --lib-dir <path>      directory for rlibc headers (default: ../lib next to rcc)"
     , "  --optimize            enable TAC optimizations (default; omit with --no-optimize)"
     , "  --no-optimize         skip TAC optimizations (debug only; large programs may not assemble)"
     , "  --dump-ast            print lexical AST and exit"
@@ -133,17 +128,10 @@ main = do
 
   when (optDumpTac opts) $ print tac' >> exitSuccess
 
-  resolvedLib <- case optLibDir opts of
-    Just d  -> pure d
-    Nothing -> do
-      exe <- getExecutablePath
-      pure (takeDirectory exe </> "../lib")
-
   let cgopts = Codegen.CodegenOpts
         { Codegen.codeBase = optCodeBase opts
         , Codegen.dataBase = optDataBase opts
         , Codegen.stackTop = maybe (optDataBase opts) id (optStackTop opts)
-        , Codegen.libDir   = resolvedLib
         }
   let asm = Codegen.codegen cgopts tac'
 

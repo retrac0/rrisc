@@ -12,3 +12,4 @@ demos/rpn.s
 rsim
 demos/rpn-noopt.s
 hsim
+build/*

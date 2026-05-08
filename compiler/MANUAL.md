@@ -120,7 +120,7 @@ A few RRISC-isms that bite C programmers:
                └──► rcc ──► myprog.s  (RRISC assembly)
                               │
                               ▼
-                  ras  (Haskell)   or   asm.py  (Python)
+                  ras / hsasm  (Haskell; supported)   or   asm.py  (Python; deprecated)
                               │
                               ▼
                           myprog.bin  (12-bit words, 2 bytes each)
@@ -434,7 +434,6 @@ rcc [options] <input.c>
 | `--data-base <n>`       | `0o0000`    | Address of mutable globals (and BSS) |
 | `--stack-top <n>`       | `0o7770`    | Initial value of r6 (stack grows down from here) |
 | `--preprocessor "<cmd>"` | none       | Run `<cmd> <input>` over the source first; line markers stripped |
-| `--lib-dir <path>`      | `<exedir>/../lib` | Where `crt0.s` and float helpers live (used in `%include` directives in the output) |
 | `--optimize`            | on          | TAC optimisation passes (constant folding, DCE) |
 | `--no-optimize`         | off         | Skip optimisation. Warning: large programs may exceed addressable memory without it. Debug only. |
 | `--dump-ast`            | off         | Print lexical AST and exit |
@@ -445,12 +444,14 @@ octal, `0xFF` for hex, decimal otherwise. `rcc` itself does not implement `#incl
 or `#define`; pipe through `cpp -P` (or any other preprocessor that emits plain C
 without linemarkers).
 
-### 14. CLI: `asm.py` and `ras`
+### 14. CLI: `hsasm` / `ras` and deprecated `asm.py`
+
+The supported assembler is the Haskell tool (`hsasm`, also installed as `ras`). The Python `asm.py` driver is **deprecated** (it prints a warning) and remains only for backward compatibility.
 
 Both implementations accept exactly the same flags:
 
 ```
-asm.py / ras  source.s  [-o output.bin]  [-I dir]…  [--format bin|readmemb]  [--list]
+ras / hsasm / asm.py  source.s  [-o output.bin]  [-I dir]…  [--format bin|readmemb]  [--list]
 ```
 
 | Flag | Default | Effect |
@@ -497,7 +498,7 @@ exceeded.
 
 ### 16. Assembler directives
 
-Identical between `asm.py` and `ras`:
+The Haskell assembler (`hsasm` / `ras`) is canonical; deprecated `asm.py` agrees on these forms:
 
 | Directive | Form | Meaning |
 |-----------|------|---------|
@@ -505,6 +506,8 @@ Identical between `asm.py` and `ras`:
 | `%include` | `%include "file.s"` | Splice another source file inline. Searches the current source's directory, then `-I` dirs. Cycle detection. |
 | `%ifdef` / `%ifeq` / `%ifneq` | `%ifdef NAME` … | Conditional inclusion. Pair with `%endif` |
 | `%macro` / `%endm` | `%macro NAME [p1, p2]` … `%endm`  *or*  `%macro NAME N` … (positional `%1`..`%N`) | Macro definition. NASM-style positional or named parameters |
+| `.global` / `.globl` | `.global name [, name …]` | **Object / linking (`hsasm --emit-obj`, `hsld` only):** mark definitions as **global** (visible across `.o` files), like C file-scope symbols without `static`. Labels default to **local** (visible only within the same relocatable object). |
+| `.local` | `.local name [, name …]` | **Linking:** force **local** linkage; later `.global` / `.globl` in the same file can still override for names listed again after `.local`. |
 | `.word` | `.word v1, v2, …` | Emit one raw 12-bit word per value |
 | `.float` | `.float f1, f2, …` | Emit four 12-bit words per float (48-bit float48 layout) |
 | `.fill` | `.fill count [, value]` | `count` words of `value` (default 0) |
@@ -636,8 +639,7 @@ returns an int in `r2`). See `Lower.hs:871-904`.
 | Code + rodata | `--code-base 0o1000` | Instructions, `const` globals, string literals, float constant pools |
 | Data    | `--data-base 0o0000` | Mutable globals, BSS (zero-init), stack |
 
-The compiler picks one of two layouts based on `--code-base` vs `--data-base`
-(`Codegen.hs:101-128`):
+The compiler picks one of two layouts based on `--code-base` vs `--data-base`:
 
 - **Split layout** — when `--code-base < --data-base` and the program has
   mutable globals. Output is: prologue (`%define`s + `%include "crt0.s"`),
@@ -645,8 +647,8 @@ The compiler picks one of two layouts based on `--code-base` vs `--data-base`
 - **Packed layout** — otherwise. Mutable globals first at `data-base`, then
   code immediately after them. Use this for all-RAM images.
 
-The startup file `lib/crt0.s` is `%include`'d into every program by codegen
-(`Codegen.hs:115-122`). It uses three `%define`d names — `RCC_CODE_BASE`,
+The startup file `lib/crt0.s` is `%include`'d into every program by codegen.
+It uses three `%define`d names — `RCC_CODE_BASE`,
 `RCC_DATA_BASE`, `RCC_STACK_TOP` — which `rcc` emits ahead of the include based
 on your flags. `crt0.s` itself is short:
 
@@ -705,8 +707,11 @@ clobber list). To pass a value in or out, take its address with `&` and use
 
 ### 23. Runtime library and headers
 
-Everything in `lib/` is header-only or `%include`d by codegen. There is no
-linker or library archive.
+Most of `lib/` is pulled in by hand-written asm or by listing sources on the
+assembler / linker command line. Float helpers are **not** `%include`d by `rcc`;
+link `lib/float/*.s` (flat assembly) or the matching `.o` files (`hsasm --emit-obj`,
+then `hsld`). The Haskell tools under `hstools/` include `hsld` for relocatable
+objects.
 
 | File | Purpose |
 |------|---------|
@@ -718,12 +723,12 @@ linker or library archive.
 | `lib/itoa.s`        | Asm-callable signed 12-bit `itoa`; used by `rcc` (via `rlibc.h`) and by `lib/float/__ftoa.s` |
 | `lib/io/*.s`        | Asm-callable UART helpers: `putchar`, `putstr`, `getchar`, `print_oct` |
 | `lib/macros/*.inc`  | Shared macros and `%define`s: `uart_tx.inc`, `uart_rx.inc`, `subr.inc`, `ror3.inc` |
-| `lib/float/__*.s`   | Float helpers (`__fadd`, …, `__fneg`) plus string float I/O (`__ftoi`, `__itof`, `__atof`, `__ftoa`). `rcc` `%include`s only what your program calls |
+| `lib/float/__*.s`   | Float helpers (`__fadd`, …, `__fneg`) plus string float I/O (`__ftoi`, `__itof`, `__atof`, `__ftoa`). Linked or assembled alongside `rcc` output — not auto-included in the generated `.s` |
 | `lib/float/put_hex12.s` | Asm-callable hex-cell debug print (handy when poking float48 cells from a flat-asm program) |
 
 Hand-written asm demos live under `examples/` (top level) and `examples/float/`
 for the soft-float walk-throughs (`demo-add`, `demo-mul`, `demo-div`, `demo-parse`).
-Assemble any of them with `python3 asm.py -I lib examples/float/demo-add.s`.
+Assemble any of them with `cabal run hsasm -- -I lib examples/float/demo-add.s` (from `hstools/`) or the `ras` binary on your `PATH`.
 
 **Float / runtime symbol names.** Globals that the compiler or headers rely on use a `__` prefix (`__fadd`, `__atof`, …). That keeps a single reserved namespace for the flat-assembler world: your C code and prototypes stay conventional (`atof`, `ftoa`, `+` on floats), while emitted `jalr` targets and `%include` bodies cannot collide with a user-defined asm label `fadd` or `atof`. Labels *inside* each `lib/float/*.s` file also use that prefix (or a file-unique prefix) so local branches do not pick up the user’s `skip:` by accident. An alternative would be unprefixed public globals (`atof`, `fadd`) with only locals underscored; that reads nicely in isolation but makes duplicate-symbol mistakes much easier whenever user asm or a second `%include` reuses a libc name.
 

@@ -1,11 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 module RRISC.Asm (
+  -- legacy whole-program path (kept for the .bin output of hsasm)
   assembleFile,
   AsmResult (..),
   formatListing,
   writeBinary,
   writeReadmemb,
   formatAsmError,
+  -- object-emitting path (step 3+): assembler stops resolving branches and
+  -- emits 'brel' records that the linker relaxes.
+  assembleFileToObject,
 ) where
 
 import Data.Bits (shiftR, (.&.))
@@ -23,7 +27,7 @@ import Text.Printf (printf)
 import qualified Data.ByteString.Builder as B
 import qualified Data.ByteString.Lazy as BL
 import RRISC.Asm.Encode (ListingEntry (..), encodeProgram)
-import RRISC.Asm.Layout (assignAddresses, relaxBranches)
+import RRISC.Asm.Layout (assignAddresses, labelsFromStmts, relaxBranches)
 import RRISC.Asm.Preprocess (
   collectDefines,
   collectMacroDefs,
@@ -34,38 +38,68 @@ import RRISC.Asm.Preprocess (
   stripLines,
   substitute,
  )
-import RRISC.Asm.Types (AsmError, RawLine (..), formatAsmError)
+import RRISC.Asm.Types (AsmError, RawLine (..), Stmt (..), formatAsmError)
 import RRISC.ISA (wordMask)
+import RRISC.Obj.Emit (encodeToObject)
+import RRISC.Obj.Format (ObjectFile)
 
 data AsmResult = AsmResult
   { arWords :: [Int]
   , arFlatLines :: [RawLine]
   , arListing :: [ListingEntry]
+  , arLabels :: M.Map Text Int
   }
 
-assembleFile :: FilePath -> [FilePath] -> IO (Either AsmError AsmResult)
-assembleFile srcPath incDirs = do
+-- | Shared frontend: preprocess, expand macros/defines, tokenize, and run the
+--   layout pass that assigns *pre-relaxation* addresses.  Third argument:
+--   extra @%define@ values from the CLI (@-D@), overriding file defines.
+preFrontend
+  :: FilePath
+  -> [FilePath]
+  -> M.Map Text Text
+  -> IO (Either AsmError ([Stmt], M.Map Text Int, [RawLine]))
+preFrontend srcPath incDirs cliDefines = do
   absPath <- resolvePath srcPath
   source <- TIO.readFile absPath
   seen0 <- Set.singleton <$> resolvePath absPath
   eraw <- expandIncludes source (Just absPath) seen0 incDirs
   case eraw of
     Left e -> return (Left e)
-    Right raw0 -> return $ assembleFromRaw raw0
+    Right raw0 -> return $ do
+      (raw1, macroTable) <- collectMacroDefs raw0
+      raw2 <- expandMacros raw1 macroTable Set.empty
+      let flat = raw2
+          slines0 = stripLines flat
+          (slines1, definesFromFile) = collectDefines slines0
+          defines = M.union cliDefines definesFromFile
+      slines2 <- filterConditionals slines1 defines
+      let slines3 = substitute slines2 defines
+      (stmts0, _) <- assignAddresses slines3
+      let labelsPre = labelsFromStmts stmts0
+      Right (stmts0, labelsPre, flat)
 
-assembleFromRaw :: [RawLine] -> Either AsmError AsmResult
-assembleFromRaw raw0 = do
-  (raw1, macroTable) <- collectMacroDefs raw0
-  raw2 <- expandMacros raw1 macroTable Set.empty
-  let flat = raw2
-      slines0 = stripLines flat
-      (slines1, defines) = collectDefines slines0
-  slines2 <- filterConditionals slines1 defines
-  let slines3 = substitute slines2 defines
-  (stmts0, _) <- assignAddresses slines3
-  (stmts1, labels) <- relaxBranches stmts0
-  (words1, listing) <- encodeProgram stmts1 labels
-  Right $ AsmResult words1 flat listing
+assembleFile :: FilePath -> [FilePath] -> M.Map Text Text -> IO (Either AsmError AsmResult)
+assembleFile srcPath incDirs cliDefines = do
+  e <- preFrontend srcPath incDirs cliDefines
+  case e of
+    Left err -> return (Left err)
+    Right (stmts0, _, flat) -> return $ do
+      (stmts1, labels) <- relaxBranches stmts0
+      (words1, listing) <- encodeProgram stmts1 labels
+      Right $ AsmResult words1 flat listing labels
+
+-- | Object-emitting path: skip branch relaxation in the assembler, emit
+--   brel records the linker will relax instead.
+assembleFileToObject
+  :: FilePath
+  -> [FilePath]
+  -> M.Map Text Text
+  -> IO (Either AsmError ObjectFile)
+assembleFileToObject srcPath incDirs cliDefines = do
+  e <- preFrontend srcPath incDirs cliDefines
+  case e of
+    Left err -> return (Left err)
+    Right (stmts0, _, flat) -> return (encodeToObject stmts0 flat)
 
 formatListing :: [RawLine] -> [ListingEntry] -> IO Text
 formatListing flatLines entries = do

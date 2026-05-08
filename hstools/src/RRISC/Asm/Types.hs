@@ -39,6 +39,7 @@ data Stmt = Stmt
   , stOps :: !Text
   , stAddr :: !Int
   , stSourceIx :: !Int
+  , stSection :: !Text
   } deriving (Show)
 
 data MacroDef = MacroDef

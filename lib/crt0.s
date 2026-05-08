@@ -1,12 +1,18 @@
-; crt0.s -- C runtime startup for rcc-generated programs.
-; The compiler emits %define directives for these before %include-ing this file:
-;   RCC_CODE_BASE  -- .org address (default 0o1000)
-;   RCC_STACK_TOP  -- initial r6 value
-;   RCC_DATA_BASE  -- .org address for writable globals (compiler emits separately)
+; crt0.s — RRISC C runtime startup (linked separately from rcc output).
 ;
-; ABI: r6=SP, r5=LR; target address in r1 for jalr (r2–r4 unused here).
+; The compiler does not %include this file. Build with hsasm --emit-obj and link
+; with hsld before the rcc-generated object (crt0.o first), using --code-base and
+; --data-base matching the program's %define RCC_* lines.
+;
+; Defaults below suit standalone assembly; tests/build scripts pass -D RCC_STACK_TOP=...
+; ABI: r6=SP, r5=LR; jalr target in r1.
 
-    .org RCC_CODE_BASE
+%define RCC_STACK_TOP 0o3000
+
+    .global _start
+
+    .section text
+
 _start:
     li   r6, RCC_STACK_TOP
     li   r1, main

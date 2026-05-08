@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module RRISC.Asm.Encode (
   encodeProgram,
+  encodeStmt,
+  splitOps,
   ListingEntry (..),
 ) where
 
@@ -122,6 +124,10 @@ encMnem mnem ops opsStr fp ln addr labels =
     "call" -> encCall fp ln ops labels
     "or" -> encOr fp ln ops
     "xor" -> encXor fp ln ops
+    ".global" -> Right []
+    ".globl" -> Right []
+    ".local" -> Right []
+    ".section" -> Right []
     _ -> Left $ AsmError fp ln $ "unknown mnemonic '" <> mnem <> "'"
   where
     op0 w = expectCount fp ln mnem ops 0 >> Right [w]

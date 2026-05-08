@@ -2,9 +2,10 @@
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
 %define RCC_STACK_TOP 0o7770
-%include "crt0.s"
 
+    .section text
 
+    .global area
 area:
     subi r6, 1
     swr r5, r6
@@ -38,14 +39,14 @@ area:
     addi r1, 3
     lwr r2, r1
     and r1, r0, r0
-_L_area_mul_loop_33:
+_L_area_mul_loop_34:
     sub r0, r0, r2
-    bf _L_area_mul_end_33
+    bf _L_area_mul_end_34
     add r1, r1, r3
     subi r2, 1
     sub r0, r0, r7
-    bt _L_area_mul_loop_33
-_L_area_mul_end_33:
+    bt _L_area_mul_loop_34
+_L_area_mul_end_34:
     and r2, r1, r7
     and r1, r6, r7
     addi r1, 4
@@ -61,6 +62,7 @@ _epi_area:
     addi r6, 1
     jalr r0, r5
 
+    .global main
 main:
     subi r6, 1
     swr r5, r6

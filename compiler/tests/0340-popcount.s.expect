@@ -2,9 +2,10 @@
 %define RCC_CODE_BASE 0o1000
 %define RCC_DATA_BASE 0o0
 %define RCC_STACK_TOP 0o7770
-%include "crt0.s"
 
+    .section text
 
+    .global main
 main:
     subi r6, 1
     swr r5, r6
@@ -53,16 +54,16 @@ _L_while_0:
     lwr r3, r1
     li r2, 1
     and r2, r2, r2
-_L_main_shift_loop_48:
+_L_main_shift_loop_49:
     sub r0, r0, r2
-    bf _L_main_shift_end_48
+    bf _L_main_shift_end_49
     and r1, r3, r7
     rol r1, r1
     ror r3, r3
     subi r2, 1
     sub r0, r0, r7
-    bt _L_main_shift_loop_48
-_L_main_shift_end_48:
+    bt _L_main_shift_loop_49
+_L_main_shift_end_49:
     and r2, r3, r7
     and r1, r6, r7
     addi r1, 4

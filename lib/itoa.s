@@ -19,6 +19,7 @@
 %define I_TMP   8
 %define I_FRAME 12
 
+    .global itoa
 itoa:
         subi   r6, 1
         swr    r5, r6

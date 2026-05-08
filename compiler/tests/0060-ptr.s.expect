@@ -3,12 +3,13 @@
 %define RCC_DATA_BASE 0o0
 %define RCC_STACK_TOP 0o7770
 
-    .org 0o0
+    .section data
 g:
     .fill 1
-%include "crt0.s"
 
+    .section text
 
+    .global main
 main:
     subi r6, 1
     swr r5, r6
