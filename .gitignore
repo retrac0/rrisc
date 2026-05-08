@@ -14,3 +14,7 @@ demos/rpn-noopt.s
 hsim
 build/*
 dist-newstyle/*
+compiler/tests/fuzz-work/*
+compiler/tests/fuzz-fail/*
+hsld
+rcc-fuzz

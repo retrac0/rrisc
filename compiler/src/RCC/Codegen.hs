@@ -607,6 +607,26 @@ emitBinOp TAC.TMod = do
   emit (lRemPos <> ":")
   emitL "and r2, r4, r7"          -- r2 = remainder
   emit (lModDone <> ":")
+emitBinOp TAC.TUDiv = do
+  -- Unsigned divide: r3 / r2 → r2 (quotient).  The values are already
+  -- 12-bit unsigned (0..4095), so 'emitUDiv' does the work directly with
+  -- no sign-extraction preamble or sign-restoration epilogue.  Divide by
+  -- zero returns 0 (the only sensible 12-bit answer), matching the
+  -- signed implementation.
+  lDone <- freshLbl "udiv_done"
+  emitL "sub r0, r0, r2"          -- T=1 iff divisor != 0
+  emitL ("bf " <> lDone)          -- if zero: r2 already 0 (the answer)
+  emitUDiv                        -- r1 = quotient, r4 = remainder
+  emitL "and r2, r1, r7"          -- r2 = quotient
+  emit (lDone <> ":")
+emitBinOp TAC.TUMod = do
+  -- Unsigned modulo: r3 % r2 → r2.  Same shape as TUDiv.
+  lDone <- freshLbl "umod_done"
+  emitL "sub r0, r0, r2"          -- T=1 iff divisor != 0
+  emitL ("bf " <> lDone)
+  emitUDiv
+  emitL "and r2, r4, r7"          -- r2 = remainder
+  emit (lDone <> ":")
 emitBinOp TAC.TAnd = do
   -- Logical: should not appear (lowered to branches by TAC), but handle anyway.
   emitL "and r2, r3, r2"

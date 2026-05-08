@@ -442,6 +442,8 @@ foldBinOp op a b = mask12 result
       TAC.TULe  -> if a <= b then 1 else 0
       TAC.TUGt  -> if a > b then 1 else 0
       TAC.TUGe  -> if a >= b then 1 else 0
+      TAC.TUDiv -> if b == 0 then 0 else a `quot` b
+      TAC.TUMod -> if b == 0 then 0 else a `rem`  b
       _         -> 0  -- TAnd/TOr: unreachable after lowering
 
 foldUnaryOp :: TAC.UnOp -> Int -> Int

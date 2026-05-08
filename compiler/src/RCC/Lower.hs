@@ -317,19 +317,44 @@ initAggrOnStack :: Text -> Syn.Ty -> [Syn.Expr] -> L ()
 initAggrOnStack name ty es = do
   emit (TAC.IAllocLocal name)
   ss <- gets lsStructs
-  let elemSz = case ty of
-        Syn.TyArray inner _ -> Sema.tySize ss inner
-        _                   -> 1
-  forM_ (zip [0..] es) $ \(i, e) -> do
-    ev <- lowerExpr e
-    let off = i * elemSz
-    addrOp <- if off == 0
-                then pure (TAC.OLocalAddr name)
-                else do
-                  at <- freshTemp
-                  emit (TAC.IBinOp at TAC.TAdd (TAC.OLocalAddr name) (TAC.OConst off))
-                  pure (TAC.OTemp at)
-    emit (TAC.IStore addrOp ev)
+  -- C99 6.7.8/19: an aggregate initialiser with fewer items than the
+  -- aggregate has elements zero-fills the trailing positions.  We model
+  -- that here by writing every slot explicitly, falling back to a zero
+  -- constant when the source ran out of expressions.  This matters for
+  -- arrays like @int v[4] = { 0 };@ where the user wrote one initialiser
+  -- but expects all four words to be zero.
+  --
+  -- Currently this zero-fill only fires for 1-word elements (scalars
+  -- and pointers).  Arrays of multi-word elements (e.g. @float v[4]@)
+  -- would need an aggregate copy of an all-zero source rather than a
+  -- single 'OConst' store; we keep the explicit-only path for those
+  -- until @float@ arrays show up in the test corpus.
+  case ty of
+    Syn.TyArray inner n
+      | Sema.tySize ss inner == 1 -> do
+          let nExpr = length es
+          forM_ [0 .. n - 1] $ \i -> do
+            val <- if i < nExpr
+                     then lowerExpr (es !! i)
+                     else pure (TAC.OConst 0)
+            storeAtOff name i val
+    _ -> do
+      let elemSz = case ty of
+            Syn.TyArray inner _ -> Sema.tySize ss inner
+            _                   -> 1
+      forM_ (zip [0..] es) $ \(i, e) -> do
+        ev <- lowerExpr e
+        storeAtOff' name (i * elemSz) ev
+  where
+    storeAtOff n i val = storeAtOff' n i val
+    storeAtOff' n off val = do
+      addrOp <- if off == 0
+                  then pure (TAC.OLocalAddr n)
+                  else do
+                    at <- freshTemp
+                    emit (TAC.IBinOp at TAC.TAdd (TAC.OLocalAddr n) (TAC.OConst off))
+                    pure (TAC.OTemp at)
+      emit (TAC.IStore addrOp val)
 
 -- ---------------------------------------------------------------------------
 -- Source-level pretty-printing (for IComment annotations)
@@ -519,7 +544,7 @@ lowerExpr (Syn.EBinary _ op l r) = do
       lv    <- lowerExpr l
       rv    <- lowerExpr r
       t     <- freshTemp
-      tacOp <- selectBinOp op l
+      tacOp <- selectBinOp op l r
       emit (TAC.IBinOp t tacOp lv rv)
       pure (TAC.OTemp t)
 lowerExpr (Syn.EAssign _ aop lhs rhs) = do
@@ -802,7 +827,13 @@ assignTo _ _ = pure ()   -- ignored for non-lvalues
 
 -- Re-derive the type of an expression.
 inferTy :: Syn.Expr -> L Syn.Ty
-inferTy (Syn.ELit _ _)        = pure Syn.TyInt
+-- Integer literals follow C's "first type that fits" rule for hex / octal /
+-- binary literals: a value that doesn't fit in signed @int@ becomes
+-- @unsigned@.  With rcc's 12-bit @int@ (range -2048..2047) that means
+-- literals in [2048, 4095] are typed @unsigned@.  This matters for
+-- right-shift (signed @>>@ is arithmetic, unsigned @>>@ is logical) and for
+-- the usual arithmetic conversions in comparisons; cf. spec.md §3.
+inferTy (Syn.ELit _ n)        = pure $ if n > 2047 then Syn.TyUint else Syn.TyInt
 inferTy (Syn.EFloatLit _ _)   = pure Syn.TyFloat
 inferTy (Syn.EString _ _)     = pure (Syn.TyPtr Syn.TyInt)
 inferTy (Syn.EVar _ name)     = do
@@ -828,14 +859,17 @@ inferTy (Syn.EBinary _ op l r) = case op of
     rt <- inferTy r
     case (lt, rt) of
       (Syn.TyPtr _, Syn.TyPtr _) -> pure Syn.TyInt
-      _                          -> pure lt
-  Syn.BAdd  -> inferTy l
-  Syn.BMul  -> inferTy l
-  Syn.BDiv  -> inferTy l
-  Syn.BMod  -> inferTy l
-  Syn.BBand -> inferTy l
-  Syn.BBor  -> inferTy l
-  Syn.BBxor -> inferTy l
+      _                          -> arithCommonTy lt rt
+  Syn.BAdd  -> arithCommonTyOf l r
+  Syn.BMul  -> arithCommonTyOf l r
+  Syn.BDiv  -> arithCommonTyOf l r
+  Syn.BMod  -> arithCommonTyOf l r
+  Syn.BBand -> arithCommonTyOf l r
+  Syn.BBor  -> arithCommonTyOf l r
+  Syn.BBxor -> arithCommonTyOf l r
+  -- Shift result type is the (promoted) type of the LHS only.
+  Syn.BShl  -> inferTy l
+  Syn.BShr  -> inferTy l
   _         -> pure Syn.TyInt
 inferTy (Syn.EAssign _ _ l _) = inferTy l
 inferTy (Syn.EIndex _ arr _) = do
@@ -913,27 +947,65 @@ compoundToSynBinOp _         = Syn.BAdd  -- fallback; caller ensures float-valid
 -- ---------------------------------------------------------------------------
 -- Helpers
 
--- Choose signed vs unsigned TAC op based on the type of the left operand.
--- Pointer relational compares use unsigned order (same memory address space as TyUint).
-selectBinOp :: Syn.BinOp -> Syn.Expr -> L TAC.BinOp
-selectBinOp op lExpr = do
+-- True iff the type behaves as unsigned for the usual arithmetic conversions.
+-- Pointers compare and arithmetic-convert as unsigned (the memory address
+-- space is unsigned).
+isUnsignedTy :: Syn.Ty -> Bool
+isUnsignedTy Syn.TyUint    = True
+isUnsignedTy (Syn.TyPtr _) = True
+isUnsignedTy _             = False
+
+-- C's "usual arithmetic conversions" applied to the two operand types of an
+-- arithmetic / bitwise binary operator.  With only one integer width, the
+-- rule reduces to: if either operand is unsigned, the common type is
+-- unsigned; otherwise it is signed @int@.  Pointer-typed operands are not
+-- normally combined with arithmetic operators except via pointer
+-- arithmetic; we treat them as unsigned, matching how rcc handles
+-- @int + ptr@-style expressions.
+arithCommonTy :: Syn.Ty -> Syn.Ty -> L Syn.Ty
+arithCommonTy lt rt = pure $
+  if isUnsignedTy lt || isUnsignedTy rt then Syn.TyUint else Syn.TyInt
+
+arithCommonTyOf :: Syn.Expr -> Syn.Expr -> L Syn.Ty
+arithCommonTyOf l r = do
+  lt <- inferTy l
+  rt <- inferTy r
+  arithCommonTy lt rt
+
+-- Choose signed vs unsigned TAC op for a relational / shift node, applying
+-- C's usual arithmetic conversions: a comparison is unsigned iff *either*
+-- operand is unsigned.  Shifts are special — only the LHS type determines
+-- whether @>>@ is logical or arithmetic.
+selectBinOp :: Syn.BinOp -> Syn.Expr -> Syn.Expr -> L TAC.BinOp
+selectBinOp op lExpr rExpr = do
   lTy <- inferTy lExpr
-  let u = case lTy of
-        Syn.TyUint -> True
-        Syn.TyPtr _ -> True
-        _ -> False
+  rTy <- inferTy rExpr
+  let uBoth = isUnsignedTy lTy || isUnsignedTy rTy
+      uLhs  = isUnsignedTy lTy
   pure $ case op of
-    Syn.BLt  | u -> TAC.TULt
-    Syn.BLe  | u -> TAC.TULe
-    Syn.BGt  | u -> TAC.TUGt
-    Syn.BGe  | u -> TAC.TUGe
-    Syn.BShr | u -> TAC.TUShr
-    _            -> mapBinOp op
+    Syn.BLt  | uBoth -> TAC.TULt
+    Syn.BLe  | uBoth -> TAC.TULe
+    Syn.BGt  | uBoth -> TAC.TUGt
+    Syn.BGe  | uBoth -> TAC.TUGe
+    Syn.BShr | uLhs  -> TAC.TUShr
+    -- Unsigned divide / modulo: skip the sign-handling preamble of the
+    -- signed routines.  Required for correctness on values with bit 11
+    -- set, where the signed routines would interpret a 12-bit unsigned
+    -- as a negative number.
+    Syn.BDiv | uBoth -> TAC.TUDiv
+    Syn.BMod | uBoth -> TAC.TUMod
+    _                -> mapBinOp op
 
 selectCompoundOp :: Syn.AssOp -> Syn.Expr -> L TAC.BinOp
 selectCompoundOp Syn.AShr lhs = do
   ty <- inferTy lhs
   pure $ if ty == Syn.TyUint then TAC.TUShr else TAC.TShr
+selectCompoundOp Syn.ADiv lhs = do
+  ty <- inferTy lhs
+  pure $ if ty == Syn.TyUint then TAC.TUDiv else TAC.TDiv
+selectCompoundOp Syn.AMod lhs = do
+  ty <- inferTy lhs
+  pure $ if ty == Syn.TyUint then TAC.TUMod else TAC.TMod
 selectCompoundOp aop _ = pure (compoundOp aop)
 
 mapBinOp :: Syn.BinOp -> TAC.BinOp

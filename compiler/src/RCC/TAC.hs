@@ -34,6 +34,7 @@ data BinOp
   | TEq | TNe | TLt | TLe | TGt | TGe
   | TULt | TULe | TUGt | TUGe  -- unsigned comparisons
   | TUShr                        -- logical (unsigned) right shift
+  | TUDiv | TUMod                -- unsigned divide / modulo
   deriving (Show, Eq)
 
 data UnOp
