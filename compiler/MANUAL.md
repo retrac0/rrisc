@@ -715,8 +715,15 @@ linker or library archive.
 | `lib/rlibc_io.h`    | Just I/O + `itoa` + `exit`. Use this when you do not need the float helpers and want a smaller binary |
 | `lib/rlmath.h`      | Float math: `float_sqrt`, `float_abs`, `float_pow`. Requires `rlibc.h` first |
 | `lib/rlibc_host.h`  | POSIX shim used **only** for host-side test builds. Not for RRISC programs |
+| `lib/itoa.s`        | Asm-callable signed 12-bit `itoa`; used by `rcc` (via `rlibc.h`) and by `lib/float/__ftoa.s` |
+| `lib/io/*.s`        | Asm-callable UART helpers: `putchar`, `putstr`, `getchar`, `print_oct` |
+| `lib/macros/*.inc`  | Shared macros and `%define`s: `uart_tx.inc`, `uart_rx.inc`, `subr.inc`, `ror3.inc` |
 | `lib/float/__*.s`   | Float helpers (`__fadd`, …, `__fneg`) plus string float I/O (`__ftoi`, `__itof`, `__atof`, `__ftoa`). `rcc` `%include`s only what your program calls |
-| `lib/float/demo-*.s` | Hand-written asm samples next to the runtime (`demo-add`, `demo-parse`, `put_hex12`). Assemble with `python3 asm.py -I lib -I examples lib/float/demo-add.s` (UART helpers still live under `examples/inc/`) |
+| `lib/float/put_hex12.s` | Asm-callable hex-cell debug print (handy when poking float48 cells from a flat-asm program) |
+
+Hand-written asm demos live under `examples/` (top level) and `examples/float/`
+for the soft-float walk-throughs (`demo-add`, `demo-mul`, `demo-div`, `demo-parse`).
+Assemble any of them with `python3 asm.py -I lib examples/float/demo-add.s`.
 
 **Float / runtime symbol names.** Globals that the compiler or headers rely on use a `__` prefix (`__fadd`, `__atof`, …). That keeps a single reserved namespace for the flat-assembler world: your C code and prototypes stay conventional (`atof`, `ftoa`, `+` on floats), while emitted `jalr` targets and `%include` bodies cannot collide with a user-defined asm label `fadd` or `atof`. Labels *inside* each `lib/float/*.s` file also use that prefix (or a file-unique prefix) so local branches do not pick up the user’s `skip:` by accident. An alternative would be unprefixed public globals (`atof`, `fadd`) with only locals underscored; that reads nicely in isolation but makes duplicate-symbol mistakes much easier whenever user asm or a second `%include` reuses a libc name.
 

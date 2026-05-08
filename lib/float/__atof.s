@@ -62,14 +62,22 @@ __atof_skip_ws:
     addi r1, AT_P
     lwr  r4, r1
     lwr  r1, r4
-    sub  r0, r0, r1
-    bf   __atof_ws_done
-    li   r2, 32
-    sub  r0, r1, r2
-    bf   __atof_ws_done
-    li   r2, 9
-    sub  r0, r1, r2
-    bf   __atof_ws_done
+    sub  r0, r0, r1            ; T=1 iff char != 0
+    bf   __atof_ws_done        ; null -> done
+    li   r2, 32                ; ' '
+    sub  r2, r1, r2            ; T=1 iff char < ' '
+    bt   __atof_ws_done
+    sub  r0, r0, r2            ; T=1 iff char > ' ' (not exactly ' ')
+    bt   __atof_check_tab
+    sub  r0, r0, r7            ; T=1: matched space, advance p
+    bt   __atof_ws_consume
+__atof_check_tab:
+    li   r2, 9                 ; '\t'
+    sub  r2, r1, r2
+    bt   __atof_ws_done
+    sub  r0, r0, r2
+    bt   __atof_ws_done
+__atof_ws_consume:
     addi r4, 1
     and  r1, r6, r7
     addi r1, AT_P
@@ -77,34 +85,42 @@ __atof_skip_ws:
     sub  r0, r0, r7
     bt   __atof_skip_ws
 __atof_ws_done:
+    ; Check for leading '-': set NEG=1 and advance p only on exact match.
     and  r1, r6, r7
     addi r1, AT_P
     lwr  r4, r1
     lwr  r1, r4
-    li   r2, 45
-    sub  r0, r1, r2
-    bf   __atof_no_minus
+    li   r2, 45                ; '-'
+    sub  r1, r1, r2            ; T=1 iff char < '-'
+    bt   __atof_no_minus
+    sub  r0, r0, r1            ; T=1 iff char != '-'
+    bt   __atof_no_minus
     and  r1, r6, r7
     addi r1, AT_NEG
     li   r2, 1
-    swr  r2, r1
-    addi r4, 1
+    swr  r2, r1                ; NEG = 1
     and  r1, r6, r7
     addi r1, AT_P
+    lwr  r4, r1
+    addi r4, 1
     swr  r4, r1
     sub  r0, r0, r7
     bt   __atof_after_sign
 __atof_no_minus:
+    ; Check for leading '+': just advance p on exact match (no flag).
     and  r1, r6, r7
     addi r1, AT_P
     lwr  r4, r1
     lwr  r1, r4
-    li   r2, 43
-    sub  r0, r1, r2
-    bf   __atof_after_sign
-    addi r4, 1
+    li   r2, 43                ; '+'
+    sub  r1, r1, r2            ; T=1 iff char < '+'
+    bt   __atof_after_sign
+    sub  r0, r0, r1            ; T=1 iff char != '+'
+    bt   __atof_after_sign
     and  r1, r6, r7
     addi r1, AT_P
+    lwr  r4, r1
+    addi r4, 1
     swr  r4, r1
 __atof_after_sign:
     and  r1, r6, r7
@@ -178,9 +194,14 @@ __atof_int_done:
     addi r1, AT_P
     lwr  r4, r1
     lwr  r1, r4
-    li   r2, 46
-    sub  r0, r1, r2
-    bf   __atof_combine
+    li   r2, 46                ; '.'
+    sub  r1, r1, r2            ; T=1 iff char < '.'
+    bt   __atof_combine
+    sub  r0, r0, r1            ; T=1 iff char != '.'
+    bt   __atof_combine
+    and  r1, r6, r7
+    addi r1, AT_P
+    lwr  r4, r1
     addi r4, 1
     and  r1, r6, r7
     addi r1, AT_P

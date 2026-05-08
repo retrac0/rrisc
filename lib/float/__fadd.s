@@ -28,14 +28,19 @@
 %define FA_R_LO    14
 %define FA_R_EXP   15
 
-; --- helper macro: load word at sp+offset into register ---
+; --- helper macros: load/store word at sp+offset into register ---
+;
+; Both macros use r1 as scratch to compute the effective address. That means
+; the value register MUST NOT be r1 -- the FA_LD r1, ... is OK since the lwr
+; finishes by writing r1, but FA_ST r1, ... would store the address back into
+; the slot instead of the intended value. Use a different value register.
 %macro FA_LD 2        ; FA_LD reg, offset
     and  r1, r6, r7
     addi r1, %2
     lwr  %1, r1
 %endm
 
-%macro FA_ST 2        ; FA_ST reg, offset
+%macro FA_ST 2        ; FA_ST reg, offset    -- DO NOT pass r1 as %1
     and  r1, r6, r7
     addi r1, %2
     swr  %1, r1
@@ -49,14 +54,18 @@ __fadd:
     FA_ST r2, FA_DST
 
     ; ---- unpack a ----
+    ; FA_ST clobbers r1, so we must NOT keep w0 in r1 across one of those calls.
+    ; Extract sign first (uses r1 directly), then reload r1 for exp.
     lwr  r1, r3              ; r1 = a.w0
+    clrt
+    rol  r1, r1              ; T = bit 11 of w0; r1 now contains shifted garbage
+    and  r2, r0, r0
+    addc r2, r0, r0          ; r2 = sign_a
+    FA_ST r2, FA_SIGN_A
+    lwr  r1, r3              ; reload r1 = a.w0
     li   r2, 0o3777
     and  r2, r1, r2          ; exp_a
     FA_ST r2, FA_EXP_A
-    rol  r1, r1
-    and  r2, r0, r0
-    addc r2, r0, r0
-    FA_ST r2, FA_SIGN_A
     addi r3, 1
     lwr  r2, r3
     FA_ST r2, FA_A_HI
@@ -69,13 +78,15 @@ __fadd:
 
     ; ---- unpack b ----
     lwr  r1, r4              ; r1 = b.w0
+    clrt
+    rol  r1, r1              ; T = bit 11 of w0
+    and  r2, r0, r0
+    addc r2, r0, r0          ; r2 = sign_b
+    FA_ST r2, FA_SIGN_B
+    lwr  r1, r4              ; reload r1 = b.w0
     li   r2, 0o3777
     and  r2, r1, r2
     FA_ST r2, FA_EXP_B
-    rol  r1, r1
-    and  r2, r0, r0
-    addc r2, r0, r0
-    FA_ST r2, FA_SIGN_B
     addi r4, 1
     lwr  r2, r4
     FA_ST r2, FA_B_HI
@@ -213,25 +224,28 @@ __fadd_both_normal:
     FA_LD r3, FA_EXP_B
     sub   r0, r2, r3          ; T=1 if exp_a < exp_b
     bf    __fadd_no_swap
-    ; swap a and b in the frame
-    FA_LD r1, FA_SIGN_A
-    FA_LD r4, FA_SIGN_B
-    FA_ST r4, FA_SIGN_A
-    FA_ST r1, FA_SIGN_B
+    ; swap a and b in the frame.
+    ; FA_ST clobbers r1, so we use r2/r3 (or r3/r4) as the swap pair instead.
+    FA_LD r2, FA_SIGN_A
+    FA_LD r3, FA_SIGN_B
+    FA_ST r3, FA_SIGN_A
+    FA_ST r2, FA_SIGN_B
+    FA_LD r2, FA_EXP_A
+    FA_LD r3, FA_EXP_B
     FA_ST r3, FA_EXP_A
     FA_ST r2, FA_EXP_B
-    FA_LD r1, FA_A_HI
-    FA_LD r4, FA_B_HI
-    FA_ST r4, FA_A_HI
-    FA_ST r1, FA_B_HI
-    FA_LD r1, FA_A_MID
-    FA_LD r4, FA_B_MID
-    FA_ST r4, FA_A_MID
-    FA_ST r1, FA_B_MID
-    FA_LD r1, FA_A_LO
-    FA_LD r4, FA_B_LO
-    FA_ST r4, FA_A_LO
-    FA_ST r1, FA_B_LO
+    FA_LD r2, FA_A_HI
+    FA_LD r3, FA_B_HI
+    FA_ST r3, FA_A_HI
+    FA_ST r2, FA_B_HI
+    FA_LD r2, FA_A_MID
+    FA_LD r3, FA_B_MID
+    FA_ST r3, FA_A_MID
+    FA_ST r2, FA_B_MID
+    FA_LD r2, FA_A_LO
+    FA_LD r3, FA_B_LO
+    FA_ST r3, FA_A_LO
+    FA_ST r2, FA_B_LO
 
 __fadd_no_swap:
     ; ---- align b: shift sig_b right by (exp_a - exp_b) ----
@@ -243,9 +257,9 @@ __fadd_no_swap:
     sub   r0, r4, r1          ; T=1 if diff < 36
     bf    __fadd_b_zeroed
     ; shift sig_b right by r4
-    ; stash diff in FA_R_EXP (scratch until result exp is written); FA_* clobber r1.
-    and   r1, r4, r7          ; r1 = diff
-    FA_ST r1, FA_R_EXP
+    ; stash diff in FA_R_EXP (scratch until result exp is written); FA_ST clobbers
+    ; r1 so we store r4 (which already holds diff) directly.
+    FA_ST r4, FA_R_EXP
 __fadd_align_loop:
     FA_LD r1, FA_R_EXP
     sub   r0, r0, r1          ; T=1 if count != 0
@@ -268,16 +282,20 @@ __fadd_align_loop:
     bt    __fadd_align_loop
 
 __fadd_b_zeroed:
-    and   r1, r0, r0
-    FA_ST r1, FA_B_HI
-    FA_ST r1, FA_B_MID
-    FA_ST r1, FA_B_LO
+    ; zero sig_b cells. FA_ST clobbers r1, so use r2 to hold the zero.
+    and   r2, r0, r0
+    FA_ST r2, FA_B_HI
+    FA_ST r2, FA_B_MID
+    FA_ST r2, FA_B_LO
 
 __fadd_aligned:
     ; ---- add or subtract significands ----
     FA_LD r2, FA_SIGN_A
     FA_LD r3, FA_SIGN_B
-    sub   r0, r2, r3          ; T=1 if signs differ
+    ; sub only sets T on borrow (ra<rb), so a single sub misses sign_a=1,sign_b=0.
+    ; Compute the difference, then test for nonzero with another sub.
+    sub   r1, r2, r3          ; r1 = sign_a - sign_b (0 same, +/-1 differ)
+    sub   r0, r0, r1          ; T = 1 iff r1 != 0
     bt    __fadd_subtract
     ; same sign: add
     FA_ST r2, FA_RSIGN
@@ -354,22 +372,30 @@ __fadd_subtract:
     FA_ST r2, FA_RSIGN
     FA_LD r2, FA_EXP_A
     FA_ST r2, FA_R_EXP
-    ; 36-bit subtract: result = sig_a - sig_b
-    ; use two's complement: result = sig_a + ~sig_b + 1
-    ; set T=1 for the +1
-    sub   r0, r0, r7          ; T=1 (0 - (-1) = 1, borrow=1)
+    ; 36-bit subtract: result = sig_a - sig_b = sig_a + ~sig_b + 1.
+    ; The `sub r2, r7, r2` (~b) writes T as a side effect, so we cannot
+    ; interleave it with the carry chain. Phase 1: invert b in place; phase 2:
+    ; set T=1 then chain addc using FA_LD/FA_ST (T-preserving).
     FA_LD r2, FA_B_LO
-    sub   r2, r7, r2          ; ~b_lo
+    sub   r2, r7, r2          ; r2 = ~b_lo
+    FA_ST r2, FA_B_LO
+    FA_LD r2, FA_B_MID
+    sub   r2, r7, r2
+    FA_ST r2, FA_B_MID
+    FA_LD r2, FA_B_HI
+    sub   r2, r7, r2
+    FA_ST r2, FA_B_HI
+
+    sub   r0, r0, r7          ; T=1 (initial +1 of two's complement)
+    FA_LD r2, FA_B_LO
     FA_LD r3, FA_A_LO
     addc  r3, r3, r2
     FA_ST r3, FA_R_LO
     FA_LD r2, FA_B_MID
-    sub   r2, r7, r2
     FA_LD r3, FA_A_MID
     addc  r3, r3, r2
     FA_ST r3, FA_R_MID
     FA_LD r2, FA_B_HI
-    sub   r2, r7, r2
     FA_LD r3, FA_A_HI
     addc  r3, r3, r2
     FA_ST r3, FA_R_HI

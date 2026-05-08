@@ -950,6 +950,10 @@ def run_example_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]
     py_asm = cfg.root / "asm.py"
     bin_path = tmp_root / f"{base}.bin"
     lib_inc = str(cfg.root / "lib")
+    # Optional fixture: examples/<base>.input (or examples/float/<base>.input)
+    # is fed to the simulator's stdin under --terminal so RX-driven demos halt.
+    input_path = src.with_suffix(".input")
+    has_input = input_path.is_file()
 
     tried: list[str] = []
     for asm_id in cfg.assemblers:
@@ -1027,7 +1031,11 @@ def run_example_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]
                 maxc,
                 str(bin_path),
             ]
-        sr = run_capture(argv, cwd=cfg.root)
+        sr = run_capture(
+            argv,
+            cwd=cfg.root,
+            stdin_path=input_path if has_input else None,
+        )
         if sr.returncode != 0:
             results.append(
                 TResult(
@@ -1077,6 +1085,44 @@ def collect_examples(cfg: RunConfig) -> list[Path]:
     return ex
 
 
+def run_float_suite(cfg: RunConfig) -> list[TResult]:
+    """Drive tests/float/run_float_tests.py as one suite-level check.
+
+    The float harness has its own per-case parallelism and golden-from-Python
+    comparison; we just invoke it and surface a single summary check, plus
+    one TResult per failing case so they show up in the unified report.
+    """
+    name = "float"
+    driver = cfg.root / "tests" / "float" / "run_float_tests.py"
+    if not driver.is_file():
+        return [TResult(False, name, f"missing driver {driver}")]
+    argv = [python_exe(), str(driver)]
+    if cfg.filter_re:
+        argv.extend(["--filter", cfg.filter_re.pattern])
+    if cfg.verbose:
+        argv.append("--verbose")
+    r = run_capture(argv, cwd=cfg.root)
+    out = (r.stdout or "") + (r.stderr or "")
+    if r.returncode == 0:
+        return [TResult(True, name, out.strip() if cfg.verbose else "")]
+    fails: list[TResult] = []
+    cur_name: str | None = None
+    cur_lines: list[str] = []
+    for line in out.splitlines():
+        if line.startswith("[FAIL] "):
+            if cur_name:
+                fails.append(TResult(False, f"float:{cur_name}", "\n".join(cur_lines)))
+            cur_name = line[len("[FAIL] "):].strip()
+            cur_lines = []
+        elif cur_name and line.startswith("  "):
+            cur_lines.append(line)
+    if cur_name:
+        fails.append(TResult(False, f"float:{cur_name}", "\n".join(cur_lines)))
+    if not fails:
+        fails.append(TResult(False, name, out.strip()))
+    return fails
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="RRISC unified test runner")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
@@ -1113,19 +1159,20 @@ def main() -> int:
         "--only",
         metavar="SUITE,...",
         default="rcc,asm,examples",
-        help="comma-separated suites: rcc, asm, examples, io (default: rcc,asm,examples)",
+        help="comma-separated suites: rcc, asm, examples, io, float (default: rcc,asm,examples)",
     )
     args = ap.parse_args()
 
     only_parts = {x.strip() for x in args.only.split(",") if x.strip()}
     for p in only_parts:
-        if p not in ("rcc", "asm", "examples", "io"):
+        if p not in ("rcc", "asm", "examples", "io", "float"):
             print(f"unknown suite in --only: {p!r}", file=sys.stderr)
             return 2
     want_rcc = "rcc" in only_parts
     want_asm = "asm" in only_parts
     want_ex = "examples" in only_parts
     want_io = "io" in only_parts
+    want_float = "float" in only_parts
 
     root = repo_root()
     filt = re.compile(args.filter) if args.filter else None
@@ -1262,6 +1309,12 @@ def main() -> int:
                         batch = fut.result()
                         all_results.extend(batch)
                         emit_verbose(cfg, batch)
+
+        # float runtime regression
+        if want_float:
+            float_results = run_float_suite(cfg)
+            all_results.extend(float_results)
+            emit_verbose(cfg, float_results)
 
         # examples
         if want_ex:

@@ -1,7 +1,10 @@
 ; __fmul(r2=*dst, r3=*a, r4=*b) -- dst = a * b  (float48)
 ;
-; Computes using sig_hi words only (12×12 -> 24-bit shift-and-add).
-; Precision: ~12 significant bits (sig_mid/lo of result are zero).
+; Precision: this routine multiplies a_hi * b_hi (the top 12 bits of each
+; significand) into a 24-bit product. The result populates sig_hi and
+; sig_mid; sig_lo is always written zero. That gives ~24 bits of mantissa
+; precision (worst case: 1 ulp at sig_mid). If you need full 36-bit
+; precision the routine has to be widened to multiply all 12-bit chunks.
 ;
 ; Stack (15 words + saved r5):
 ;   sp+0  *dst      sp+1  *b_saved

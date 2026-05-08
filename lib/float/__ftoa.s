@@ -154,6 +154,23 @@ __ftoa_scan_done:
     addi r1, FT_P
     swr  r4, r1
 
+    ; --- compute the initial fractional part once: frac = |x| - itof(ipart) ---
+    and  r2, r6, r7
+    addi r2, FT_IPFLT
+    and  r1, r6, r7
+    addi r1, FT_IPART
+    lwr  r3, r1
+    li   r1, __itof
+    jalr r5, r1                  ; ipfloat = itof(ipart)
+    and  r2, r6, r7
+    addi r2, FT_FRAC
+    and  r3, r6, r7
+    addi r3, FT_X
+    and  r4, r6, r7
+    addi r4, FT_IPFLT
+    li   r1, __fsub
+    jalr r5, r1                  ; frac = x - ipfloat
+
     li   r3, 4
     and  r1, r6, r7
     addi r1, FT_ITER
@@ -165,21 +182,8 @@ __ftoa_frac_outer:
     lwr  r3, r1
     sub  r0, r0, r3
     bf   __ftoa_finish
-    and  r2, r6, r7
-    addi r2, FT_IPFLT
-    and  r1, r6, r7
-    addi r1, FT_IPART
-    lwr  r3, r1
-    li   r1, __itof
-    jalr r5, r1
-    and  r2, r6, r7
-    addi r2, FT_FRAC
-    and  r3, r6, r7
-    addi r3, FT_X
-    and  r4, r6, r7
-    addi r4, FT_IPFLT
-    li   r1, __fsub
-    jalr r5, r1
+
+    ; frac *= 10
     and  r2, r6, r7
     addi r2, FT_FRAC
     and  r3, r6, r7
@@ -188,22 +192,28 @@ __ftoa_frac_outer:
     addi r4, FT_TEN
     li   r1, __fmul
     jalr r5, r1
+
+    ; digit = ftoi(frac)
     and  r2, r6, r7
     addi r2, FT_FRAC
     li   r1, __ftoi
     jalr r5, r1
-    and  r4, r2, r7          ; r4 = digit
+    and  r4, r2, r7              ; r4 = digit (preserve across the buffer write)
+
+    ; *p++ = '0' + digit
     li   r3, 48
-    add  r2, r4, r3          ; ascii
+    add  r2, r4, r3              ; r2 = ascii
     and  r1, r6, r7
     addi r1, FT_P
-    lwr  r4, r1
-    swr  r2, r4
-    addi r4, 1
-    swr  r4, r1
+    lwr  r3, r1                  ; r3 = p (use r3 to keep r4 = digit)
+    swr  r2, r3
+    addi r3, 1
+    swr  r3, r1
+
+    ; dflt = itof(digit), then frac -= dflt
     and  r2, r6, r7
     addi r2, FT_DFLT
-    and  r3, r4, r7
+    and  r3, r4, r7              ; r3 = digit
     li   r1, __itof
     jalr r5, r1
     and  r2, r6, r7
@@ -214,6 +224,7 @@ __ftoa_frac_outer:
     addi r4, FT_DFLT
     li   r1, __fsub
     jalr r5, r1
+
     and  r1, r6, r7
     addi r1, FT_ITER
     lwr  r3, r1

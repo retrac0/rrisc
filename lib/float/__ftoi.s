@@ -81,23 +81,19 @@ __ftoi_zero:
     jalr r0, r5
 
 __ftoi_nonspecial:
-    ; shift = exp - 1059  (= exp - 1024 - 35)
+    ; We work with the top 12 bits of the significand only (sig_hi: bits 35..24).
+    ; That gives ~12 bits of precision which is all a 12-bit signed result can
+    ; hold anyway. value ~= sig_hi * 2^(exp - BIAS - 11) = sig_hi * 2^(exp-1035).
+    ; shift = exp - 1035
     ; r3 = exp_raw
-    li   r4, 1059
+    li   r4, 1035
     sub  r3, r3, r4          ; r3 = shift (signed 12-bit)
-    ; if shift >= 0o4000 (i.e., negative as signed): right-shift path
-    ; if shift < 0o4000 (positive): left-shift path
-    ; But result must fit in 12 bits, so if shift >= 12 and positive -> overflow -> 0
-    ; if shift <= -36 and negative -> completely shifted out -> 0
-
-    ; We work with the top 12 bits of the significand (sig_hi only, bits 35..24).
-    ; For shifts >= 24, mid and lo don't contribute to a 12-bit result.
-    ; For simplicity: use sig_hi as the working value, shifting it.
-    ; This gives us ~12 bits of precision which is all we can return anyway.
+    ; if shift >= 12 (positive): result overflows 12 bits -> return 0
+    ; if shift <= -12 (negative): sig_hi fully shifted out -> return 0
 
     and  r1, r6, r7
     addi r1, 2
-    lwr  r2, r1              ; r2 = sig_hi (result starts here)
+    lwr  r2, r1              ; r2 = sig_hi (result starts here, magnitude)
 
     ; determine sign of shift: bit 11 of r3
     clrt
@@ -123,17 +119,16 @@ __ftoi_right_shift:
     ; shift is negative: r3 = shift (negative, in two's complement 12-bit)
     ; actual right-shift amount = -r3 = 0 - r3
     sub  r3, r0, r3           ; r3 = -shift (positive)
-    ; if r3 >= 36 -> result is 0
-    li   r4, 36
-    sub  r0, r3, r4           ; T=1 if r3 < 36
+    ; if r3 >= 12 -> sig_hi shifted to 0 -> return 0
+    li   r4, 12
+    sub  r0, r3, r4           ; T=1 if r3 < 12
     bf   __ftoi_zero
 __ftoi_rshift_loop:
     sub  r0, r0, r3           ; T=1 if r3 != 0
     bf   __ftoi_apply_sign
-    ; arithmetic right shift 1 (fill with sign bit of r2)
+    ; logical right shift by 1 (sig_hi is unsigned magnitude; bit 11 is just
+    ; the leading 1 of the float significand, NOT a sign bit).
     clrt
-    and  r1, r2, r7
-    rol  r1, r1               ; T = bit11 of r2 (sign); T must be 0 before rol
     ror  r2, r2
     subi r3, 1
     sub  r0, r0, r7           ; T=1 always

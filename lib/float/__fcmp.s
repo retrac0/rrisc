@@ -80,7 +80,11 @@ __fcmp_notzero:
     and  r1, r6, r7
     addi r1, 1
     lwr  r4, r1              ; r4 = sign_b
-    sub  r0, r3, r4
+    ; A single sub only sets T on borrow (sign_a < sign_b); for the reverse
+    ; ordering we need to take the "differ" branch too. Compute difference
+    ; then test for nonzero.
+    sub  r1, r3, r4          ; r1 = 0 if same, +/-1 if differ
+    sub  r0, r0, r1          ; T=0 iff r1 == 0 (same signs)
     bf   __fcmp_same_sign
     ; different signs: negative < positive
     ; if sign_a=1 (a negative): return -1; else return +1

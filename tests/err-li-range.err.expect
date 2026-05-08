@@ -1,1 +1,1 @@
-/home/joel/rrisc/tests/err-li-range.s:1: li value -2049 out of 12-bit range
+/home/joel/rrisc/tests/err-li-range.s:1: li value -2049 out of 12-bit range (max word address 4095); program + rodata likely exceeds the flat 4k-word address space

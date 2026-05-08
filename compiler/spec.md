@@ -512,6 +512,9 @@ lives in `lib/`. `rcc` `%include`s only the helpers a program actually uses.
 | `__itof`   | `(float *dst, int n)`                            | Promote int to float                     | `lib/float/__itof.s`  |
 | `__fcopy`  | `(float *dst, float *src)`                       | Copy 4 words                             | `lib/float/__fcopy.s` |
 | `__fneg`   | `(float *dst, float *src)`                       | Negate                                   | `lib/float/__fneg.s`  |
+| `__atof`   | `(int *s, float *dst)`                           | Parse decimal ASCII into float48         | `lib/float/__atof.s`  |
+| `__ftoa`   | `(float *src, int *buf) int *`                   | 4-decimal-digit string render            | `lib/float/__ftoa.s`  |
+| `itoa`     | `(int n, int *buf) int *`                        | Signed 12-bit decimal string             | `lib/itoa.s`          |
 
 ---
 
