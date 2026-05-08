@@ -52,6 +52,15 @@ __ftoa:
     and  r1, r6, r7
     addi r1, FT_SV_BUF
     lwr  r4, r1
+    li   r1, __ftoa_emit_0p0000
+    jalr r5, r1
+    addi r6, 36
+    lwr  r5, r6
+    addi r6, 1
+    jalr r0, r5
+
+; r4=buf -> r2=endptr (points at NUL)
+__ftoa_emit_0p0000:
     li   r1, 48
     swr  r1, r4
     addi r4, 1
@@ -59,20 +68,16 @@ __ftoa:
     swr  r1, r4
     addi r4, 1
     li   r1, 48
+    li   r3, 4
+__ftoa_zero_loop:
     swr  r1, r4
     addi r4, 1
-    swr  r1, r4
-    addi r4, 1
-    swr  r1, r4
-    addi r4, 1
-    swr  r1, r4
-    addi r4, 1
+    subi r3, 1
+    sub  r0, r0, r3
+    bt   __ftoa_zero_loop
     and  r1, r0, r0
     swr  r1, r4
     and  r2, r4, r7
-    addi r6, 36
-    lwr  r5, r6
-    addi r6, 1
     jalr r0, r5
 
 __ftoa_not_all_zero:

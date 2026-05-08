@@ -166,8 +166,8 @@ __fdiv_loop_step:
     subi r3, 1
     swr  r3, r1                ; count -= 1
     sub  r0, r0, r3            ; T=1 iff new count != 0
-    and  r1, r6, r7
-    addi r1, FD_B_HI
+    ; reuse r1 (points at [sp+FD_COUNT]) to reload b_hi at [sp+FD_B_HI]
+    subi r1, 2
     lwr  r3, r1                ; r3 = b_hi (lwr preserves T)
     bt   __fdiv_loop
 
@@ -220,14 +220,8 @@ __fdiv_pack_nosign:
 
 __fdiv_zero:
     FD_LD r2, FD_DST
-    and  r1, r0, r0
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
+    li   r1, __fstore_zero
+    jalr r5, r1
     addi r6, 9
     lwr  r5, r6
     addi r6, 1
@@ -236,20 +230,8 @@ __fdiv_zero:
 __fdiv_inf:
     FD_LD r2, FD_DST
     FD_LD r3, FD_RSIGN
-    li   r4, 2047
-    sub  r0, r0, r3
-    bf   __fdiv_inf_pos
-    li   r1, 0o4000
-    add  r4, r4, r1
-__fdiv_inf_pos:
-    swr  r4, r2
-    addi r2, 1
-    and  r1, r0, r0
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
+    li   r1, __fstore_inf
+    jalr r5, r1
     addi r6, 9
     lwr  r5, r6
     addi r6, 1

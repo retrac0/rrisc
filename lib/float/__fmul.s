@@ -138,8 +138,8 @@ __fmul_loop:
     swr  r4, r1              ; count--
 
     ; shift b_rem right (logical), T = bit0
-    and  r1, r6, r7
-    addi r1, 13
+    ; reuse r1 (points at [sp+14]) to access b_rem at [sp+13]
+    subi r1, 1
     lwr  r3, r1
     clrt
     ror  r3, r3              ; T = bit0 of b_rem; r3 >>= 1
@@ -298,14 +298,8 @@ __fmul_pack_nosign:
 __fmul_zero:
     and  r1, r6, r7
     lwr  r2, r1
-    and  r1, r0, r0
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
+    li   r1, __fstore_zero
+    jalr r5, r1
     addi r6, 15
     lwr  r5, r6
     addi r6, 1
@@ -317,20 +311,8 @@ __fmul_inf:
     and  r1, r6, r7
     addi r1, 8
     lwr  r3, r1              ; rsign
-    li   r4, 2047
-    sub  r0, r0, r3
-    bf   __fmul_inf_pos
-    li   r1, 0o4000
-    add  r4, r4, r1
-__fmul_inf_pos:
-    swr  r4, r2
-    addi r2, 1
-    and  r1, r0, r0
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
+    li   r1, __fstore_inf
+    jalr r5, r1
     addi r6, 15
     lwr  r5, r6
     addi r6, 1

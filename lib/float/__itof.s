@@ -104,15 +104,9 @@ __itof_nosign:
     jalr r0, r5
 
 __itof_zero:
-    ; emit +0: all four words = 0
-    and  r1, r0, r0
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
+    ; emit +0
+    li   r1, __fstore_zero
+    jalr r5, r1
     addi r6, 2
     lwr  r5, r6
     addi r6, 1

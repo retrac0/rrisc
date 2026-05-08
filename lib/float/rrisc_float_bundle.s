@@ -16,6 +16,9 @@
 .global itoa
 .global __ftoa
 
+; shared helpers (used by multiple float routines)
+%include "float/_float_store_helpers.s"
+
 %include "float/__fcopy.s"
 %include "float/__fneg.s"
 %include "float/__fadd.s"

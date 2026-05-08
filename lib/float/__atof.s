@@ -20,6 +20,14 @@
 %define AT_SV_S   32
 %define AT_SV_RES 33
 
+; helper: advance AT_P by 1 (r4=p), store back
+__atof_inc_p:
+    addi r4, 1
+    and  r1, r6, r7
+    addi r1, AT_P
+    swr  r4, r1
+    jalr r0, r5
+
 __atof:
     subi r6, 1
     swr  r5, r6
@@ -78,10 +86,8 @@ __atof_check_tab:
     sub  r0, r0, r2
     bt   __atof_ws_done
 __atof_ws_consume:
-    addi r4, 1
-    and  r1, r6, r7
-    addi r1, AT_P
-    swr  r4, r1
+    li   r1, __atof_inc_p
+    jalr r5, r1
     sub  r0, r0, r7
     bt   __atof_skip_ws
 __atof_ws_done:
@@ -102,8 +108,8 @@ __atof_ws_done:
     and  r1, r6, r7
     addi r1, AT_P
     lwr  r4, r1
-    addi r4, 1
-    swr  r4, r1
+    li   r1, __atof_inc_p
+    jalr r5, r1
     sub  r0, r0, r7
     bt   __atof_after_sign
 __atof_no_minus:
@@ -120,8 +126,8 @@ __atof_no_minus:
     and  r1, r6, r7
     addi r1, AT_P
     lwr  r4, r1
-    addi r4, 1
-    swr  r4, r1
+    li   r1, __atof_inc_p
+    jalr r5, r1
 __atof_after_sign:
     and  r1, r6, r7
     addi r1, AT_IPART

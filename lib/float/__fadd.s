@@ -339,20 +339,8 @@ __fadd_overflow:
     ; return inf with result sign
     FA_LD r2, FA_DST
     FA_LD r3, FA_RSIGN
-    li    r4, 2047
-    sub   r0, r0, r3
-    bf    __fadd_inf_nosign
-    li    r1, 0o4000
-    add   r4, r4, r1
-__fadd_inf_nosign:
-    swr   r4, r2
-    addi  r2, 1
-    and   r1, r0, r0
-    swr   r1, r2
-    addi  r2, 1
-    swr   r1, r2
-    addi  r2, 1
-    swr   r1, r2
+    li    r1, __fstore_inf
+    jalr  r5, r1
     addi  r6, 16
     lwr   r5, r6
     addi  r6, 1
@@ -463,14 +451,8 @@ __fadd_pack_nosign:
 
 __fadd_zero_result:
     FA_LD r2, FA_DST
-    and   r1, r0, r0
-    swr   r1, r2
-    addi  r2, 1
-    swr   r1, r2
-    addi  r2, 1
-    swr   r1, r2
-    addi  r2, 1
-    swr   r1, r2
+    li    r1, __fstore_zero
+    jalr  r5, r1
     addi  r6, 16
     lwr   r5, r6
     addi  r6, 1
