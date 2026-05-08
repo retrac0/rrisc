@@ -1,3 +1,4 @@
+-- | Megaparsec parser for the RCC input language. Entry point: 'parseProgram'.
 module RCC.Parser
   ( parseProgram
   ) where

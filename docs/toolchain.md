@@ -1,0 +1,54 @@
+# RRISC production toolchain
+
+Build everything from the repository root (see [`cabal.project`](../cabal.project)):
+
+```bash
+cabal update
+cabal build exe:rcc exe:hsasm exe:hsld exe:rsim
+make sim2   # optional: C simulator for run_tests.py matrix
+```
+
+Install into a prefix (optional):
+
+```bash
+cabal install exe:rcc exe:hsasm exe:hsld exe:rsim --overwrite-policy=always
+```
+
+## Components
+
+| Tool | Package | Role |
+|------|---------|------|
+| `rcc` | `compiler/` | C-like frontend → **assembly** (`.s`), not object files |
+| `hsasm` | `hstools/` | Assembler → flat `.bin` / `.mem` and/or relocatable `.o` |
+| `hsld` | `hstools/` | Linker → final `.bin` from one or more `.o` files |
+| `rsim` | `hstools/` | Haskell simulator (optional vs `sim.py` / `sim2`) |
+
+Stable automation for tests and scripts lives in [`rrisc_toolchain.py`](../rrisc_toolchain.py) (path resolution, argv builders). Object / link checks are in [`toolchain_checks.py`](../toolchain_checks.py).
+
+## rcc → hsasm → hsld contract
+
+1. **Emitted prelude** — `rcc` prints `%define RCC_CODE_BASE`, `RCC_DATA_BASE`, and `RCC_STACK_TOP` (octal) near the top of generated assembly. The test harness and [`lib/crt0.s`](../lib/crt0.s) rely on these names.
+2. **Sections** — Generated code uses `.section text` and, when needed, `.section data`. The linker places sections according to `hsld` options (e.g. `--code-base`, `--data-base`) and [`defaultLinkOptions`](../hstools/src/RRISC/Link.hs).
+3. **Startup** — Typical executables assemble **`crt0.o`** (stack init from `RCC_STACK_TOP`) and the compiler-produced `.o`, then link with `hsld` using bases parsed from the `%define` lines (see [`run_tests.py`](../run_tests.py)).
+4. **Symbols** — Cross-file visibility uses `.global` / extern semantics documented in [`compiler/MANUAL.md`](../compiler/MANUAL.md).
+
+## Object file format versioning
+
+- The text object format carries a version on the first line (`rrisc-obj N`). The canonical constant is [`objVersion`](../hstools/src/RRISC/Obj/Format.hs) in `RRISC.Obj.Format`.
+- **Bump `objVersion` only** when older `hsld` / `hsasm` must reject new `.o` files (breaking layout or record kinds). When bumping: document the change here, increment the field, and extend [`formatObjParseError`](../hstools/src/RRISC/Obj/Format.hs) if new failure modes apply.
+
+## CI vs local testing
+
+- **CI** (`.github/workflows/ci.yml`) runs `cabal build`, `make sim2`, `cabal test` for Haskell suites, and:
+
+  `python3 run_tests.py --only rcc,asm,toolchain --assemblers hs --simulators py`
+
+  That tier is the **required** gate: Haskell assembler, Python simulator only (no `rsim`/`sim2` requirement in CI).
+
+- The **`toolchain`** suite exercises [`toolchain_checks.py`](../toolchain_checks.py) on [`tests/toolchain/*.s`](../tests/toolchain/) only. Those files intentionally omit ``.org`` so the flat ``hsasm`` image matches a single-input ``hsld`` link (text placed at address 0). Programs that set ``.org 0o1000`` (most examples) produce a padded flat ``.bin`` that is **not** byte-identical to the packed link of the same ``.o``.
+
+- **Local** runs may use `--simulators py,c,hs` and `--assemblers hs,py` for broader coverage; use `--skip-unavailable` when a binary is not built.
+
+## Version flags
+
+All of `rcc`, `hsasm`, `hsld`, and `rsim` accept `-V` / `--version` (where applicable) and print the Cabal package version for the underlying package.

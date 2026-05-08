@@ -1,3 +1,4 @@
+-- | Type checking and semantic validation of the untyped AST.
 module RCC.Sema
   ( CheckedProg
   , check

@@ -13,3 +13,4 @@ rsim
 demos/rpn-noopt.s
 hsim
 build/*
+dist-newstyle/*

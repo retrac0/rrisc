@@ -3,6 +3,7 @@ module Main where
 import Control.Monad (when)
 import Data.Char (isDigit)
 import Data.List (intercalate)
+import Data.Version (showVersion)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import System.Environment (getArgs, getProgName)
@@ -10,6 +11,9 @@ import System.Exit (exitFailure, exitSuccess)
 import System.IO (hPutStrLn, stderr)
 import System.Process (readProcess)
 
+import Paths_rcc (version)
+
+import RCC.CliParse (parseIntArg)
 import qualified RCC.Parser   as Parser
 import qualified RCC.Sema     as Sema
 import qualified RCC.Lower    as Lower
@@ -52,17 +56,21 @@ parseArgs = go defaultOptions
       if null (optInput opts)
         then Left "no input file specified"
         else Right opts
-    go opts ("-o"             : f : rest) = go opts{ optOutput       = Just f }       rest
-    go opts ("--code-base"    : a : rest) = go opts{ optCodeBase     = read a }        rest
-    go opts ("--data-base"    : a : rest) = go opts{ optDataBase     = read a }        rest
-    go opts ("--stack-top"    : a : rest) = go opts{ optStackTop     = Just (read a) } rest
-    go opts ("--preprocessor" : c : rest) = go opts{ optPreprocessor = Just c }        rest
-    go opts ("--dump-ast"         : rest) = go opts{ optDumpAst      = True }          rest
-    go opts ("--dump-tac"         : rest) = go opts{ optDumpTac      = True }          rest
-    go opts ("--no-optimize"      : rest) = go opts{ optOptimize     = False }        rest
-    go opts ("--optimize"         : rest) = go opts{ optOptimize     = True }          rest
-    go _    (('-' : flag)         : _   ) = Left ("unknown flag: -" <> flag)
-    go opts (f                :     rest) = go opts{ optInput = f }                    rest
+    go opts ("-o" : f : rest) = go opts{ optOutput = Just f } rest
+    go opts ("--code-base" : a : rest) =
+      either (\e -> Left ("--code-base: " <> e)) (\n -> go opts{ optCodeBase = n } rest) (parseIntArg a)
+    go opts ("--data-base" : a : rest) =
+      either (\e -> Left ("--data-base: " <> e)) (\n -> go opts{ optDataBase = n } rest) (parseIntArg a)
+    go opts ("--stack-top" : a : rest) =
+      either (\e -> Left ("--stack-top: " <> e)) (\n -> go opts{ optStackTop = Just n } rest) (parseIntArg a)
+    go opts ("--preprocessor" : c : rest) = go opts{ optPreprocessor = Just c } rest
+    go opts ("--dump-ast" : rest) = go opts{ optDumpAst = True } rest
+    go opts ("--dump-tac" : rest) = go opts{ optDumpTac = True } rest
+    go opts ("--no-optimize" : rest) = go opts{ optOptimize = False } rest
+    go opts ("--optimize" : rest) = go opts{ optOptimize = True } rest
+    go _ (('-' : '-' : _) : _) = Left "unknown option (try --help)"
+    go _ (('-' : _) : _) = Left "unknown flag"
+    go opts (f : rest) = go opts{ optInput = f } rest
 
 usage :: String -> String
 usage prog =
@@ -78,6 +86,7 @@ usage prog =
     , "  --no-optimize         skip TAC optimizations (debug only; large programs may not assemble)"
     , "  --dump-ast            print lexical AST and exit"
     , "  --dump-tac            print TAC and exit"
+    , "  -V, --version         print version and exit"
     ]
 
 -- ---------------------------------------------------------------------------
@@ -105,6 +114,9 @@ main :: IO ()
 main = do
   prog <- getProgName
   args <- getArgs
+  when (args == ["--version"] || args == ["-V"]) $ do
+    putStrLn ("rcc " <> showVersion version)
+    exitSuccess
   opts <- case parseArgs args of
     Left err -> die (err <> "\n" <> usage prog)
     Right o  -> return o

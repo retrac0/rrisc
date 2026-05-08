@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+-- | Textual RRISC relocatable object format (versioned @rrisc-obj@ lines).
+--   Bump 'objVersion' only when older tools must reject new objects.
 module RRISC.Obj.Format (
   ObjectFile (..),
   Section (..),

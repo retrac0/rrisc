@@ -1,7 +1,9 @@
 module Main (main) where
 
+import Control.Monad (when)
 import Data.List (isPrefixOf, sortBy)
 import Data.Ord (comparing)
+import Data.Version (showVersion)
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -10,6 +12,8 @@ import System.Exit (exitFailure, exitSuccess)
 import System.FilePath (replaceExtension, takeExtension)
 import System.IO (hPutStrLn, stderr)
 import Text.Printf (printf)
+
+import Paths_hstools (version)
 
 import RRISC.Asm
 import RRISC.Obj.Format
@@ -30,6 +34,7 @@ usage =
     , "                      [--list] [--emit-obj] [--obj-out path]"
     , "                      [--obj-only] (emit relocatable .o only; no flat .bin)"
     , "       hsasm --dump-syms file.o"
+    , "  -V, --version         print version and exit"
     ]
 
 data Mode
@@ -48,6 +53,9 @@ data Mode
 main :: IO ()
 main = do
   args <- getArgs
+  when (args == ["--version"] || args == ["-V"]) $ do
+    putStrLn $ "hsasm " ++ showVersion version
+    exitSuccess
   case parseArgs args of
     Nothing -> hPutStrLn stderr usage >> exitFailure
     Just (ModeDumpSyms path) -> dumpSyms path

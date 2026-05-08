@@ -1,3 +1,4 @@
+-- | Three-address code → RRISC assembly text (with @%define RCC_*@ prelude).
 module RCC.Codegen
   ( codegen
   , CodegenOpts(..)

@@ -6,6 +6,7 @@ import Control.Monad (when)
 import qualified Data.ByteString.Char8 as B8
 import Data.Bits ((.&.))
 import Data.IORef (modifyIORef', readIORef)
+import Data.Version (showVersion)
 import Options.Applicative (
   Parser,
   ParserInfo,
@@ -13,16 +14,18 @@ import Options.Applicative (
   auto,
   execParser,
   fullDesc,
-  help,
   header,
+  help,
   helper,
   info,
+  infoOption,
   long,
   many,
   metavar,
   option,
   optional,
   progDesc,
+  short,
   str,
   strOption,
   switch,
@@ -31,6 +34,8 @@ import Options.Applicative (
  )
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (hPutStrLn, stderr)
+
+import Paths_hstools (version)
 
 import RRISC.ISA (wordMask)
 import RRISC.Sim.Bus (setBusTrace)
@@ -78,10 +83,15 @@ optsP =
 
 optsInfo :: ParserInfo Opts
 optsInfo =
-  info (optsP <**> helper) $
+  info (optsP <**> helper <**> versionOpt) $
     fullDesc
       <> progDesc "RRISC simulator (sim.py parity)"
       <> header "rsim — RRISC simulator"
+  where
+    versionOpt =
+      infoOption
+        ("rsim " ++ showVersion version)
+        (long "version" <> short 'V' <> help "print version and exit")
 
 -- | Match @int(args.start, 8)@ in sim.py (always octal base 8).
 readStartOct :: String -> Int

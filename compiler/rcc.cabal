@@ -22,6 +22,7 @@ library
     hs-source-dirs:  src
     exposed-modules:
         RCC.Error
+        RCC.CliParse
         RCC.Syntax
         RCC.Parser
         RCC.Sema
@@ -34,4 +35,17 @@ executable rcc
     import:          rcc-common
     hs-source-dirs:  app
     main-is:         Main.hs
+    other-modules:   Paths_rcc
+    autogen-modules: Paths_rcc
     build-depends:   rcc
+
+test-suite rcc-test
+    import:          rcc-common
+    type:            exitcode-stdio-1.0
+    hs-source-dirs:  test
+    main-is:         Main.hs
+    build-depends:
+          rcc
+        , base
+        , tasty       >= 1.4  && < 1.6
+        , tasty-hunit >= 0.10 && < 0.11

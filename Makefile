@@ -4,6 +4,9 @@ CFLAGS  = -O2 -Wall
 
 CABAL  ?= cabal
 
+# Root `cabal.project` lists compiler/ and hstools/ — you can also run:
+#   cabal build exe:rcc exe:hsasm exe:hsld exe:rsim
+
 .PHONY: all sim2 ras rsim rcc examples clean
 
 all: sim2 ras rsim rcc

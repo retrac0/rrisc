@@ -1,12 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main (main) where
 
+import Control.Monad (when)
 import Data.List (isPrefixOf)
+import Data.Version (showVersion)
 import qualified Data.Text.IO as TIO
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath (replaceExtension, takeExtension)
 import System.IO (hPutStrLn, stderr)
+
+import Paths_hstools (version)
 
 import RRISC.Asm (writeBinary, writeReadmemb)
 import RRISC.Link
@@ -16,6 +20,7 @@ usage =
   unlines
     [ "Usage: hsld input.o [input2.o ...] [-o output] [--format bin|readmemb]"
     , "             [--map output.map] [--code-base <addr>] [--data-base <addr>]"
+    , "  -V, --version         print version and exit"
     ]
 
 data Args = Args
@@ -33,6 +38,9 @@ emptyArgs = Args [] Nothing "bin" Nothing Nothing Nothing
 main :: IO ()
 main = do
   argv <- getArgs
+  when (argv == ["--version"] || argv == ["-V"]) $ do
+    putStrLn $ "hsld " ++ showVersion version
+    exitSuccess
   case parseArgs argv emptyArgs of
     Nothing -> hPutStrLn stderr usage >> exitFailure
     Just args -> run args

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Unified RRISC test runner: RCC compiler tests, flat-assembler tests, and examples.
+Unified RRISC test runner: RCC compiler tests, flat-assembler tests, examples,
+and optional toolchain (obj round-trip / hsld) checks on tests/toolchain/*.s.
 
 Replaces compiler/run_tests.sh and runtests.sh with one subprocess-based harness:
   - Correct argv handling (no shell splitting bugs)
@@ -54,6 +55,11 @@ from rrisc_toolchain import (
     resolve_rsim,
     resolve_sim2,
     sim_py_path,
+)
+from toolchain_checks import (
+    collect_toolchain_asm_sources,
+    verify_hsld_equivalence,
+    verify_obj_roundtrip,
 )
 
 PY_ASM_IN_MATRIX_DEPRECATION = (
@@ -1160,6 +1166,60 @@ def collect_examples(cfg: RunConfig) -> list[Path]:
     return ex
 
 
+def run_toolchain_suite(cfg: RunConfig, tmp_root: Path) -> list[TResult]:
+    """Obj round-trip + hsld single-object equivalence for ``tests/toolchain/*.s``."""
+    if not cfg.hsasm_path or not cfg.hsld_path:
+        msg = "hsasm+hsld required (cabal build exe:hsasm exe:hsld in hstools/)"
+        if cfg.skip_unavailable:
+            return [TResult(True, "toolchain", f"(skipped) {msg}")]
+        return [TResult(False, "toolchain", msg)]
+
+    sources = collect_toolchain_asm_sources(cfg.root)
+    if cfg.filter_re:
+        sources = [(s, i) for s, i in sources if cfg.filter_re.search(s.stem)]
+    if not sources:
+        return [TResult(True, "toolchain", "no matching .s sources")]
+
+    if cfg.verbose:
+        print(f"Toolchain checks: {len(sources)} .s files (jobs={cfg.jobs})", flush=True)
+
+    def _job(item: tuple[Path, list[Path]]) -> list[TResult]:
+        src, incs = item
+        t = Path(tempfile.mkdtemp(dir=tmp_root))
+        rel = str(src.relative_to(cfg.root))
+        name_base = f"toolchain:{rel}"
+        r1: list[TResult] = []
+        ok, det = verify_obj_roundtrip(cfg.hsasm_path, src, t, incs)
+        r1.append(
+            TResult(
+                ok,
+                f"{name_base}:obj-roundtrip",
+                det,
+                sub="obj-roundtrip",
+            )
+        )
+        ok2, det2 = verify_hsld_equivalence(cfg.hsasm_path, cfg.hsld_path, src, t, incs)
+        r1.append(
+            TResult(
+                ok2,
+                f"{name_base}:hsld",
+                det2,
+                sub="hsld-eq",
+            )
+        )
+        return r1
+
+    out: list[TResult] = []
+    if len(sources) == 1:
+        out.extend(_job(sources[0]))
+    else:
+        with ThreadPoolExecutor(max_workers=cfg.jobs) as ex:
+            futs = {ex.submit(_job, item): item for item in sources}
+            for fut in as_completed(futs):
+                out.extend(fut.result())
+    return out
+
+
 def run_float_suite(cfg: RunConfig) -> list[TResult]:
     """Drive tests/float/run_float_tests.py as one suite-level check.
 
@@ -1240,13 +1300,16 @@ def main() -> int:
         "--only",
         metavar="SUITE,...",
         default="rcc,asm,examples",
-        help="comma-separated suites: rcc, asm, examples, io, float (default: rcc,asm,examples)",
+        help=(
+        "comma-separated suites: rcc, asm, examples, io, float, toolchain "
+        "(default: rcc,asm,examples)"
+    ),
     )
     args = ap.parse_args()
 
     only_parts = {x.strip() for x in args.only.split(",") if x.strip()}
     for p in only_parts:
-        if p not in ("rcc", "asm", "examples", "io", "float"):
+        if p not in ("rcc", "asm", "examples", "io", "float", "toolchain"):
             print(f"unknown suite in --only: {p!r}", file=sys.stderr)
             return 2
     want_rcc = "rcc" in only_parts
@@ -1254,6 +1317,7 @@ def main() -> int:
     want_ex = "examples" in only_parts
     want_io = "io" in only_parts
     want_float = "float" in only_parts
+    want_toolchain = "toolchain" in only_parts
 
     root = repo_root()
     filt = re.compile(args.filter) if args.filter else None
@@ -1306,9 +1370,9 @@ def main() -> int:
 
     if not args.skip_unavailable:
         missing = []
-        if (want_rcc or want_io) and not hsld_path:
+        if (want_rcc or want_io or want_toolchain) and not hsld_path:
             missing.append("hsld (cabal build exe:hsld in hstools/)")
-        if "hs" in assemblers and not hsasm_path:
+        if (want_toolchain or "hs" in assemblers) and not hsasm_path:
             missing.append("hsasm (make ras, or cabal build exe:hsasm in hstools/)")
         if "hs" in simulators and not rsim_path:
             missing.append("rsim (make rsim, or cabal build exe:rsim in hstools/)")
@@ -1404,6 +1468,12 @@ def main() -> int:
             float_results = run_float_suite(cfg)
             all_results.extend(float_results)
             emit_verbose(cfg, float_results)
+
+        # hsasm .o round-trip + hsld flat equivalence (see toolchain_checks.py)
+        if want_toolchain:
+            tc_results = run_toolchain_suite(cfg, tmp_root)
+            all_results.extend(tc_results)
+            emit_verbose(cfg, tc_results)
 
         # examples
         if want_ex:

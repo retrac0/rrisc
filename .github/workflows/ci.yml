@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Haskell
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "9.6.7"
+          cabal-version: "3.12"
+
+      - name: Cache cabal store
+        uses: actions/cache@v4
+        with:
+          path: ~/.cabal/store
+          key: ${{ runner.os }}-cabal-${{ hashFiles('**/*.cabal', 'cabal.project') }}
+          restore-keys: ${{ runner.os }}-cabal-
+
+      - name: Build toolchain
+        run: |
+          cabal update
+          cabal build exe:rcc exe:hsasm exe:hsld exe:rsim
+
+      - name: Haskell unit tests
+        run: cabal test rcc-test hstools-test
+
+      - name: Build C simulator
+        run: make sim2
+
+      - name: Run tests (CI subset)
+        run: |
+          python3 run_tests.py \
+            --only rcc,asm,toolchain \
+            --assemblers hs \
+            --simulators py \
+            --jobs 4
