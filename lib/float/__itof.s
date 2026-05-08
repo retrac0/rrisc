@@ -24,11 +24,12 @@
 ; Stack frame (8 words):
 ;   [r6+0] = sign
 ;   [r6+1] = ptr_dst  (r2 saved)
+;   [r6+2] = tmp (normalized magnitude)
 
 __itof:
     subi r6, 1
     swr  r5, r6
-    subi r6, 2
+    subi r6, 3
 
     ; save dst ptr
     and  r1, r6, r7
@@ -70,44 +71,57 @@ __itof_norm_loop:
 
 __itof_normed:
     ; r3 = normalized magnitude (bit 11 = 1), r4 = shift count k
+    ; stash magnitude before we reuse r3 for exp
+    and  r1, r6, r7
+    addi r1, 2
+    swr  r3, r1
+
     ; exp_raw = 1035 - k
     li   r1, 1035
     sub  r1, r1, r4          ; r1 = exp_raw
-    ; build w0: sign << 11 | exp_raw
-    and  r1, r1, r7          ; mask exp to 12 bits (should already be)
-    li   r4, 0o3777
-    and  r1, r1, r4          ; keep only bits 10:0 of exp
-    and  r2, r6, r7
-    lwr  r4, r2              ; r4 = sign
-    ; sign bit: if sign=1, OR bit 11
-    sub  r0, r0, r4          ; T=1 if sign
-    bf   __itof_nosign
-    li   r4, 0o4000
-    add  r1, r1, r4
-__itof_nosign:
-    ; write w0
-    and  r2, r6, r7
-    addi r2, 1
-    lwr  r2, r2              ; r2 = *dst
-    swr  r1, r2              ; dst[0] = w0
-    addi r2, 1
-    swr  r3, r2              ; dst[1] = sig_hi = normalized magnitude
-    addi r2, 1
+    ; build w0 (exp in r3, sign in r4) — inlined __fmake_w0 for standalone asm
+    and  r3, r1, r7          ; r3 = exp_raw
+    and  r1, r6, r7
+    lwr  r4, r1              ; r4 = sign
+    li   r1, 0o3777
+    and  r2, r3, r1
+    sub  r0, r0, r4
+    bf   __itof_w0_pos
+    li   r1, 0o4000
+    add  r2, r2, r1
+__itof_w0_pos:
+    ; reload normalized magnitude for w1
+    and  r1, r6, r7
+    addi r1, 2
+    lwr  r3, r1              ; r3 = magnitude
+    and  r1, r6, r7
+    addi r1, 1
+    lwr  r1, r1              ; r1 = *dst
+    swr  r2, r1              ; dst[0] = w0
+    addi r1, 1
+    swr  r3, r1              ; dst[1] = sig_hi = normalized magnitude
+    addi r1, 1
     ; dst[2] = dst[3] = 0
-    and  r1, r0, r0
-    swr  r1, r2
-    addi r2, 1
-    swr  r1, r2
-    addi r6, 2
+    and  r2, r0, r0
+    swr  r2, r1
+    addi r1, 1
+    swr  r2, r1
+    addi r6, 3
     lwr  r5, r6
     addi r6, 1
     jalr r0, r5
 
 __itof_zero:
-    ; emit +0
-    li   r1, __fstore_zero
-    jalr r5, r1
-    addi r6, 2
+    ; emit +0 — inlined __fstore_zero (r2 = *dst)
+    and  r1, r0, r0
+    swr  r1, r2
+    addi r2, 1
+    swr  r1, r2
+    addi r2, 1
+    swr  r1, r2
+    addi r2, 1
+    swr  r1, r2
+    addi r6, 3
     lwr  r5, r6
     addi r6, 1
     jalr r0, r5

@@ -45,22 +45,31 @@ import float48 as f48  # noqa: E402
 # Float source files each routine pulls in. The driver %includes these in
 # order at the bottom of every test program so labels resolve once. (Asm
 # %include is one-shot per path.)
+#
+# NOTE: The float routines share a couple of tiny “store result” helpers
+# (`__fstore_zero`, `__fstore_inf`) that live in `float/_float_store_helpers.s`.
+# The production build pulls them in via `lib/float/rrisc_float_bundle.s`, but
+# the regression harness assembles routines in isolation, so we must include
+# that helper explicitly here.
+COMMON_FLOAT_DEPS = ["float/_float_store_helpers.s", "float/_float_pack_helpers.s"]
 ROUTINE_DEPS: dict[str, list[str]] = {
-    "__fadd":  ["float/__fadd.s"],
-    "__fsub":  ["float/__fadd.s", "float/__fsub.s"],
-    "__fmul":  ["float/__fmul.s"],
-    "__fdiv":  ["float/__fdiv.s"],
-    "__fcmp":  ["float/__fcmp.s"],
-    "__fcopy": ["float/__fcopy.s"],
-    "__fneg":  ["float/__fneg.s"],
-    "__ftoi":  ["float/__ftoi.s"],
-    "__itof":  ["float/__itof.s"],
+    "__fadd":  [*COMMON_FLOAT_DEPS, "float/__fcopy.s", "float/__fadd.s"],
+    "__fsub":  [*COMMON_FLOAT_DEPS, "float/__fcopy.s", "float/__fadd.s", "float/__fsub.s"],
+    "__fmul":  [*COMMON_FLOAT_DEPS, "float/__fmul.s"],
+    "__fdiv":  [*COMMON_FLOAT_DEPS, "float/__fdiv.s"],
+    "__fcmp":  [*COMMON_FLOAT_DEPS, "float/__fcmp.s"],
+    "__fcopy": [*COMMON_FLOAT_DEPS, "float/__fcopy.s"],
+    "__fneg":  [*COMMON_FLOAT_DEPS, "float/__fneg.s"],
+    "__ftoi":  [*COMMON_FLOAT_DEPS, "float/__ftoi.s"],
+    "__itof":  [*COMMON_FLOAT_DEPS, "float/__itof.s"],
     "__atof": [
+        *COMMON_FLOAT_DEPS,
         "float/__itof.s", "float/__fadd.s", "float/__fmul.s",
         "float/__fdiv.s", "float/__fneg.s", "float/__fcopy.s",
         "float/__atof.s",
     ],
     "__ftoa": [
+        *COMMON_FLOAT_DEPS,
         "float/__fcopy.s", "float/__fneg.s", "float/__ftoi.s",
         "float/__itof.s", "float/__fadd.s", "float/__fsub.s",
         "float/__fmul.s", "itoa.s", "float/__ftoa.s",

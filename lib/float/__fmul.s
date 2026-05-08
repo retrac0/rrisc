@@ -26,46 +26,31 @@ __fmul:
     addi r1, 1
     swr  r4, r1              ; [sp+1] = *b
 
-    ; --- unpack a (r3=*a) ---
-    lwr  r1, r3
-    li   r2, 0o3777
-    and  r2, r1, r2
-    and  r4, r6, r7
-    addi r4, 3
-    swr  r2, r4              ; [sp+3] = exp_a
-    rol  r1, r1
-    and  r2, r0, r0
-    addc r2, r0, r0
-    and  r4, r6, r7
-    addi r4, 2
-    swr  r2, r4              ; [sp+2] = sign_a
-    addi r3, 1
-    lwr  r2, r3
-    and  r4, r6, r7
-    addi r4, 4
-    swr  r2, r4              ; [sp+4] = a_hi
+    ; --- unpack a (r3=*a) using shared helper ---
+    and  r2, r3, r7
+    li   r1, __funpack_hi
+    jalr r5, r1               ; r2=sign_a, r3=exp_a, r4=a_hi
+    and  r1, r6, r7
+    addi r1, 2
+    swr  r2, r1               ; [sp+2] = sign_a
+    addi r1, 1
+    swr  r3, r1               ; [sp+3] = exp_a
+    addi r1, 1
+    swr  r4, r1               ; [sp+4] = a_hi
 
-    ; --- unpack b (from [sp+1]) ---
-    and  r3, r6, r7
-    addi r3, 1
-    lwr  r3, r3              ; r3 = *b
-    lwr  r1, r3
-    li   r2, 0o3777
-    and  r2, r1, r2
-    and  r4, r6, r7
-    addi r4, 6
-    swr  r2, r4              ; [sp+6] = exp_b
-    rol  r1, r1
-    and  r2, r0, r0
-    addc r2, r0, r0
-    and  r4, r6, r7
-    addi r4, 5
-    swr  r2, r4              ; [sp+5] = sign_b
-    addi r3, 1
-    lwr  r2, r3
-    and  r4, r6, r7
-    addi r4, 7
-    swr  r2, r4              ; [sp+7] = b_hi
+    ; --- unpack b (from saved *b) using shared helper ---
+    and  r1, r6, r7
+    addi r1, 1
+    lwr  r2, r1               ; r2 = *b
+    li   r1, __funpack_hi
+    jalr r5, r1               ; r2=sign_b, r3=exp_b, r4=b_hi
+    and  r1, r6, r7
+    addi r1, 5
+    swr  r2, r1               ; [sp+5] = sign_b
+    addi r1, 1
+    swr  r3, r1               ; [sp+6] = exp_b
+    addi r1, 1
+    swr  r4, r1               ; [sp+7] = b_hi
 
     ; --- result sign = sign_a XOR sign_b ---
     and  r1, r6, r7
@@ -264,18 +249,17 @@ __fmul_exp_ok:
 __fmul_pack:
     ; result: sign from [sp+8], exp=r3, sig_hi=P_hi, sig_mid=P_lo>>...
     ; Actually sig_hi = P_hi (bits 35..24 of result sig), sig_mid = P_lo (bits 23..12), sig_lo=0
-    and  r1, r6, r7
-    lwr  r2, r1              ; *dst
-    li   r4, 0o3777
-    and  r3, r3, r4          ; exp & 0x7FF
+    ; Build w0 via helper: r3=exp_raw, r4=sign -> r2=w0
+    and  r3, r3, r7
     and  r1, r6, r7
     addi r1, 8
-    lwr  r4, r1              ; rsign
-    sub  r0, r0, r4
-    bf   __fmul_pack_nosign
-    li   r1, 0o4000
-    add  r3, r3, r1
-__fmul_pack_nosign:
+    lwr  r4, r1              ; r4 = rsign
+    li   r1, __fmake_w0
+    jalr r5, r1              ; r2 = w0
+    and  r3, r2, r7          ; r3 = w0 (preserve across dst load)
+
+    and  r1, r6, r7
+    lwr  r2, r1              ; r2 = *dst
     swr  r3, r2              ; dst[0] = w0
     addi r2, 1
     and  r1, r6, r7

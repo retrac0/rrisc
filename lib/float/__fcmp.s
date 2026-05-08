@@ -21,37 +21,31 @@ __fcmp:
     addi r1, 1
     swr  r3, r1
 
-    ; load w0 of a
-    lwr  r1, r2              ; r1 = a.w0
-    ; exp_a = w0 & 0o3777
-    li   r4, 0o3777
-    and  r4, r1, r4
-    and  r3, r6, r7
-    addi r3, 2
-    swr  r4, r3              ; [sp+2] = exp_a
-    ; sign_a = bit11 >> 11
-    rol  r1, r1              ; T = bit11
-    and  r4, r0, r0
-    addc r4, r0, r0           ; r4 = sign_a
-    and  r3, r6, r7
-    swr  r4, r3              ; [sp+0] = sign_a
+    ; unpack a: sign_a/exp_a via shared helper
+    ; (We ignore the returned sig_hi here; later code compares w1..w3 directly.)
+    and  r2, r6, r7
+    addi r2, 4
+    lwr  r2, r2              ; r2 = *a
+    li   r1, __funpack_hi
+    jalr r5, r1              ; r2=sign_a, r3=exp_a, r4=a_hi
+    and  r1, r6, r7
+    swr  r2, r1              ; [sp+0] = sign_a
+    and  r1, r6, r7
+    addi r1, 2
+    swr  r3, r1              ; [sp+2] = exp_a
 
-    ; load w0 of b
+    ; unpack b: sign_b/exp_b via shared helper
     and  r2, r6, r7
     addi r2, 5
-    lwr  r2, r2              ; r2 = *b ptr
-    lwr  r1, r2              ; r1 = b.w0
-    li   r4, 0o3777
-    and  r4, r1, r4
-    and  r3, r6, r7
-    addi r3, 3
-    swr  r4, r3              ; [sp+3] = exp_b
-    rol  r1, r1
-    and  r4, r0, r0
-    addc r4, r0, r0
-    and  r3, r6, r7
-    addi r3, 1
-    swr  r4, r3              ; [sp+1] = sign_b
+    lwr  r2, r2              ; r2 = *b
+    li   r1, __funpack_hi
+    jalr r5, r1              ; r2=sign_b, r3=exp_b, r4=b_hi
+    and  r1, r6, r7
+    addi r1, 1
+    swr  r2, r1              ; [sp+1] = sign_b
+    and  r1, r6, r7
+    addi r1, 3
+    swr  r3, r1              ; [sp+3] = exp_b
 
     ; check for NaN (exp==2047 and sig!=0) -- simplified: treat inf/NaN as max
     ; for now just compare lexicographically after sign handling

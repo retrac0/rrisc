@@ -18,6 +18,7 @@
 
 ; shared helpers (used by multiple float routines)
 %include "float/_float_store_helpers.s"
+%include "float/_float_pack_helpers.s"
 
 %include "float/__fcopy.s"
 %include "float/__fneg.s"

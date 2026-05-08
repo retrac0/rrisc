@@ -27,6 +27,8 @@
 %define FA_R_MID   13
 %define FA_R_LO    14
 %define FA_R_EXP   15
+%define FA_A_PTR   16
+%define FA_B_PTR   17
 
 ; --- helper macros: load/store word at sp+offset into register ---
 ;
@@ -49,9 +51,11 @@
 __fadd:
     subi r6, 1
     swr  r5, r6
-    subi r6, 16
+    subi r6, 18
 
     FA_ST r2, FA_DST
+    FA_ST r3, FA_A_PTR
+    FA_ST r4, FA_B_PTR
 
     ; ---- unpack a ----
     ; FA_ST clobbers r1, so we must NOT keep w0 in r1 across one of those calls.
@@ -108,115 +112,26 @@ __fadd:
     sub   r0, r0, r2          ; T=1 if exp_a != 0
     bt    __fadd_a_nonzero
     ; a is zero: return b
-    FA_LD r2, FA_DST
-    ; copy b back from saved words
-    FA_LD r3, FA_SIGN_B
-    FA_LD r4, FA_EXP_B
-    ; reconstruct b.w0 and write
-    li    r1, 0o3777
-    and   r4, r4, r1
-    sub   r0, r0, r3
-    bf    __fadd_ret_b_nosign
-    li    r1, 0o4000
-    add   r4, r4, r1
-__fadd_ret_b_nosign:
-    swr   r4, r2
-    addi  r2, 1
-    FA_LD r1, FA_B_HI
-    swr   r1, r2
-    addi  r2, 1
-    FA_LD r1, FA_B_MID
-    swr   r1, r2
-    addi  r2, 1
-    FA_LD r1, FA_B_LO
-    swr   r1, r2
-    addi  r6, 16
-    lwr   r5, r6
-    addi  r6, 1
-    jalr  r0, r5
+    li    r1, __fadd_return_b
+    jalr  r0, r1
 
 __fadd_b_special:
     ; exp_b == 2047: return b (or NaN if a also 2047, but simplified: just return b)
-    FA_LD r2, FA_DST
-    FA_LD r3, FA_SIGN_B
-    FA_LD r4, FA_EXP_B
-    li    r1, 0o3777
-    and   r4, r4, r1
-    sub   r0, r0, r3
-    bf    __fadd_ret_b_nosign
-    li    r1, 0o4000
-    add   r4, r4, r1
-    ; jump back into the copy code above
-    swr   r4, r2
-    addi  r2, 1
-    FA_LD r1, FA_B_HI
-    swr   r1, r2
-    addi  r2, 1
-    FA_LD r1, FA_B_MID
-    swr   r1, r2
-    addi  r2, 1
-    FA_LD r1, FA_B_LO
-    swr   r1, r2
-    addi  r6, 16
-    lwr   r5, r6
-    addi  r6, 1
-    jalr  r0, r5
+    li    r1, __fadd_return_b
+    jalr  r0, r1
 
 __fadd_a_special:
     ; exp_a == 2047: return a
-    FA_LD r2, FA_DST
-    FA_LD r3, FA_SIGN_A
-    FA_LD r4, FA_EXP_A
-    li    r1, 0o3777
-    and   r4, r4, r1
-    sub   r0, r0, r3
-    bf    __fadd_ret_a_nosign
-    li    r1, 0o4000
-    add   r4, r4, r1
-__fadd_ret_a_nosign:
-    swr   r4, r2
-    addi  r2, 1
-    FA_LD r1, FA_A_HI
-    swr   r1, r2
-    addi  r2, 1
-    FA_LD r1, FA_A_MID
-    swr   r1, r2
-    addi  r2, 1
-    FA_LD r1, FA_A_LO
-    swr   r1, r2
-    addi  r6, 16
-    lwr   r5, r6
-    addi  r6, 1
-    jalr  r0, r5
+    li    r1, __fadd_return_a
+    jalr  r0, r1
 
 __fadd_a_nonzero:
     FA_LD r3, FA_EXP_B
     sub   r0, r0, r3          ; T=1 if exp_b != 0
     bt    __fadd_both_normal
     ; b is zero: return a
-    FA_LD r2, FA_DST
-    FA_LD r3, FA_SIGN_A
-    FA_LD r4, FA_EXP_A
-    li    r1, 0o3777
-    and   r4, r4, r1
-    sub   r0, r0, r3
-    bf    __fadd_ret_a_nosign
-    li    r1, 0o4000
-    add   r4, r4, r1
-    swr   r4, r2
-    addi  r2, 1
-    FA_LD r1, FA_A_HI
-    swr   r1, r2
-    addi  r2, 1
-    FA_LD r1, FA_A_MID
-    swr   r1, r2
-    addi  r2, 1
-    FA_LD r1, FA_A_LO
-    swr   r1, r2
-    addi  r6, 16
-    lwr   r5, r6
-    addi  r6, 1
-    jalr  r0, r5
+    li    r1, __fadd_return_a
+    jalr  r0, r1
 
 __fadd_both_normal:
     ; ---- ensure exp_a >= exp_b (swap if not) ----
@@ -341,7 +256,7 @@ __fadd_overflow:
     FA_LD r3, FA_RSIGN
     li    r1, __fstore_inf
     jalr  r5, r1
-    addi  r6, 16
+    addi  r6, 18
     lwr   r5, r6
     addi  r6, 1
     jalr  r0, r5
@@ -424,27 +339,22 @@ __fadd_norm_loop:
 __fadd_normed:
 __fadd_pack:
     ; ---- pack result into dst ----
-    FA_LD r2, FA_DST
-    FA_LD r3, FA_R_EXP
-    li    r4, 0o3777
-    and   r3, r3, r4          ; exp bits 10:0
-    FA_LD r4, FA_RSIGN
-    sub   r0, r0, r4          ; T=1 if negative
-    bf    __fadd_pack_nosign
-    li    r1, 0o4000
-    add   r3, r3, r1
-__fadd_pack_nosign:
-    swr   r3, r2              ; dst[0] = w0
-    addi  r2, 1
+    FA_LD r3, FA_R_EXP         ; r3 = exp_raw
+    FA_LD r4, FA_RSIGN         ; r4 = sign
+    li    r1, __fmake_w0
+    jalr  r5, r1               ; r2 = w0
+    FA_LD r3, FA_DST           ; r3 = *dst
+    swr   r2, r3               ; dst[0] = w0
+    addi  r3, 1
     FA_LD r1, FA_R_HI
-    swr   r1, r2
-    addi  r2, 1
+    swr   r1, r3
+    addi  r3, 1
     FA_LD r1, FA_R_MID
-    swr   r1, r2
-    addi  r2, 1
+    swr   r1, r3
+    addi  r3, 1
     FA_LD r1, FA_R_LO
-    swr   r1, r2
-    addi  r6, 16
+    swr   r1, r3
+    addi  r6, 18
     lwr   r5, r6
     addi  r6, 1
     jalr  r0, r5
@@ -453,7 +363,27 @@ __fadd_zero_result:
     FA_LD r2, FA_DST
     li    r1, __fstore_zero
     jalr  r5, r1
-    addi  r6, 16
+    addi  r6, 18
+    lwr   r5, r6
+    addi  r6, 1
+    jalr  r0, r5
+
+__fadd_return_a:
+    FA_LD r2, FA_DST
+    FA_LD r3, FA_A_PTR
+    li    r1, __fcopy
+    jalr  r5, r1
+    addi  r6, 18
+    lwr   r5, r6
+    addi  r6, 1
+    jalr  r0, r5
+
+__fadd_return_b:
+    FA_LD r2, FA_DST
+    FA_LD r3, FA_B_PTR
+    li    r1, __fcopy
+    jalr  r5, r1
+    addi  r6, 18
     lwr   r5, r6
     addi  r6, 1
     jalr  r0, r5

@@ -6,18 +6,16 @@
 ; If shift < 0:  result = sig >> (-shift)
 ; Zero/inf/NaN -> 0
 ;
-; Stack frame (12 words after saved r5):
+; Stack frame (6 words after saved r5):
 ;   [r6+0]  = sign
 ;   [r6+1]  = exp
 ;   [r6+2]  = sig_hi (w1)
-;   [r6+3]  = sig_mid (w2)
-;   [r6+4]  = sig_lo (w3)
-;   [r6+5]  = scratch
+;   [r6+3]  = scratch
 
 __ftoi:
     subi r6, 1
     swr  r5, r6
-    subi r6, 6
+    subi r6, 4
 
     ; load w0 -> extract sign and exp
     lwr  r1, r2
@@ -40,27 +38,13 @@ __ftoi:
     addi r1, 1
     swr  r3, r1              ; [r6+1] = exp_raw
 
-    ; load w1, w2, w3
+    ; load w1 (sig_hi) only (this routine is sig_hi precision by design)
     and  r1, r2, r7          ; r1 = ptr
     addi r1, 1
     lwr  r4, r1              ; r4 = sig_hi
     and  r1, r6, r7
     addi r1, 2
     swr  r4, r1              ; [r6+2] = sig_hi
-
-    and  r1, r2, r7
-    addi r1, 2
-    lwr  r4, r1              ; r4 = sig_mid
-    and  r1, r6, r7
-    addi r1, 3
-    swr  r4, r1              ; [r6+3] = sig_mid
-
-    and  r1, r2, r7
-    addi r1, 3
-    lwr  r4, r1              ; r4 = sig_lo
-    and  r1, r6, r7
-    addi r1, 4
-    swr  r4, r1              ; [r6+4] = sig_lo
 
     ; check exp_raw: 0 -> return 0; 2047 -> return 0
     and  r1, r6, r7
@@ -75,7 +59,7 @@ __ftoi:
     bt   __ftoi_nonspecial
 __ftoi_zero:
     and  r2, r0, r0
-    addi r6, 6
+    addi r6, 4
     lwr  r5, r6
     addi r6, 1
     jalr r0, r5
@@ -142,7 +126,7 @@ __ftoi_apply_sign:
     bf   __ftoi_done
     sub  r2, r0, r2          ; r2 = -r2
 __ftoi_done:
-    addi r6, 6
+    addi r6, 4
     lwr  r5, r6
     addi r6, 1
     jalr r0, r5

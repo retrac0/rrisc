@@ -1,5 +1,5 @@
 ; __fsub(r2=*dst, r3=*a, r4=*b) -- dst = a - b
-; Negate b's sign bit into a stack copy, then tail-call __fadd.
+; Negate b's sign bit into a stack copy, then call __fadd.
 ;
 ; Stack (6 words + saved r5):
 ;   sp+0 = saved *a   sp+1..4 = tmp_b (negated copy of *b)
@@ -39,9 +39,12 @@ __fsub:
     and  r4, r6, r7
     addi r4, 1
 
-    ; tail-call __fadd (r2=dst unchanged)
+    ; Call __fadd while tmp_b is still live on our stack.
+    li   r1, __fadd
+    jalr r5, r1
+
+    ; return
     addi r6, 5
     lwr  r5, r6
     addi r6, 1
-    li   r1, __fadd
-    jalr r0, r1
+    jalr r0, r5
