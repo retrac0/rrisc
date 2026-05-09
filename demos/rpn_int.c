@@ -1,182 +1,144 @@
 /*
- * rpn_int.c -- RPN integer calculator for the RRISC 12-bit machine (fits in 4k words).
+ * rpn_int.c -- compact RPN integer calculator (RRISC 12-bit).
+ * Build: make -C demos rpn.bin
  *
- * For floating-point, see rpn_float.c.
- *
- * Build (from repo root):
- *   make -C demos rpn.bin
- *
- * Run (linked image: crt0 at --start 0o100, stack from RCC_STACK_TOP).
- * Use bash $'...' for --uart-preload: command substitution "$(printf ...)" strips a
- * trailing newline, so the second gets() would hang waiting after "q".
- *   python3 sim.py --terminal --mem ram:0:0o7770 --start 0o100 \
- *     --uart-preload $'3 4 + p\nq\n' demos/rpn.bin
- * Or feed stdin (no preload):  printf '%s\n' '3 4 + p' q | python3 sim.py ... demos/rpn.bin
- *
- * Operators (space-separated on one line or across multiple lines):
- *   NUMBER  push (decimal int, optional leading -)
- *   +  -  *  /   binary arithmetic (pop two, push result)
- *   n       negate (pop, push negative)
- *   p       print top of stack (does not pop)
- *   d       duplicate top of stack
- *   c       clear stack
- *   q       quit (halts simulator)
- *
- * On invalid input or runtime error, prints $$$ and a newline (rpn_emit_err in lib/rpn_err.s).
- * Use sp >= 2 / sp > 0 for stack checks — rcc mis-compiles sp < n in conditionals.
+ * Operators: decimal numbers, + - * /, n p d c q (see test_rpn.sh).
+ * Smaller globals and input buffer; merged + - * /; no debug putchar.
+ * Use sp >= 2 / sp > 0 for checks (avoid sp < n in conditionals with this rcc).
  */
-
-/* UART + exit; itoa from lib/itoa.s (rcc auto-%include). Avoid rlibc.h here or
- * you get a duplicate 'itoa' label (C body + itoa.s). */
 #include "rlibc_float_calc.h"
 
 void rpn_emit_err();
 
-int stk[16];
-int sp = 0;
+#define STK_SZ 8
+
+int stk[STK_SZ];
+int sp;
 
 int isdigitch(int c) {
     return c >= '0' && c <= '9';
 }
 
 int main() {
-    int buf[64];
+    int buf[36];
     int sbuf[8];
     int *p;
+    int *q;
     int a;
     int b;
     int r;
     int neg;
     int val;
+    int c;
 
+    sp = 0;
     while (1) {
-        putchar('!');
-        putchar(' ');
         gets(buf);
         p = buf;
+        while (1) {
+            c = *p;
+            if (c == 0) {
+                break;
+            }
+            while (c == ' ' || c == '\t') {
+                p = p + 1;
+                c = *p;
+            }
+            if (c == 0) {
+                break;
+            }
 
-        while (*p != 0) {
-            while (*p == ' ' || *p == '\t') p++;
-            if (*p == 0) break;
-
-            if (isdigitch(*p) ||
-                (*p == '-' && isdigitch(*(p + 1)))) {
+            q = p + 1;
+            if (isdigitch(c) || (c == '-' && isdigitch(*q))) {
                 neg = 0;
-                if (*p == '-') {
+                if (c == '-') {
                     neg = 1;
-                    p++;
+                    p = p + 1;
+                    c = *p;
                 }
                 val = 0;
-                while (isdigitch(*p)) {
-                    val = val * 10 + (*p - '0');
-                    p++;
+                while (isdigitch(c)) {
+                    val = val * 10 + (c - '0');
+                    p = p + 1;
+                    c = *p;
                 }
-                if (neg) val = -val;
-                if (sp < 16) {
+                if (neg) {
+                    val = 0 - val;
+                }
+                if (sp < STK_SZ) {
                     stk[sp] = val;
-                    sp++;
+                    sp = sp + 1;
                 } else {
                     rpn_emit_err();
                 }
-            } else if (*p == '+') {
+            } else if (c == '+' || c == '-' || c == '*' || c == '/') {
                 if (sp >= 2) {
-                    sp--;
+                    sp = sp - 1;
                     b = stk[sp];
-                    sp--;
+                    sp = sp - 1;
                     a = stk[sp];
-                    r = a + b;
-                    stk[sp] = r;
-                    sp++;
-                } else {
-                    rpn_emit_err();
-                }
-                p++;
-            } else if (*p == '-') {
-                if (sp >= 2) {
-                    sp--;
-                    b = stk[sp];
-                    sp--;
-                    a = stk[sp];
-                    r = a - b;
-                    stk[sp] = r;
-                    sp++;
-                } else {
-                    rpn_emit_err();
-                }
-                p++;
-            } else if (*p == '*') {
-                if (sp >= 2) {
-                    sp--;
-                    b = stk[sp];
-                    sp--;
-                    a = stk[sp];
-                    r = a * b;
-                    stk[sp] = r;
-                    sp++;
-                } else {
-                    rpn_emit_err();
-                }
-                p++;
-            } else if (*p == '/') {
-                if (sp >= 2) {
-                    b = stk[sp - 1];
-                    if (b == 0) {
-                        rpn_emit_err();
+                    if (c == '/') {
+                        if (b == 0) {
+                            rpn_emit_err();
+                        } else {
+                            r = a / b;
+                            stk[sp] = r;
+                            sp = sp + 1;
+                        }
                     } else {
-                        sp--;
-                        b = stk[sp];
-                        sp--;
-                        a = stk[sp];
-                        r = a / b;
+                        if (c == '+') {
+                            r = a + b;
+                        } else if (c == '-') {
+                            r = a - b;
+                        } else {
+                            r = a * b;
+                        }
                         stk[sp] = r;
-                        sp++;
+                        sp = sp + 1;
                     }
                 } else {
                     rpn_emit_err();
                 }
-                p++;
-            } else if (*p == 'n') {
+                p = p + 1;
+            } else if (c == 'n') {
                 if (sp > 0) {
-                    sp--;
-                    a = stk[sp];
-                    r = -a;
-                    stk[sp] = r;
-                    sp++;
+                    a = stk[sp - 1];
+                    r = 0 - a;
+                    stk[sp - 1] = r;
                 } else {
                     rpn_emit_err();
                 }
-                p++;
-            } else if (*p == 'p') {
+                p = p + 1;
+            } else if (c == 'p') {
                 if (sp > 0) {
                     itoa(stk[sp - 1], sbuf);
                     puts(sbuf);
                 } else {
                     rpn_emit_err();
                 }
-                p++;
-            } else if (*p == 'd') {
+                p = p + 1;
+            } else if (c == 'd') {
                 if (sp > 0) {
-                    if (sp < 16) {
+                    if (sp < STK_SZ) {
                         a = stk[sp - 1];
                         stk[sp] = a;
-                        sp++;
+                        sp = sp + 1;
                     } else {
                         rpn_emit_err();
                     }
                 } else {
                     rpn_emit_err();
                 }
-                p++;
-            } else if (*p == 'c') {
+                p = p + 1;
+            } else if (c == 'c') {
                 sp = 0;
-                p++;
-            } else if (*p == 'q') {
+                p = p + 1;
+            } else if (c == 'q') {
                 exit(0);
             } else {
                 rpn_emit_err();
-                p++;
+                p = p + 1;
             }
         }
     }
-    return 0;
 }
