@@ -7,6 +7,8 @@
 
     .global main
 main:
+    subi r6, 1
+    swr r5, r6
     subi r6, 6
 _B_main_0:
     li r2, 48
@@ -43,41 +45,8 @@ _B_main_2:
     and r1, r6, r7
     addi r1, 3
     lwr r2, r1
-    sub r0, r0, r2
-    bf _L_main_mod_done_39
-    and r1, r3, r7
-    rol r1, r1
-    rol r4, r0
-    subi r6, 1
-    swr r4, r6
-    sub r0, r0, r4
-    bf _L_main_mod_npos_39
-    sub r3, r0, r3
-_L_main_mod_npos_39:
-    and r1, r2, r7
-    rol r1, r1
-    bf _L_main_mod_dpos_39
-    sub r2, r0, r2
-_L_main_mod_dpos_39:
-    and r4, r3, r7
-    and r1, r0, r0
-_L_main_udiv_loop_55:
-    sub r0, r4, r2
-    bt _L_main_udiv_end_55
-    sub r4, r4, r2
-    addi r1, 1
-    sub r0, r0, r7
-    bt _L_main_udiv_loop_55
-_L_main_udiv_end_55:
-    and r1, r6, r7
-    lwr r1, r1
-    addi r6, 1
-    sub r0, r0, r1
-    bf _L_main_mod_rpos_39
-    sub r4, r0, r4
-_L_main_mod_rpos_39:
-    and r2, r4, r7
-_L_main_mod_done_39:
+    li r1, __mod
+    jalr r5, r1
     and r1, r6, r7
     addi r1, 4
     swr r2, r1
@@ -120,4 +89,6 @@ _B_main_6:
     bf _B_main_1
 _epi_main:
     addi r6, 6
+    lwr r5, r6
+    addi r6, 1
     jalr r0, r5

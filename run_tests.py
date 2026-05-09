@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Unified RRISC test runner: RCC compiler tests, flat-assembler tests, examples,
-and optional toolchain (obj round-trip / hsld) checks on tests/toolchain/*.s.
+optional toolchain (obj round-trip / hsld) checks on tests/toolchain/*.s,
+and optional lib/librcc.s direct harness (tests/librcc/run_librcc_tests.py).
 
 Replaces compiler/run_tests.sh and runtests.sh with one subprocess-based harness:
   - Correct argv handling (no shell splitting bugs)
@@ -137,6 +138,9 @@ def emit_verbose(cfg: RunConfig, results: Sequence[TResult]) -> None:
         sub = f" [{r.sub}]" if r.sub else ""
         print(f"{tag} {r.name}{sub}", flush=True)
         if not r.ok and r.detail:
+            print(r.detail, flush=True)
+        elif r.ok and r.detail and r.name in ("librcc", "librcc-summary"):
+            # librcc: skipped note or harness summary (driver stdout)
             print(r.detail, flush=True)
 
 
@@ -422,18 +426,18 @@ def link_rcc_asm_with_crt0(
     )
     if aru.returncode != 0:
         return False, "hsasm (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""), "user.o"
-    mul_s = cfg.root / "lib" / "__mul.s"
-    mul_o = user_o.parent / (user_o.stem + "_mul.o")
+    librcc_s = cfg.root / "lib" / "librcc.s"
+    librcc_o = user_o.parent / (user_o.stem + "_librcc.o")
     arm = run_capture(
-        hsasm_emit_obj_cmd(cfg.hsasm_path, mul_s, mul_o, include_dirs=[lib]),
+        hsasm_emit_obj_cmd(cfg.hsasm_path, librcc_s, librcc_o, include_dirs=[lib]),
         cwd=cfg.root,
     )
     if arm.returncode != 0:
-        return False, "hsasm (__mul.s) failed:\n" + (arm.stderr or arm.stdout or ""), "mul.o"
+        return False, "hsasm (librcc.s) failed:\n" + (arm.stderr or arm.stdout or ""), "librcc.o"
     arl = run_capture(
         hsld_cmd(
             cfg.hsld_path,
-            [crt0_o, mul_o, user_o],
+            [crt0_o, librcc_o, user_o],
             bin_path,
             code_base=code_base,
             data_base=data_base,
@@ -1635,6 +1639,58 @@ def run_toolchain_suite(cfg: RunConfig, tmp_root: Path) -> list[TResult]:
     return out
 
 
+def run_librcc_suite(cfg: RunConfig) -> list[TResult]:
+    """Drive tests/librcc/run_librcc_tests.py (crt0 + librcc + stub main per case).
+
+    With ``cfg.verbose``, split driver stdout into one ``TResult`` per ``PASS`` line
+    plus a final summary row so ``emit_verbose`` prints every case (not only ``Results: 1``).
+    """
+    driver = cfg.root / "tests" / "librcc" / "run_librcc_tests.py"
+    if not driver.is_file():
+        return [TResult(False, "librcc", f"missing driver {driver}")]
+    if not cfg.hsasm_path or not cfg.hsld_path:
+        msg = "hsasm+hsld required (librcc suite)"
+        if cfg.skip_unavailable:
+            return [TResult(True, "librcc", f"(skipped) {msg}")]
+        return [TResult(False, "librcc", msg)]
+
+    argv = [
+        python_exe(),
+        str(driver),
+        "--hsasm",
+        str(cfg.hsasm_path),
+        "--hsld",
+        str(cfg.hsld_path),
+    ]
+    if cfg.filter_re:
+        argv.extend(["--filter", cfg.filter_re.pattern])
+    if cfg.verbose:
+        argv.append("--verbose")
+
+    r = run_capture(argv, cwd=cfg.root)
+    out = r.stdout or ""
+    if r.returncode == 0:
+        if cfg.verbose:
+            results: list[TResult] = []
+            summary_line = ""
+            for line in out.splitlines():
+                s = line.strip()
+                if s.startswith("PASS "):
+                    results.append(TResult(True, f"librcc:{s[5:].strip()}", ""))
+                elif s.startswith("librcc-tests:"):
+                    summary_line = s
+            if summary_line:
+                results.append(TResult(True, "librcc-summary", summary_line))
+            if results:
+                return results
+            tail = out.strip().splitlines()
+            return [TResult(True, "librcc", tail[-1] if tail else "ok")]
+        tail = out.strip().splitlines()
+        summary = tail[-1] if tail else "ok"
+        return [TResult(True, "librcc", "")]
+    return [TResult(False, "librcc", (r.stderr or "") + out)]
+
+
 def run_float_suite(cfg: RunConfig) -> list[TResult]:
     """Drive tests/float/run_float_tests.py as one suite-level check.
 
@@ -1732,15 +1788,15 @@ def main() -> int:
         metavar="SUITE,...",
         default="rcc,asm,examples",
         help=(
-        "comma-separated suites: rcc, asm, examples, io, float, toolchain, size "
-        "(default: rcc,asm,examples)"
-    ),
+            "comma-separated suites: rcc, asm, examples, io, float, toolchain, "
+            "size, librcc (default: rcc,asm,examples)"
+        ),
     )
     args = ap.parse_args()
 
     only_parts = {x.strip() for x in args.only.split(",") if x.strip()}
     for p in only_parts:
-        if p not in ("rcc", "asm", "examples", "io", "float", "toolchain", "size"):
+        if p not in ("rcc", "asm", "examples", "io", "float", "toolchain", "size", "librcc"):
             print(f"unknown suite in --only: {p!r}", file=sys.stderr)
             return 2
     want_rcc = "rcc" in only_parts
@@ -1750,6 +1806,7 @@ def main() -> int:
     want_float = "float" in only_parts
     want_toolchain = "toolchain" in only_parts
     want_size = "size" in only_parts
+    want_librcc = "librcc" in only_parts
 
     root = repo_root()
     filt = re.compile(args.filter) if args.filter else None
@@ -1806,9 +1863,9 @@ def main() -> int:
 
     if not args.skip_unavailable:
         missing = []
-        if (want_rcc or want_io or want_toolchain) and not hsld_path:
+        if (want_rcc or want_io or want_toolchain or want_librcc) and not hsld_path:
             missing.append("hsld (cabal build exe:hsld in hstools/)")
-        if (want_toolchain or "hs" in assemblers) and not hsasm_path:
+        if (want_toolchain or want_librcc or "hs" in assemblers) and not hsasm_path:
             missing.append("hsasm (make ras, or cabal build exe:hsasm in hstools/)")
         if "hs" in simulators and not rsim_path:
             missing.append("rsim (make rsim, or cabal build exe:rsim in hstools/)")
@@ -1904,6 +1961,12 @@ def main() -> int:
             float_results = run_float_suite(cfg)
             all_results.extend(float_results)
             emit_verbose(cfg, float_results)
+
+        # lib/librcc.s direct harness (multiply / divide / mod)
+        if want_librcc:
+            lr_results = run_librcc_suite(cfg)
+            all_results.extend(lr_results)
+            emit_verbose(cfg, lr_results)
 
         # linked .bin code size baseline
         if want_size:

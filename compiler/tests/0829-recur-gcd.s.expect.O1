@@ -47,41 +47,8 @@ _B_gcd_3:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
-    sub r0, r0, r2
-    bf _L_gcd_mod_done_43
-    and r1, r3, r7
-    rol r1, r1
-    rol r4, r0
-    subi r6, 1
-    swr r4, r6
-    sub r0, r0, r4
-    bf _L_gcd_mod_npos_43
-    sub r3, r0, r3
-_L_gcd_mod_npos_43:
-    and r1, r2, r7
-    rol r1, r1
-    bf _L_gcd_mod_dpos_43
-    sub r2, r0, r2
-_L_gcd_mod_dpos_43:
-    and r4, r3, r7
-    and r1, r0, r0
-_L_gcd_udiv_loop_59:
-    sub r0, r4, r2
-    bt _L_gcd_udiv_end_59
-    sub r4, r4, r2
-    addi r1, 1
-    sub r0, r0, r7
-    bt _L_gcd_udiv_loop_59
-_L_gcd_udiv_end_59:
-    and r1, r6, r7
-    lwr r1, r1
-    addi r6, 1
-    sub r0, r0, r1
-    bf _L_gcd_mod_rpos_43
-    sub r4, r0, r4
-_L_gcd_mod_rpos_43:
-    and r2, r4, r7
-_L_gcd_mod_done_43:
+    li r1, __mod
+    jalr r5, r1
     and r1, r6, r7
     addi r1, 3
     swr r2, r1

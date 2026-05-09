@@ -51,8 +51,9 @@ sizeof(struct P)  == sum of fields, in words
 **Pointer arithmetic is word-scaled.** `p + 1` adds 1 to the address regardless of
 `sizeof(*p)`. `a[i]` is `*(a + i)` — i.e. word `i`, not byte `i*sizeof(*a)`. For
 arrays of structs, the compiler does multiply `i` by `sizeof(struct S)`; if that
-size is a power of two it compiles to a shift, otherwise to an inline multiply loop
-in the generated code (no separate runtime `__mul` symbol). Prefer power-of-two
+size is a power of two it compiles to a shift, otherwise it strength-reduces or calls
+the **`__mul`** helper in **`lib/librcc.s`** (linked as **`librcc.o`** with **`crt0`**).
+Prefer power-of-two
 struct sizes in performance-sensitive code.
 
 **12-bit `int`.** All integer arithmetic wraps at 12 bits. Signed range is

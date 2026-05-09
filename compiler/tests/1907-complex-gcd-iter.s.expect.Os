@@ -7,6 +7,8 @@
 
     .global gcd
 gcd:
+    subi r6, 1
+    swr r5, r6
     subi r6, 6
     and r1, r6, r7
     swr r2, r1
@@ -41,41 +43,8 @@ _B_gcd_2:
     and r1, r6, r7
     addi r1, 3
     lwr r2, r1
-    sub r0, r0, r2
-    bf _L_gcd_mod_done_37
-    and r1, r3, r7
-    rol r1, r1
-    rol r4, r0
-    subi r6, 1
-    swr r4, r6
-    sub r0, r0, r4
-    bf _L_gcd_mod_npos_37
-    sub r3, r0, r3
-_L_gcd_mod_npos_37:
-    and r1, r2, r7
-    rol r1, r1
-    bf _L_gcd_mod_dpos_37
-    sub r2, r0, r2
-_L_gcd_mod_dpos_37:
-    and r4, r3, r7
-    and r1, r0, r0
-_L_gcd_udiv_loop_53:
-    sub r0, r4, r2
-    bt _L_gcd_udiv_end_53
-    sub r4, r4, r2
-    addi r1, 1
-    sub r0, r0, r7
-    bt _L_gcd_udiv_loop_53
-_L_gcd_udiv_end_53:
-    and r1, r6, r7
-    lwr r1, r1
-    addi r6, 1
-    sub r0, r0, r1
-    bf _L_gcd_mod_rpos_37
-    sub r4, r0, r4
-_L_gcd_mod_rpos_37:
-    and r2, r4, r7
-_L_gcd_mod_done_37:
+    li r1, __mod
+    jalr r5, r1
     and r1, r6, r7
     addi r1, 4
     swr r2, r1
@@ -118,6 +87,8 @@ _B_gcd_6:
     bf _B_gcd_1
 _epi_gcd:
     addi r6, 6
+    lwr r5, r6
+    addi r6, 1
     jalr r0, r5
 
     .global main

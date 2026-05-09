@@ -38,7 +38,7 @@ jobs:
       - name: Run tests (CI subset)
         run: |
           python3 run_tests.py \
-            --only rcc,asm,toolchain \
+            --only rcc,asm,toolchain,librcc \
             --assemblers hs \
             --simulators py \
             --jobs 4

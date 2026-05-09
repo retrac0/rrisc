@@ -162,7 +162,7 @@ genProc p =
       numStack = max 0 (length (TAC.procParams p) - 3)
       isLeaf   =
         not (any isCallInstr (TAC.procInstrs p))
-          && not (procUsesRuntimeMul (TAC.procInstrs p))
+          && not (procUsesLibrcc (TAC.procInstrs p))
       usedTemps = collectUsedTemps (TAC.procInstrs p)
       action  = do
         emit ""
@@ -213,11 +213,69 @@ foldConstMulPure :: TAC.Operand -> TAC.Operand -> Bool
 foldConstMulPure (TAC.OConst _) (TAC.OConst _) = True
 foldConstMulPure _ _                           = False
 
--- | True when integer multiply lowers to @jalr __mul@ (needs saved r5 like any call).
-procUsesRuntimeMul :: [TAC.Instr] -> Bool
-procUsesRuntimeMul = any $ \instr -> case instr of
+signed12 :: Int -> Int
+signed12 x =
+  let v = x .&. 0xFFF
+  in if v > 2047 then v - 4096 else v
+
+foldConstDivMod :: TAC.BinOp -> TAC.Operand -> TAC.Operand -> Maybe (CG ())
+foldConstDivMod TAC.TUDiv (TAC.OConst ka) (TAC.OConst kb) =
+  let ua = ka .&. 0xFFF
+      ub = kb .&. 0xFFF
+  in Just $ emitLoadConst 2 (if ub == 0 then 0 else (ua `div` ub) .&. 0xFFF)
+foldConstDivMod TAC.TUMod (TAC.OConst ka) (TAC.OConst kb) =
+  let ua = ka .&. 0xFFF
+      ub = kb .&. 0xFFF
+  in Just $ emitLoadConst 2 (if ub == 0 then 0 else (ua `mod` ub) .&. 0xFFF)
+foldConstDivMod TAC.TDiv (TAC.OConst ka) (TAC.OConst kb) =
+  let sa = signed12 ka
+      sb = signed12 kb
+  in Just $ emitLoadConst 2 (if sb == 0 then 0 else (sa `quot` sb) .&. 0xFFF)
+foldConstDivMod TAC.TMod (TAC.OConst ka) (TAC.OConst kb) =
+  let sa = signed12 ka
+      sb = signed12 kb
+  in Just $ emitLoadConst 2 (if sb == 0 then 0 else (sa `rem` sb) .&. 0xFFF)
+foldConstDivMod _ _ _ = Nothing
+
+-- | Unsigned divide/modulo when divisor is a non-zero power of two (bit shifts / mask).
+tryUnsignedDivModPow2 :: TAC.BinOp -> TAC.Operand -> TAC.Operand -> Maybe (CG ())
+tryUnsignedDivModPow2 TAC.TUDiv a (TAC.OConst kb) =
+  let k = kb .&. 0xFFF
+  in if k /= 0 && isPow2 k
+       then
+         Just $ do
+           loadOpInto 3 a
+           emitLoadConst 2 (log2Pow2 k)
+           emitShift False True
+       else Nothing
+tryUnsignedDivModPow2 TAC.TUMod a (TAC.OConst kb) =
+  let k = kb .&. 0xFFF
+  in if k /= 0 && isPow2 k
+       then
+         Just $ do
+           loadOpInto 3 a
+           emitLoadConst 2 (k - 1)
+           emitL "and r2, r3, r2"
+       else Nothing
+tryUnsignedDivModPow2 _ _ _ = Nothing
+
+divModAvoidsRuntime :: TAC.BinOp -> TAC.Operand -> TAC.Operand -> Bool
+divModAvoidsRuntime op a b =
+  case foldConstDivMod op a b of
+    Just _ -> True
+    Nothing ->
+      case tryUnsignedDivModPow2 op a b of
+        Just _ -> True
+        Nothing -> False
+
+-- | True when @jalr@ into librcc (@__mul@, @__div@, …) may run (needs saved r5 like any call).
+procUsesLibrcc :: [TAC.Instr] -> Bool
+procUsesLibrcc = any $ \instr -> case instr of
   TAC.IBinOp _ TAC.TMul a b -> mulNeedsRuntimeLib a b
-  _                         -> False
+  TAC.IBinOp _ op a b
+    | op `elem` [TAC.TDiv, TAC.TMod, TAC.TUDiv, TAC.TUMod] ->
+        not (divModAvoidsRuntime op a b)
+  _ -> False
 
 mulNeedsRuntimeLib :: TAC.Operand -> TAC.Operand -> Bool
 mulNeedsRuntimeLib a b
@@ -381,6 +439,8 @@ genInstr (TAC.IAssign t op) = do
 
 genInstr (TAC.IBinOp t op a b)
   | op == TAC.TMul = genMulOp t a b
+genInstr (TAC.IBinOp t op a b)
+  | op `elem` [TAC.TDiv, TAC.TMod, TAC.TUDiv, TAC.TUMod] = genDivModOp t op a b
 genInstr (TAC.IBinOp t op a b) = do
   loadOpInto 3 a       -- left in r3
   loadOpInto 2 b       -- right in r2
@@ -518,7 +578,12 @@ emitCmpToT op a b = do
       pure True
     _ -> do
       -- Not expected for IIfCmp/IIfNCmp; fall back to boolean materialization path.
-      emitBinOp op
+      case op of
+        TAC.TDiv  -> emitDivModLibrary TAC.TDiv
+        TAC.TMod  -> emitDivModLibrary TAC.TMod
+        TAC.TUDiv -> emitDivModLibrary TAC.TUDiv
+        TAC.TUMod -> emitDivModLibrary TAC.TUMod
+        _         -> emitBinOp op
       emitL "sub r0, r0, r2"
       pure False
 
@@ -555,114 +620,14 @@ emitBinOp TAC.TShl  = emitShift True  True   -- logical left
 emitBinOp TAC.TShr  = emitShift False False  -- arithmetic right (sign-extending)
 emitBinOp TAC.TUShr = emitShift False True   -- logical right (unsigned)
 emitBinOp TAC.TMul = emitMulLibraryAfterLoads -- r3=a, r2=b already loaded (rare direct path)
-emitBinOp TAC.TDiv = do
-  lDivDone <- freshLbl "div_done"
-  lNPos    <- freshLbl "div_npos"
-  lDPos    <- freshLbl "div_dpos"
-  -- Divide by zero returns 0 (r2=0 already when d=0).
-  emitL "sub r0, r0, r2"
-  emitL ("bf " <> lDivDone)
-  -- Extract and push sign_n.
-  emitL "and r1, r3, r7"
-  emitL "rol r1, r1"
-  emitL "rol r4, r0"
-  emitL "subi r6, 1"
-  emitL "swr r4, r6"
-  -- Extract and push sign_d.
-  emitL "and r1, r2, r7"
-  emitL "rol r1, r1"
-  emitL "rol r4, r0"
-  emitL "subi r6, 1"
-  emitL "swr r4, r6"
-  -- Abs(n): sign_n is at [r6+1].
-  emitL "and r1, r6, r7"
-  emitL "addi r1, 1"
-  emitL "lwr r4, r1"
-  emitL "sub r0, r0, r4"
-  emitL ("bf " <> lNPos)
-  emitL "sub r3, r0, r3"
-  emit (lNPos <> ":")
-  -- Abs(d): sign_d is at [r6+0].
-  emitL "and r1, r6, r7"
-  emitL "lwr r4, r1"
-  emitL "sub r0, r0, r4"
-  emitL ("bf " <> lDPos)
-  emitL "sub r2, r0, r2"
-  emit (lDPos <> ":")
-  emitUDiv                        -- r1=|quotient|, r4=|remainder|
-  emitL "and r2, r1, r7"          -- r2 = |quotient|
-  -- Pop sign_d into r1.
-  emitL "and r1, r6, r7"
-  emitL "lwr r1, r1"
-  emitL "addi r6, 1"
-  -- Pop sign_n into r4.
-  emitL "and r4, r6, r7"
-  emitL "lwr r4, r4"
-  emitL "addi r6, 1"
-  -- Negate quotient when exactly one operand was negative (sum==1).
-  emitL "add r1, r1, r4"
-  emitL "subi r1, 1"
-  emitL "sub r0, r0, r1"          -- T=1 iff sum!=1
-  emitL ("bt " <> lDivDone)
-  emitL "sub r2, r0, r2"
-  emit (lDivDone <> ":")
-emitBinOp TAC.TMod = do
-  lModDone <- freshLbl "mod_done"
-  lNPos    <- freshLbl "mod_npos"
-  lDPos    <- freshLbl "mod_dpos"
-  lRemPos  <- freshLbl "mod_rpos"
-  -- Mod by zero returns 0.
-  emitL "sub r0, r0, r2"
-  emitL ("bf " <> lModDone)
-  -- Extract and push sign_n; r4 retains it for the abs(n) test below.
-  emitL "and r1, r3, r7"
-  emitL "rol r1, r1"
-  emitL "rol r4, r0"
-  emitL "subi r6, 1"
-  emitL "swr r4, r6"
-  -- Abs(n): r4 still holds sign_n.
-  emitL "sub r0, r0, r4"
-  emitL ("bf " <> lNPos)
-  emitL "sub r3, r0, r3"
-  emit (lNPos <> ":")
-  -- Abs(d): use T from sign_d; sign_d not needed later.
-  emitL "and r1, r2, r7"
-  emitL "rol r1, r1"
-  emitL ("bf " <> lDPos)
-  emitL "sub r2, r0, r2"
-  emit (lDPos <> ":")
-  emitUDiv                        -- r1=|quotient|, r4=|remainder|
-  -- Pop sign_n into r1.
-  emitL "and r1, r6, r7"
-  emitL "lwr r1, r1"
-  emitL "addi r6, 1"
-  -- Negate remainder if n was negative.
-  emitL "sub r0, r0, r1"
-  emitL ("bf " <> lRemPos)
-  emitL "sub r4, r0, r4"
-  emit (lRemPos <> ":")
-  emitL "and r2, r4, r7"          -- r2 = remainder
-  emit (lModDone <> ":")
-emitBinOp TAC.TUDiv = do
-  -- Unsigned divide: r3 / r2 → r2 (quotient).  The values are already
-  -- 12-bit unsigned (0..4095), so 'emitUDiv' does the work directly with
-  -- no sign-extraction preamble or sign-restoration epilogue.  Divide by
-  -- zero returns 0 (the only sensible 12-bit answer), matching the
-  -- signed implementation.
-  lDone <- freshLbl "udiv_done"
-  emitL "sub r0, r0, r2"          -- T=1 iff divisor != 0
-  emitL ("bf " <> lDone)          -- if zero: r2 already 0 (the answer)
-  emitUDiv                        -- r1 = quotient, r4 = remainder
-  emitL "and r2, r1, r7"          -- r2 = quotient
-  emit (lDone <> ":")
-emitBinOp TAC.TUMod = do
-  -- Unsigned modulo: r3 % r2 → r2.  Same shape as TUDiv.
-  lDone <- freshLbl "umod_done"
-  emitL "sub r0, r0, r2"          -- T=1 iff divisor != 0
-  emitL ("bf " <> lDone)
-  emitUDiv
-  emitL "and r2, r4, r7"          -- r2 = remainder
-  emit (lDone <> ":")
+emitBinOp TAC.TDiv =
+  error "RCC.Codegen.emitBinOp: TDiv lowered via genDivModOp only"
+emitBinOp TAC.TMod =
+  error "RCC.Codegen.emitBinOp: TMod lowered via genDivModOp only"
+emitBinOp TAC.TUDiv =
+  error "RCC.Codegen.emitBinOp: TUDiv lowered via genDivModOp only"
+emitBinOp TAC.TUMod =
+  error "RCC.Codegen.emitBinOp: TUMod lowered via genDivModOp only"
 emitBinOp TAC.TAnd = do
   -- Logical: should not appear (lowered to branches by TAC), but handle anyway.
   emitL "and r2, r3, r2"
@@ -762,7 +727,7 @@ emitShift isLeft isLogical = do
 
 -- ---------------------------------------------------------------------------
 -- Integer multiply: strength-reduce small / power-of-two constants; otherwise
--- call runtime __mul (lib/__mul.s).
+-- call runtime __mul (lib/librcc.s).
 
 genMulOp :: TAC.Temp -> TAC.Operand -> TAC.Operand -> CG ()
 genMulOp t a b
@@ -842,26 +807,34 @@ emitMulByConst k v = do
   emitMulLibraryAfterLoads
 
 emitMulLibraryAfterLoads :: CG ()
-emitMulLibraryAfterLoads = do
-  emitL "li r1, __mul"
-  emitL "jalr r5, r1"
+emitMulLibraryAfterLoads = emitLibrcc "__mul"
 
--- Unsigned division: r3=|n|, r2=|d| → r1=quotient, r4=remainder.
--- r2 and r3 are unchanged by this routine.
-emitUDiv :: CG ()
-emitUDiv = do
-  lLoop <- freshLbl "udiv_loop"
-  lEnd  <- freshLbl "udiv_end"
-  emitL "and r4, r3, r7"            -- r4 = |n| (working remainder)
-  emitL "and r1, r0, r0"            -- r1 = 0  (quotient)
-  emit (lLoop <> ":")
-  emitL "sub r0, r4, r2"            -- T=1 iff r4 < r2 (done)
-  emitL ("bt " <> lEnd)
-  emitL "sub r4, r4, r2"            -- r4 -= |d|
-  emitL "addi r1, 1"
-  emitL "sub r0, r0, r7"            -- T=1 unconditionally
-  emitL ("bt " <> lLoop)
-  emit (lEnd <> ":")
+-- | Integer divide/modulo: const-fold, unsigned-by-power-of-two, else librcc (@jalr@).
+genDivModOp :: TAC.Temp -> TAC.BinOp -> TAC.Operand -> TAC.Operand -> CG ()
+genDivModOp t op a b =
+  case foldConstDivMod op a b of
+    Just cg -> do cg; storeRegToTemp 2 t
+    Nothing ->
+      case tryUnsignedDivModPow2 op a b of
+        Just cg -> do cg; storeRegToTemp 2 t
+        Nothing -> do
+          loadOpInto 3 a
+          loadOpInto 2 b
+          emitDivModLibrary op
+          storeRegToTemp 2 t
+
+emitDivModLibrary :: TAC.BinOp -> CG ()
+emitDivModLibrary op = case op of
+  TAC.TDiv  -> emitLibrcc "__div"
+  TAC.TMod  -> emitLibrcc "__mod"
+  TAC.TUDiv -> emitLibrcc "__udiv"
+  TAC.TUMod -> emitLibrcc "__umod"
+  _         -> error "RCC.Codegen.emitDivModLibrary: expected div/mod opcode"
+
+emitLibrcc :: Text -> CG ()
+emitLibrcc sym = do
+  emitL ("li r1, " <> sym)
+  emitL "jalr r5, r1"
 
 -- Fresh local label within a procedure (uses cgFuncName for uniqueness).
 freshLbl :: Text -> CG Text

@@ -74,7 +74,7 @@ Array indexing `a[i]` is defined as `*(a + i)`.
 For arrays of structs, element `i` is at `base + i * sizeof(struct S)`. Since there is no
 hardware multiply, the compiler emits a left shift when `sizeof(struct S)` is a power of two,
 and otherwise either strength-reduces small constant factors or calls the **`__mul`** runtime
-in [`lib/__mul.s`](../lib/__mul.s). Prefer power-of-two struct sizes in performance-sensitive code.
+in [`lib/librcc.s`](../lib/librcc.s). Prefer power-of-two struct sizes in performance-sensitive code.
 
 ---
 
@@ -528,10 +528,12 @@ Comments: `//` to end of line; `/* ... */` block (non-nesting).
 
 ## 13. Runtime
 
-**Integer `*`, `/`, and `%`.** Division and modulo expand inline in the code generator.
-Multiplication uses **`lib/__mul.s`** (`__mul`) when neither operand is amenable to cheap
-strength reduction (e.g. multiply by 0/1, by a power of two via shift, or by 3/5/6 via
-shift-and-add); otherwise the product is emitted without a library call.
+**Integer `*`, `/`, and `%`.** Integer multiply and divide/modulo are implemented in
+**`librcc`** ([`lib/librcc.s`](../lib/librcc.s)): symbols **`__mul`**, **`__udiv`**, **`__umod`**, **`__div`**, **`__mod`**.
+The compiler strength-reduces multiplies (e.g. by 0/1, powers of two, or 3/5/6 via shift-and-add),
+constant-folds when both operands are constants, and applies cheap unsigned divide/modulo when the
+divisor is a compile-time power of two; otherwise it emits **`jalr`** to **`librcc`**. Divide-by-zero
+yields **0** (12-bit). Link **`librcc.o`** after **`crt0.o`** and before the user `.o` (see [`run_tests.py`](../run_tests.py)).
 
 The compiler emits calls to the symbols below when needed; assembly sources live in `lib/`.
 The compiler output `%include`s `lib/crt0.s` for `_start`. Soft-float and string helpers are
@@ -542,7 +544,11 @@ The compiler output `%include`s `lib/crt0.s` for `_start`. Soft-float and string
 | Symbol     | Signature                                        | Description                              | Source                |
 |------------|--------------------------------------------------|------------------------------------------|-----------------------|
 | `_start`   | —                                                | Entry point; inits stack, calls `main`   | `lib/crt0.s` (auto-included) |
-| `__mul`    | `(int a, int b) int` (args **r3**, **r2**; product **r2**) | 12-bit multiply (wraps like repeated `add`) | [`lib/__mul.s`](../lib/__mul.s) (link with `hsld`; see `run_tests.py`) |
+| `__mul`    | `(int a, int b) int` (args **r3**, **r2**; product **r2**) | 12-bit multiply (wraps like repeated `add`) | [`lib/librcc.s`](../lib/librcc.s) |
+| `__udiv`   | `(unsigned a, unsigned b) unsigned` (args **r3**, **r2**; quotient **r2**) | Unsigned divide; divide-by-zero → 0 | [`lib/librcc.s`](../lib/librcc.s) |
+| `__umod`   | `(unsigned a, unsigned b) unsigned` (remainder **r2**) | Unsigned remainder; divide-by-zero → 0 | [`lib/librcc.s`](../lib/librcc.s) |
+| `__div`    | `(int a, int b) int` (quotient **r2**; trunc toward zero) | Signed divide; divide-by-zero → 0 | [`lib/librcc.s`](../lib/librcc.s) |
+| `__mod`    | `(int a, int b) int` (remainder **r2**; matches **C** `%` with truncating `/`) | Signed remainder; divide-by-zero → 0 | [`lib/librcc.s`](../lib/librcc.s) |
 | `__fadd`   | `(float *dst, float *a, float *b)`               | `*dst = *a + *b`                         | `lib/float/__fadd.s`  |
 | `__fsub`   | `(float *dst, float *a, float *b)`               | `*dst = *a − *b`                         | `lib/float/__fsub.s`  |
 | `__fmul`   | `(float *dst, float *a, float *b)`               | `*dst = *a × *b`                         | `lib/float/__fmul.s`  |

@@ -7,6 +7,8 @@
 
     .global main
 main:
+    subi r6, 1
+    swr r5, r6
     subi r6, 9
 _B_main_0:
     and r2, r0, r0
@@ -51,41 +53,8 @@ _B_main_2:
     addi r1, 4
     lwr r3, r1
     li r2, 2
-    sub r0, r0, r2
-    bf _L_main_mod_done_47
-    and r1, r3, r7
-    rol r1, r1
-    rol r4, r0
-    subi r6, 1
-    swr r4, r6
-    sub r0, r0, r4
-    bf _L_main_mod_npos_47
-    sub r3, r0, r3
-_L_main_mod_npos_47:
-    and r1, r2, r7
-    rol r1, r1
-    bf _L_main_mod_dpos_47
-    sub r2, r0, r2
-_L_main_mod_dpos_47:
-    and r4, r3, r7
-    and r1, r0, r0
-_L_main_udiv_loop_63:
-    sub r0, r4, r2
-    bt _L_main_udiv_end_63
-    sub r4, r4, r2
-    addi r1, 1
-    sub r0, r0, r7
-    bt _L_main_udiv_loop_63
-_L_main_udiv_end_63:
-    and r1, r6, r7
-    lwr r1, r1
-    addi r6, 1
-    sub r0, r0, r1
-    bf _L_main_mod_rpos_47
-    sub r4, r0, r4
-_L_main_mod_rpos_47:
-    and r2, r4, r7
-_L_main_mod_done_47:
+    li r1, __mod
+    jalr r5, r1
     and r1, r6, r7
     addi r1, 5
     swr r2, r1
@@ -96,9 +65,9 @@ _L_main_mod_done_47:
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_main_ne_91
+    bf _L_main_ne_60
     li r2, 0
-_L_main_ne_91:
+_L_main_ne_60:
     and r1, r6, r7
     addi r1, 6
     swr r2, r1
@@ -169,4 +138,6 @@ _B_main_10:
     bf _B_main_1
 _epi_main:
     addi r6, 9
+    lwr r5, r6
+    addi r6, 1
     jalr r0, r5

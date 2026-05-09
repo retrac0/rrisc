@@ -11,6 +11,8 @@ a:
 
     .global bsrch
 bsrch:
+    subi r6, 1
+    swr r5, r6
     subi r6, 21
     and r1, r6, r7
     swr r2, r1
@@ -47,9 +49,9 @@ _B_bsrch_1:
     add r2, r2, r1
     sub r1, r2, r3
     li r2, 1
-    bf _L_bsrch_ne_38
+    bf _L_bsrch_ne_40
     li r2, 0
-_L_bsrch_ne_38:
+_L_bsrch_ne_40:
     and r1, r6, r7
     addi r1, 5
     swr r2, r1
@@ -75,54 +77,8 @@ _B_bsrch_2:
     addi r1, 8
     lwr r3, r1
     li r2, 2
-    sub r0, r0, r2
-    bf _L_bsrch_div_done_67
-    and r1, r3, r7
-    rol r1, r1
-    rol r4, r0
-    subi r6, 1
-    swr r4, r6
-    and r1, r2, r7
-    rol r1, r1
-    rol r4, r0
-    subi r6, 1
-    swr r4, r6
-    and r1, r6, r7
-    addi r1, 1
-    lwr r4, r1
-    sub r0, r0, r4
-    bf _L_bsrch_div_npos_67
-    sub r3, r0, r3
-_L_bsrch_div_npos_67:
-    and r1, r6, r7
-    lwr r4, r1
-    sub r0, r0, r4
-    bf _L_bsrch_div_dpos_67
-    sub r2, r0, r2
-_L_bsrch_div_dpos_67:
-    and r4, r3, r7
-    and r1, r0, r0
-_L_bsrch_udiv_loop_92:
-    sub r0, r4, r2
-    bt _L_bsrch_udiv_end_92
-    sub r4, r4, r2
-    addi r1, 1
-    sub r0, r0, r7
-    bt _L_bsrch_udiv_loop_92
-_L_bsrch_udiv_end_92:
-    and r2, r1, r7
-    and r1, r6, r7
-    lwr r1, r1
-    addi r6, 1
-    and r4, r6, r7
-    lwr r4, r4
-    addi r6, 1
-    add r1, r1, r4
-    subi r1, 1
-    sub r0, r0, r1
-    bt _L_bsrch_div_done_67
-    sub r2, r0, r2
-_L_bsrch_div_done_67:
+    li r1, __div
+    jalr r5, r1
     and r1, r6, r7
     addi r1, 9
     swr r2, r1
@@ -151,9 +107,9 @@ _L_bsrch_div_done_67:
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_bsrch_ne_142
+    bf _L_bsrch_ne_98
     li r2, 0
-_L_bsrch_ne_142:
+_L_bsrch_ne_98:
     and r1, r6, r7
     addi r1, 12
     swr r2, r1
@@ -305,6 +261,8 @@ _B_bsrch_15:
     bf _B_bsrch_9
 _epi_bsrch:
     addi r6, 21
+    lwr r5, r6
+    addi r6, 1
     jalr r0, r5
 
     .global main

@@ -10,7 +10,7 @@ supporting `.s` files; **relocatable** builds use **`hsasm --emit-obj`** +
 ```
 lib/
   crt0.s              # auto-included by rcc; sets r6, calls main, halts
-  __mul.s             # integer multiply helper (`jalr __mul`); link alongside rcc output
+  librcc.s            # compiler integer runtime: __mul, __udiv, __umod, __div, __mod (jalr); link .o after crt0; see tests/librcc/
   itoa.s              # signed 12-bit itoa (asm-callable; used by rlibc.h
                       # and by lib/float/__ftoa.s)
   rlibc.h             # general-purpose C runtime (I/O, mem*, str*, atoi/itoa/

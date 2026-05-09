@@ -47,7 +47,7 @@ Stable automation for tests and scripts lives in [`rrisc_toolchain.py`](../rrisc
 
 1. **Emitted prelude** — `rcc` prints `%define RCC_CODE_BASE`, `RCC_DATA_BASE`, and `RCC_STACK_TOP` (octal) near the top of generated assembly. The test harness and [`lib/crt0.s`](../lib/crt0.s) rely on these names.
 2. **Sections** — Generated code uses `.section text` and, when needed, `.section data`. The linker places sections according to `hsld` options (e.g. `--code-base`, `--data-base`) and [`defaultLinkOptions`](../hstools/src/RRISC/Link.hs).
-3. **Startup** — Typical executables assemble **`crt0.o`** (stack init from `RCC_STACK_TOP`) and the compiler-produced `.o`, then link with `hsld` using bases parsed from the `%define` lines (see [`run_tests.py`](../run_tests.py)).
+3. **Startup** — Typical executables assemble **`crt0.o`** (stack init from `RCC_STACK_TOP`), **`librcc.o`** from [`lib/librcc.s`](../lib/librcc.s) (integer `__mul` / divide / modulo helpers used by `rcc`), then the compiler-produced `.o`, and link with `hsld` in that order using bases parsed from the `%define` lines (see [`run_tests.py`](../run_tests.py)). Soft-float stays separate under `lib/float/`.
 4. **Symbols** — Cross-file visibility uses `.global` / extern semantics documented in [`compiler/MANUAL.md`](../compiler/MANUAL.md).
 
 ## Object file format versioning
@@ -59,9 +59,11 @@ Stable automation for tests and scripts lives in [`rrisc_toolchain.py`](../rrisc
 
 - **CI** (`.github/workflows/ci.yml`) runs `cabal build`, `make sim2`, `cabal test` for Haskell suites, and:
 
-  `python3 run_tests.py --only rcc,asm,toolchain --assemblers hs --simulators py`
+  `python3 run_tests.py --only rcc,asm,toolchain,librcc --assemblers hs --simulators py`
 
   That tier is the **required** gate: Haskell assembler, Python simulator only (no `rsim`/`sim2` requirement in CI).
+
+- The **`librcc`** suite runs [`tests/librcc/run_librcc_tests.py`](../tests/librcc/run_librcc_tests.py): small linked programs call **`__mul`** / **`__udiv`** / **`__umod`** / **`__div`** / **`__mod`** from [`lib/librcc.s`](../lib/librcc.s) and assert **r2** at halt (no `rcc` required).
 
 - The **`toolchain`** suite exercises [`toolchain_checks.py`](../toolchain_checks.py) on [`tests/toolchain/*.s`](../tests/toolchain/) only. Those files intentionally omit ``.org`` so the flat ``hsasm`` image matches a single-input ``hsld`` link (text placed at address 0). Programs that set ``.org 0o1000`` (most examples) produce a padded flat ``.bin`` that is **not** byte-identical to the packed link of the same ``.o``.
 
