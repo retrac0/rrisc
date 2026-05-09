@@ -158,20 +158,23 @@ _L_main_div_done_100:
     clrt
     bf _B_main_12
 _B_main_5:
-    li r3, 3
     and r1, r6, r7
     addi r1, 3
-    lwr r2, r1
-    and r1, r0, r0
-_L_main_mul_loop_158:
+    lwr r3, r1
+    and r4, r3, r7
+    li r2, 1
+    and r2, r2, r2
+_L_main_shift_loop_159:
     sub r0, r0, r2
-    bf _L_main_mul_end_158
-    add r1, r1, r3
+    bf _L_main_shift_end_159
+    clrt
+    rol r3, r3
     subi r2, 1
     sub r0, r0, r7
-    bt _L_main_mul_loop_158
-_L_main_mul_end_158:
-    and r2, r1, r7
+    bt _L_main_shift_loop_159
+_L_main_shift_end_159:
+    and r2, r3, r7
+    add r2, r4, r2
     and r1, r6, r7
     addi r1, 7
     swr r2, r1

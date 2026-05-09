@@ -42,17 +42,18 @@ _B_main_2:
     and r1, r6, r7
     addi r1, 3
     lwr r3, r1
-    li r2, 2
-    and r1, r0, r0
-_L_main_mul_loop_39:
+    li r2, 1
+    and r2, r2, r2
+_L_main_shift_loop_39:
     sub r0, r0, r2
-    bf _L_main_mul_end_39
-    add r1, r1, r3
+    bf _L_main_shift_end_39
+    clrt
+    rol r3, r3
     subi r2, 1
     sub r0, r0, r7
-    bt _L_main_mul_loop_39
-_L_main_mul_end_39:
-    and r2, r1, r7
+    bt _L_main_shift_loop_39
+_L_main_shift_end_39:
+    and r2, r3, r7
     and r1, r6, r7
     addi r1, 4
     swr r2, r1

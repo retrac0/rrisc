@@ -64,16 +64,8 @@ _B_pw_3:
     and r1, r6, r7
     addi r1, 4
     lwr r2, r1
-    and r1, r0, r0
-_L_pw_mul_loop_60:
-    sub r0, r0, r2
-    bf _L_pw_mul_end_60
-    add r1, r1, r3
-    subi r2, 1
-    sub r0, r0, r7
-    bt _L_pw_mul_loop_60
-_L_pw_mul_end_60:
-    and r2, r1, r7
+    li r1, __mul
+    jalr r5, r1
     and r1, r6, r7
     addi r1, 5
     swr r2, r1

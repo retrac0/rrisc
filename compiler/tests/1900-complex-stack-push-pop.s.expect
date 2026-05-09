@@ -151,16 +151,8 @@ _B_main_0:
     addi r1, 4
     lwr r3, r1
     li r2, 10
-    and r1, r0, r0
-_L_main_mul_loop_43:
-    sub r0, r0, r2
-    bf _L_main_mul_end_43
-    add r1, r1, r3
-    subi r2, 1
-    sub r0, r0, r7
-    bt _L_main_mul_loop_43
-_L_main_mul_end_43:
-    and r2, r1, r7
+    li r1, __mul
+    jalr r5, r1
     and r1, r6, r7
     addi r1, 6
     swr r2, r1
@@ -178,16 +170,8 @@ _L_main_mul_end_43:
     addi r1, 5
     lwr r3, r1
     li r2, 100
-    and r1, r0, r0
-_L_main_mul_loop_70:
-    sub r0, r0, r2
-    bf _L_main_mul_end_70
-    add r1, r1, r3
-    subi r2, 1
-    sub r0, r0, r7
-    bt _L_main_mul_loop_70
-_L_main_mul_end_70:
-    and r2, r1, r7
+    li r1, __mul
+    jalr r5, r1
     and r1, r6, r7
     addi r1, 8
     swr r2, r1

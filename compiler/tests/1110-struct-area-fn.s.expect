@@ -7,6 +7,8 @@
 
     .global area
 area:
+    subi r6, 1
+    swr r5, r6
     subi r6, 5
     and r1, r6, r7
     swr r2, r1
@@ -36,16 +38,8 @@ _B_area_0:
     and r1, r6, r7
     addi r1, 3
     lwr r2, r1
-    and r1, r0, r0
-_L_area_mul_loop_32:
-    sub r0, r0, r2
-    bf _L_area_mul_end_32
-    add r1, r1, r3
-    subi r2, 1
-    sub r0, r0, r7
-    bt _L_area_mul_loop_32
-_L_area_mul_end_32:
-    and r2, r1, r7
+    li r1, __mul
+    jalr r5, r1
     and r1, r6, r7
     addi r1, 4
     swr r2, r1
@@ -56,6 +50,8 @@ _L_area_mul_end_32:
     bf _epi_area
 _epi_area:
     addi r6, 5
+    lwr r5, r6
+    addi r6, 1
     jalr r0, r5
 
     .global main

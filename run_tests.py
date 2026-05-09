@@ -411,10 +411,18 @@ def link_rcc_asm_with_crt0(
     )
     if aru.returncode != 0:
         return False, "hsasm (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""), "user.o"
+    mul_s = cfg.root / "lib" / "__mul.s"
+    mul_o = user_o.parent / (user_o.stem + "_mul.o")
+    arm = run_capture(
+        hsasm_emit_obj_cmd(cfg.hsasm_path, mul_s, mul_o, include_dirs=[lib]),
+        cwd=cfg.root,
+    )
+    if arm.returncode != 0:
+        return False, "hsasm (__mul.s) failed:\n" + (arm.stderr or arm.stdout or ""), "mul.o"
     arl = run_capture(
         hsld_cmd(
             cfg.hsld_path,
-            [crt0_o, user_o],
+            [crt0_o, mul_o, user_o],
             bin_path,
             code_base=code_base,
             data_base=data_base,

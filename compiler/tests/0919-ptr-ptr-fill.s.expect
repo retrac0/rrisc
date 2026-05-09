@@ -7,6 +7,8 @@
 
     .global main
 main:
+    subi r6, 1
+    swr r5, r6
     subi r6, 15
 _B_main_0:
     and r1, r6, r7
@@ -47,16 +49,8 @@ _B_main_2:
     and r1, r6, r7
     addi r1, 8
     lwr r2, r1
-    and r1, r0, r0
-_L_main_mul_loop_43:
-    sub r0, r0, r2
-    bf _L_main_mul_end_43
-    add r1, r1, r3
-    subi r2, 1
-    sub r0, r0, r7
-    bt _L_main_mul_loop_43
-_L_main_mul_end_43:
-    and r2, r1, r7
+    li r1, __mul
+    jalr r5, r1
     and r1, r6, r7
     addi r1, 9
     swr r2, r1
@@ -140,4 +134,6 @@ _B_main_7:
     bf _B_main_1
 _epi_main:
     addi r6, 15
+    lwr r5, r6
+    addi r6, 1
     jalr r0, r5

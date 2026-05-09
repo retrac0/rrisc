@@ -73,8 +73,8 @@ p + 2        // address of arr[2], i.e. &arr + 2
 Array indexing `a[i]` is defined as `*(a + i)`.
 For arrays of structs, element `i` is at `base + i * sizeof(struct S)`. Since there is no
 hardware multiply, the compiler emits a left shift when `sizeof(struct S)` is a power of two,
-and a software multiply loop in the generated code otherwise (no separate `__mul` library
-symbol). Prefer power-of-two struct sizes in performance-sensitive code.
+and otherwise either strength-reduces small constant factors or calls the **`__mul`** runtime
+in [`lib/__mul.s`](../lib/__mul.s). Prefer power-of-two struct sizes in performance-sensitive code.
 
 ---
 
@@ -527,9 +527,10 @@ Comments: `//` to end of line; `/* ... */` block (non-nesting).
 
 ## 13. Runtime
 
-**Integer `*`, `/`, and `%`.** These operators compile to instruction sequences in the
-generated assembly (inline multiply loop, unsigned/signed divide and modulo routines in the
-code generator). There are **no** integer `__mul` / `__div` / `__mod` runtime symbols to link.
+**Integer `*`, `/`, and `%`.** Division and modulo expand inline in the code generator.
+Multiplication uses **`lib/__mul.s`** (`__mul`) when neither operand is amenable to cheap
+strength reduction (e.g. multiply by 0/1, by a power of two via shift, or by 3/5/6 via
+shift-and-add); otherwise the product is emitted without a library call.
 
 The compiler emits calls to the symbols below when needed; assembly sources live in `lib/`.
 The compiler output `%include`s `lib/crt0.s` for `_start`. Soft-float and string helpers are
@@ -540,6 +541,7 @@ The compiler output `%include`s `lib/crt0.s` for `_start`. Soft-float and string
 | Symbol     | Signature                                        | Description                              | Source                |
 |------------|--------------------------------------------------|------------------------------------------|-----------------------|
 | `_start`   | —                                                | Entry point; inits stack, calls `main`   | `lib/crt0.s` (auto-included) |
+| `__mul`    | `(int a, int b) int` (args **r3**, **r2**; product **r2**) | 12-bit multiply (wraps like repeated `add`) | [`lib/__mul.s`](../lib/__mul.s) (link with `hsld`; see `run_tests.py`) |
 | `__fadd`   | `(float *dst, float *a, float *b)`               | `*dst = *a + *b`                         | `lib/float/__fadd.s`  |
 | `__fsub`   | `(float *dst, float *a, float *b)`               | `*dst = *a − *b`                         | `lib/float/__fsub.s`  |
 | `__fmul`   | `(float *dst, float *a, float *b)`               | `*dst = *a × *b`                         | `lib/float/__fmul.s`  |

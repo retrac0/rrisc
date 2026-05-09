@@ -160,7 +160,9 @@ genProc p =
       epi     = "_epi_" <> TAC.procName p
       initSt  = CGState [] slots epi (TAC.procName p)
       numStack = max 0 (length (TAC.procParams p) - 3)
-      isLeaf   = not (any isCallInstr (TAC.procInstrs p))
+      isLeaf   =
+        not (any isCallInstr (TAC.procInstrs p))
+          && not (procUsesRuntimeMul (TAC.procInstrs p))
       usedTemps = collectUsedTemps (TAC.procInstrs p)
       action  = do
         emit ""
@@ -206,6 +208,23 @@ operandLocal _                  = []
 isCallInstr :: TAC.Instr -> Bool
 isCallInstr (TAC.ICall _ _ _) = True
 isCallInstr _                 = False
+
+foldConstMulPure :: TAC.Operand -> TAC.Operand -> Bool
+foldConstMulPure (TAC.OConst _) (TAC.OConst _) = True
+foldConstMulPure _ _                           = False
+
+-- | True when integer multiply lowers to @jalr __mul@ (needs saved r5 like any call).
+procUsesRuntimeMul :: [TAC.Instr] -> Bool
+procUsesRuntimeMul = any $ \instr -> case instr of
+  TAC.IBinOp _ TAC.TMul a b -> mulNeedsRuntimeLib a b
+  _                         -> False
+
+mulNeedsRuntimeLib :: TAC.Operand -> TAC.Operand -> Bool
+mulNeedsRuntimeLib a b
+  | isZeroMulOp a || isZeroMulOp b = False
+  | foldConstMulPure a b           = False
+  | Just (k, _) <- mulConstFactor a b, mulByConstInline k = False
+  | otherwise                      = True
 
 collectUsedTemps :: [TAC.Instr] -> Set.Set TAC.Temp
 collectUsedTemps instrs =
@@ -360,6 +379,8 @@ genInstr (TAC.IAssign t op) = do
   loadOpInto 2 op
   storeRegToTemp 2 t
 
+genInstr (TAC.IBinOp t op a b)
+  | op == TAC.TMul = genMulOp t a b
 genInstr (TAC.IBinOp t op a b) = do
   loadOpInto 3 a       -- left in r3
   loadOpInto 2 b       -- right in r2
@@ -533,8 +554,7 @@ emitBinOp TAC.TBxor = do
 emitBinOp TAC.TShl  = emitShift True  True   -- logical left
 emitBinOp TAC.TShr  = emitShift False False  -- arithmetic right (sign-extending)
 emitBinOp TAC.TUShr = emitShift False True   -- logical right (unsigned)
-emitBinOp TAC.TMul = do
-  emitMul
+emitBinOp TAC.TMul = emitMulLibraryAfterLoads -- r3=a, r2=b already loaded (rare direct path)
 emitBinOp TAC.TDiv = do
   lDivDone <- freshLbl "div_done"
   lNPos    <- freshLbl "div_npos"
@@ -740,22 +760,91 @@ emitShift isLeft isLogical = do
   emit (lEnd <> ":")
   emitL "and r2, r3, r7"
 
--- Multiply by repeated addition (uses r1 as accumulator).
--- Inputs: r3 = a, r2 = b. Output: r2 = a*b.
-emitMul :: CG ()
-emitMul = do
-  lLoop <- freshLbl "mul_loop"
-  lEnd  <- freshLbl "mul_end"
-  emitL "and r1, r0, r0"            -- r1 = 0 (accumulator)
-  emit (lLoop <> ":")
-  emitL "sub r0, r0, r2"            -- T = 1 iff b != 0
-  emitL ("bf " <> lEnd)
-  emitL "add r1, r1, r3"
-  emitL "subi r2, 1"
-  emitL "sub r0, r0, r7"
-  emitL ("bt " <> lLoop)
-  emit (lEnd <> ":")
-  emitL "and r2, r1, r7"
+-- ---------------------------------------------------------------------------
+-- Integer multiply: strength-reduce small / power-of-two constants; otherwise
+-- call runtime __mul (lib/__mul.s).
+
+genMulOp :: TAC.Temp -> TAC.Operand -> TAC.Operand -> CG ()
+genMulOp t a b
+  | isZeroMulOp a || isZeroMulOp b = do emitLoadConst 2 0; storeRegToTemp 2 t
+genMulOp t a b =
+  case foldConstMul a b of
+    Just cg -> do cg; storeRegToTemp 2 t
+    Nothing ->
+      case mulConstFactor a b of
+        Just (k, varOp) | mulByConstInline k ->
+          do emitMulByConst k varOp; storeRegToTemp 2 t
+        _ -> do
+          loadOpInto 3 a
+          loadOpInto 2 b
+          emitMulLibraryAfterLoads
+          storeRegToTemp 2 t
+
+isZeroMulOp :: TAC.Operand -> Bool
+isZeroMulOp (TAC.OConst k) = (k .&. 0xFFF) == 0
+isZeroMulOp _              = False
+
+foldConstMul :: TAC.Operand -> TAC.Operand -> Maybe (CG ())
+foldConstMul (TAC.OConst ka) (TAC.OConst kb) =
+  Just $ emitLoadConst 2 ((ka * kb) .&. 0xFFF)
+foldConstMul _ _ = Nothing
+
+
+mulConstFactor :: TAC.Operand -> TAC.Operand -> Maybe (Int, TAC.Operand)
+mulConstFactor (TAC.OConst k) rhs | k /= 0 = Just (k .&. 0xFFF, rhs)
+mulConstFactor lhs (TAC.OConst k) | k /= 0 = Just (k .&. 0xFFF, lhs)
+mulConstFactor _ _ = Nothing
+
+mulByConstInline :: Int -> Bool
+mulByConstInline k =
+  k == 1 || isPow2 k || k == 3 || k == 5 || k == 6
+
+isPow2 :: Int -> Bool
+isPow2 k = k > 0 && (k .&. (k - 1)) == 0
+
+log2Pow2 :: Int -> Int
+log2Pow2 k = go 0 k
+  where
+    go n 1 = n
+    go n x = go (n + 1) (x `shiftR` 1)
+
+emitMulByConst :: Int -> TAC.Operand -> CG ()
+emitMulByConst 1 v = loadOpInto 2 v
+emitMulByConst k v | isPow2 k = do
+  loadOpInto 3 v
+  emitLoadConst 2 (log2Pow2 k)
+  emitShift True True
+emitMulByConst 3 v = do
+  loadOpInto 3 v
+  emitL "and r4, r3, r7"
+  emitLoadConst 2 1
+  emitShift True True
+  emitL "add r2, r4, r2"
+emitMulByConst 5 v = do
+  loadOpInto 3 v
+  emitL "and r4, r3, r7"
+  emitLoadConst 2 2
+  emitShift True True
+  emitL "add r2, r4, r2"
+emitMulByConst 6 v = do
+  loadOpInto 3 v
+  emitL "and r4, r3, r7"
+  emitLoadConst 2 2
+  emitShift True True
+  emitL "and r1, r2, r7"
+  loadOpInto 3 v
+  emitLoadConst 2 1
+  emitShift True True
+  emitL "add r2, r1, r2"
+emitMulByConst k v = do
+  loadOpInto 3 v
+  emitLoadConst 2 k
+  emitMulLibraryAfterLoads
+
+emitMulLibraryAfterLoads :: CG ()
+emitMulLibraryAfterLoads = do
+  emitL "li r1, __mul"
+  emitL "jalr r5, r1"
 
 -- Unsigned division: r3=|n|, r2=|d| → r1=quotient, r4=remainder.
 -- r2 and r3 are unchanged by this routine.

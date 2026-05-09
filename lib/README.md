@@ -1,15 +1,16 @@
 # `lib/` — RRISC runtime, helpers, and headers
 
 Everything the C compiler (`rcc`) needs at run time and everything that makes
-hand-written RRISC assembly pleasant lives here. There is no linker — the
-assembler resolves symbols by `%include`-ing the relevant `.s` files, and the
-compiler emits those `%include` directives into its output.
+hand-written RRISC assembly pleasant lives here. Flat builds often `%include`
+supporting `.s` files; **relocatable** builds use **`hsasm --emit-obj`** +
+**`hsld`**, which resolves symbols across objects (see [`docs/toolchain.md`](../docs/toolchain.md)).
 
 ## Layout
 
 ```
 lib/
   crt0.s              # auto-included by rcc; sets r6, calls main, halts
+  __mul.s             # integer multiply helper (`jalr __mul`); link alongside rcc output
   itoa.s              # signed 12-bit itoa (asm-callable; used by rlibc.h
                       # and by lib/float/__ftoa.s)
   rlibc.h             # general-purpose C runtime (I/O, mem*, str*, atoi/itoa/
