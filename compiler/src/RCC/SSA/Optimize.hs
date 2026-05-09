@@ -6,11 +6,20 @@ module RCC.SSA.Optimize
   , sccpProg
   , copyPropProg
   , branchThreadProg
+  , phiSimplifyProg
+  , mergeBlocksProg
+  , foldEmptyBlocksProg
+  , cfgShrinkProg
+  , pureCSEProg
+  , strengthReduceMulProg
+  , tailMergeProg
+  , dispatchBalanceProg
   , elimFloatCopiesProg
   , dedupeFloatRoDataProg
   , eliminateDeadCodeProg
   ) where
 
+import Data.Either (partitionEithers)
 import Data.List (foldl', nub, sort)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -155,6 +164,227 @@ normalizeCFGProc sp =
 
 normalizeCFGProg :: SP.SSAProg -> (SP.SSAProg, Bool)
 normalizeCFGProg = mapProc normalizeCFGProc
+
+-- ---------------------------------------------------------------------------
+-- Phi simplification (trivial phis -> copy defs)
+
+isPhi :: S.Instr -> Bool
+isPhi (S.IPhi _ _) = True
+isPhi _             = False
+
+phiSimplifyBlock :: S.Block -> S.Block
+phiSimplifyBlock b =
+  let (phis0, rest) = span isPhi (S.bInstrs b)
+      psRaw = S.bPreds b
+      psSet = Set.fromList psRaw
+      predsUnique = nub psRaw
+      simplifyPhi :: S.Instr -> Either S.Instr S.Instr
+      simplifyPhi (S.IPhi nm edges) =
+        let edgesF = [ (p, v) | (p, v) <- edges, Set.member p psSet ]
+            vals = nub [ v | (_, v) <- edgesF ]
+            oneVal =
+              case vals of
+                [v] -> Just v
+                _ ->
+                  case predsUnique of
+                    [p0] ->
+                      case [ v | (p, v) <- edgesF, p == p0 ] of
+                        [v] -> Just v
+                        _ -> Nothing
+                    _ -> Nothing
+         in case oneVal of
+              Just v -> Right (S.IDef nm (S.OCopy v))
+              Nothing -> Left (S.IPhi nm edgesF)
+      simplifyPhi i = Left i
+      (phis1, newDefs) = partitionEithers (map simplifyPhi phis0)
+   in b { S.bInstrs = phis1 ++ newDefs ++ rest }
+
+phiSimplifyFunc :: S.Func -> (S.Func, Bool)
+phiSimplifyFunc f =
+  let bm0 = S.fBlocks f
+      bm1 = Map.map phiSimplifyBlock bm0
+      changed = bm1 /= bm0
+      bm2 = recomputePredSucc bm1
+   in (f { S.fBlocks = bm2 }, changed)
+
+phiSimplifyProc :: SP.SSAProc -> (SP.SSAProc, Bool)
+phiSimplifyProc sp =
+  let (f', ch) = phiSimplifyFunc (SP.spFunc sp)
+   in (sp { SP.spFunc = f' }, ch)
+
+phiSimplifyProg :: SP.SSAProg -> (SP.SSAProg, Bool)
+phiSimplifyProg = mapProc phiSimplifyProc
+
+-- ---------------------------------------------------------------------------
+-- CFG merge: A ends TGoto B, preds(B)==[A], B has no phis -> splice A before B
+
+substBlockId :: S.BlockId -> S.BlockId -> S.BlockId -> S.BlockId
+substBlockId old new bid | bid == old = new
+substBlockId _ _ bid = bid
+
+substTermBid :: S.BlockId -> S.BlockId -> S.Term -> S.Term
+substTermBid old new t =
+  let sb = substBlockId old new
+   in case t of
+        S.TGoto x -> S.TGoto (sb x)
+        S.TBr v x y -> S.TBr v (sb x) (sb y)
+        S.TBrCmp inv op a b x y -> S.TBrCmp inv op a b (sb x) (sb y)
+        S.TReturn mv -> S.TReturn mv
+
+substPhiEdgesBid :: S.BlockId -> S.BlockId -> S.Instr -> S.Instr
+substPhiEdgesBid old new i =
+  case i of
+    S.IPhi nm edges -> S.IPhi nm [ (substBlockId old new p, v) | (p, v) <- edges ]
+    _ -> i
+
+substInstrsBid :: S.BlockId -> S.BlockId -> [S.Instr] -> [S.Instr]
+substInstrsBid old new = map (substPhiEdgesBid old new)
+
+mergeAdjacentBlocksOnce :: S.Func -> (S.Func, Bool)
+mergeAdjacentBlocksOnce f =
+  let bm = S.fBlocks f
+      entry = S.fEntry f
+      -- Find A such that term(A)=TGoto B, preds(B)=[A], B has no leading phis
+      candidates =
+        [ (a, b)
+        | (a, ba) <- Map.toList bm
+        , S.TGoto b <- [S.bTerm ba]
+        , b /= a
+        , Just bb <- [Map.lookup b bm]
+        , nub (S.bPreds bb) == [a]
+        , not (any isPhi (S.bInstrs bb))
+        ]
+   in case candidates of
+        [] -> (f, False)
+        ((a, b) : _) ->
+          let ba = bm Map.! a
+              bb = bm Map.! b
+              mergedInstrs = S.bInstrs ba ++ S.bInstrs bb
+              merged =
+                bb
+                  { S.bInstrs = mergedInstrs
+                  , S.bTerm = S.bTerm bb
+                  , S.bPreds = S.bPreds ba
+                  }
+              bmDelA = Map.delete a (Map.insert b merged bm)
+              rewriteBlk blk =
+                blk
+                  { S.bInstrs = substInstrsBid a b (S.bInstrs blk)
+                  , S.bTerm = substTermBid a b (S.bTerm blk)
+                  }
+              bm1 = Map.map rewriteBlk bmDelA
+              bm2 = recomputePredSucc bm1
+              entry' = if entry == a then b else entry
+           in (f { S.fEntry = entry', S.fBlocks = bm2 }, True)
+
+mergeBlocksFunc :: S.Func -> (S.Func, Bool)
+mergeBlocksFunc f =
+  let go g =
+        let (g', ch) = mergeAdjacentBlocksOnce g
+         in if ch then go g' else g'
+      f' = go f
+   in (f', f' /= f)
+
+mergeBlocksProc :: SP.SSAProc -> (SP.SSAProc, Bool)
+mergeBlocksProc sp =
+  let (f', ch) = mergeBlocksFunc (SP.spFunc sp)
+   in (sp { SP.spFunc = f' }, ch)
+
+mergeBlocksProg :: SP.SSAProg -> (SP.SSAProg, Bool)
+mergeBlocksProg = mapProc mergeBlocksProc
+
+-- ---------------------------------------------------------------------------
+-- Fold empty blocks (no instructions, TGoto only)
+
+foldEmptyBlocksOnce :: S.Func -> (S.Func, Bool)
+foldEmptyBlocksOnce f =
+  let bm = S.fBlocks f
+      entry = S.fEntry f
+      empties =
+        [ e
+        | (e, be) <- Map.toList bm
+        , null (S.bInstrs be)
+        , S.TGoto c <- [S.bTerm be]
+        , e /= c
+        ]
+   in case empties of
+        [] -> (f, False)
+        (e : _) ->
+          let be = bm Map.! e
+           in case S.bTerm be of
+                S.TGoto c | c /= e ->
+                  let predsE = S.bPreds be
+                      bmDel = Map.delete e bm
+                      rewritePred blk =
+                        blk { S.bTerm = substTermBid e c (S.bTerm blk) }
+                      bm1 =
+                        foldl'
+                          ( \m p ->
+                              case Map.lookup p m of
+                                Nothing -> m
+                                Just bp -> Map.insert p (rewritePred bp) m
+                          )
+                          bmDel
+                          predsE
+                      fixPhiPreds blk =
+                        blk
+                          { S.bInstrs =
+                              map
+                                ( \instr ->
+                                    case instr of
+                                      S.IPhi nm edges ->
+                                        let edges1 =
+                                              concatMap
+                                                ( \(p, v) ->
+                                                    if p == e
+                                                      then [ (p', v) | p' <- predsE ]
+                                                      else [(p, v)]
+                                                )
+                                                edges
+                                            edges2 = [ (p, v) | (p, v) <- edges1, p /= e ]
+                                         in S.IPhi nm edges2
+                                      x -> x
+                                )
+                                (S.bInstrs blk)
+                          }
+                      bm2 = Map.map fixPhiPreds bm1
+                      bm3 = recomputePredSucc bm2
+                      entry' = if entry == e then c else entry
+                   in (f { S.fEntry = entry', S.fBlocks = bm3 }, True)
+                _ -> (f, False)
+
+foldEmptyBlocksFunc :: S.Func -> (S.Func, Bool)
+foldEmptyBlocksFunc f =
+  let go g =
+        let (g', ch) = foldEmptyBlocksOnce g
+         in if ch then go g' else g'
+      f' = go f
+   in (f', f' /= f)
+
+foldEmptyBlocksProc :: SP.SSAProc -> (SP.SSAProc, Bool)
+foldEmptyBlocksProc sp =
+  let (f', ch) = foldEmptyBlocksFunc (SP.spFunc sp)
+   in (sp { SP.spFunc = f' }, ch)
+
+foldEmptyBlocksProg :: SP.SSAProg -> (SP.SSAProg, Bool)
+foldEmptyBlocksProg = mapProc foldEmptyBlocksProc
+
+-- | Merge linear blocks, fold empty gotos, simplify phis; iterate to fixpoint.
+cfgShrinkProc :: SP.SSAProc -> (SP.SSAProc, Bool)
+cfgShrinkProc sp0 =
+  let step sp =
+        let (sp1, c1) = mergeBlocksProc sp
+            (sp2, c2) = foldEmptyBlocksProc sp1
+            (sp3, c3) = phiSimplifyProc sp2
+         in (sp3, c1 || c2 || c3)
+      go sp =
+        let (spNext, ch) = step sp
+         in if ch then go spNext else sp
+      spDone = go sp0
+   in (spDone, spDone /= sp0)
+
+cfgShrinkProg :: SP.SSAProg -> (SP.SSAProg, Bool)
+cfgShrinkProg = mapProc cfgShrinkProc
 
 -- ---------------------------------------------------------------------------
 -- DCE (SSA liveness, conservative around effects)
@@ -433,6 +663,303 @@ copyPropFunc f =
 
 copyPropProg :: SP.SSAProg -> (SP.SSAProg, Bool)
 copyPropProg = mapProc (\sp -> let (f',ch)=copyPropFunc (SP.spFunc sp) in (sp{SP.spFunc=f'}, ch))
+
+-- ---------------------------------------------------------------------------
+-- Pure common subexpression elimination (per-block + linear EBB chains)
+
+data CanonVal = CVConst Int | CVVar Text | CVAddr TAC.Label | CVLocal TAC.Temp
+  deriving (Eq, Ord)
+
+cv :: S.Value -> CanonVal
+cv (S.VConst n) = CVConst n
+cv (S.VVar t) = CVVar t
+cv (S.VAddr l) = CVAddr l
+cv (S.VLocalAddr t) = CVLocal t
+
+commutativeBin :: Set TAC.BinOp
+commutativeBin =
+  Set.fromList
+    [ TAC.TAdd
+    , TAC.TMul
+    , TAC.TBand
+    , TAC.TBor
+    , TAC.TBxor
+    , TAC.TEq
+    , TAC.TNe
+    ]
+
+data CKey = CKBin TAC.BinOp CanonVal CanonVal | CKUn TAC.UnOp CanonVal | CKCopy CanonVal
+  deriving (Eq, Ord)
+
+ckeyOfPureOp :: S.Op -> Maybe CKey
+ckeyOfPureOp op =
+  case op of
+    S.OCopy v -> Just (CKCopy (cv v))
+    S.OUn u v ->
+      case S.effectOf op of
+        S.Pure -> Just (CKUn u (cv v))
+        _ -> Nothing
+    S.OBin o a b ->
+      case S.effectOf op of
+        S.Pure ->
+          let ca = cv a
+              cb = cv b
+              (ca', cb') =
+                if o `Set.member` commutativeBin && cb < ca
+                  then (cb, ca)
+                  else (ca, cb)
+           in Just (CKBin o ca' cb')
+        _ -> Nothing
+    _ -> Nothing
+
+resolveSubst :: Map Text Text -> Text -> Text
+resolveSubst m x =
+  case Map.lookup x m of
+    Nothing -> x
+    Just y | y == x -> x
+    Just y -> resolveSubst m y
+
+applySubstToValue :: Map Text Text -> S.Value -> S.Value
+applySubstToValue m (S.VVar t) = S.VVar (resolveSubst m t)
+applySubstToValue _ v = v
+
+applySubstToOp :: Map Text Text -> S.Op -> S.Op
+applySubstToOp m op =
+  case op of
+    S.OCopy v -> S.OCopy (applySubstToValue m v)
+    S.OUn u v -> S.OUn u (applySubstToValue m v)
+    S.OBin o a b -> S.OBin o (applySubstToValue m a) (applySubstToValue m b)
+    S.OLoad a -> S.OLoad (applySubstToValue m a)
+    S.OCall fn args -> S.OCall fn (map (applySubstToValue m) args)
+    S.OAsm t -> S.OAsm t
+
+applySubstToInstr :: Map Text Text -> S.Instr -> S.Instr
+applySubstToInstr m i =
+  case i of
+    S.IDef nm op -> S.IDef nm (applySubstToOp m op)
+    S.IPhi nm edges -> S.IPhi nm [ (p, applySubstToValue m v) | (p, v) <- edges ]
+    S.IEffect op -> S.IEffect (applySubstToOp m op)
+    S.IStore a b -> S.IStore (applySubstToValue m a) (applySubstToValue m b)
+    S.IComment x -> S.IComment x
+
+applySubstToTerm :: Map Text Text -> S.Term -> S.Term
+applySubstToTerm m t =
+  case t of
+    S.TGoto b -> S.TGoto b
+    S.TReturn mv -> S.TReturn (fmap (applySubstToValue m) mv)
+    S.TBr v a b -> S.TBr (applySubstToValue m v) a b
+    S.TBrCmp inv op a b x y -> S.TBrCmp inv op (applySubstToValue m a) (applySubstToValue m b) x y
+
+cseProcessInstrList ::
+  Map CKey Text ->
+  [S.Instr] ->
+  ([S.Instr], Map CKey Text, Map Text Text)
+cseProcessInstrList env0 is0 =
+  go env0 Map.empty [] is0
+  where
+    go env sub acc [] = (reverse acc, env, sub)
+    go env sub acc (i : is) =
+      case i of
+        S.IDef nm op
+          | Just k <- ckeyOfPureOp op ->
+              case Map.lookup k env of
+                Just prev ->
+                  go env (Map.insert nm prev sub) acc is
+                Nothing ->
+                  go (Map.insert k nm env) sub (i : acc) is
+        _ -> go env sub (i : acc) is
+
+-- | Block-local CSE only (conservative; EBB chaining can change modulo semantics).
+pureCSEFunc :: S.Func -> (S.Func, Bool)
+pureCSEFunc f =
+  let bm0 = recomputePredSucc (S.fBlocks f)
+      bids = sort (Map.keys bm0)
+      (bm1, subTotal) =
+        foldl'
+          ( \(macc, sacc) bid ->
+              case Map.lookup bid macc of
+                Nothing -> (macc, sacc)
+                Just b ->
+                  let (is', _, subB) = cseProcessInstrList Map.empty (S.bInstrs b)
+                   in (Map.insert bid b { S.bInstrs = is' } macc, Map.union subB sacc)
+          )
+          (bm0, Map.empty)
+          bids
+      bm2 =
+        Map.map
+          ( \b ->
+              b
+                { S.bInstrs = map (applySubstToInstr subTotal) (S.bInstrs b)
+                , S.bTerm = applySubstToTerm subTotal (S.bTerm b)
+                }
+          )
+          bm1
+      bm3 = recomputePredSucc bm2
+   in (f { S.fBlocks = bm3 }, not (Map.null subTotal))
+
+pureCSEProc :: SP.SSAProc -> (SP.SSAProc, Bool)
+pureCSEProc sp =
+  let (f', ch) = pureCSEFunc (SP.spFunc sp)
+   in (sp { SP.spFunc = f' }, ch)
+
+pureCSEProg :: SP.SSAProg -> (SP.SSAProg, Bool)
+pureCSEProg = mapProc pureCSEProc
+
+-- ---------------------------------------------------------------------------
+-- Strength reduction: multiply by power-of-two -> single shift
+
+asMulVarConst :: S.Value -> S.Value -> Maybe (Text, Int)
+asMulVarConst (S.VVar x) (S.VConst k) = Just (x, mask12 k)
+asMulVarConst (S.VConst k) (S.VVar x) = Just (x, mask12 k)
+asMulVarConst _ _ = Nothing
+
+-- | Power-of-two multiply -> single left shift (matches masked shift semantics).
+pow2ShiftAmount :: Int -> Maybe Int
+pow2ShiftAmount k
+  | k <= 0 = Nothing
+  | k .&. (k - 1) /= 0 = Nothing
+  | otherwise = Just (countTrailingZeros k)
+
+strengthReduceMulInInstrs :: [S.Instr] -> ([S.Instr], Bool)
+strengthReduceMulInInstrs [] = ([], False)
+strengthReduceMulInInstrs (i : is) =
+  case i of
+    S.IDef t (S.OBin TAC.TMul a b)
+      | Just (xNm, k) <- asMulVarConst a b
+      , Just sh <- pow2ShiftAmount k ->
+          let def = S.IDef t (S.OBin TAC.TShl (S.VVar xNm) (S.VConst sh))
+              (rest, ch2) = strengthReduceMulInInstrs is
+           in (def : rest, True || ch2)
+    _ ->
+      let (rest, ch) = strengthReduceMulInInstrs is
+       in (i : rest, ch)
+
+strengthReduceMulFunc :: S.Func -> (S.Func, Bool)
+strengthReduceMulFunc f =
+  let bm0 = S.fBlocks f
+      (bm1, ch) =
+        foldl'
+          ( \(macc, chAcc) (bid, b) ->
+              let (is', chB) = strengthReduceMulInInstrs (S.bInstrs b)
+               in (Map.insert bid b { S.bInstrs = is' } macc, chAcc || chB)
+          )
+          (bm0, False)
+          (Map.toList bm0)
+   in (f { S.fBlocks = recomputePredSucc bm1 }, ch)
+
+strengthReduceMulProc :: SP.SSAProc -> (SP.SSAProc, Bool)
+strengthReduceMulProc sp =
+  let (f', ch) = strengthReduceMulFunc (SP.spFunc sp)
+   in (sp { SP.spFunc = f' }, ch)
+
+strengthReduceMulProg :: SP.SSAProg -> (SP.SSAProg, Bool)
+strengthReduceMulProg = mapProc strengthReduceMulProc
+
+-- ---------------------------------------------------------------------------
+-- Tail merge: merge identical basic blocks (same instrs + terminator)
+
+blockFingerprintKey :: S.Block -> Text
+blockFingerprintKey b = T.pack (show (S.bInstrs b, S.bTerm b))
+
+mergeIdenticalBlocksFunc :: S.Func -> (S.Func, Bool)
+mergeIdenticalBlocksFunc f =
+  let bm0 = S.fBlocks f
+      groups =
+        foldl'
+          ( \m (bid, b) ->
+              Map.insertWith (++) (blockFingerprintKey b) [bid] m
+          )
+          Map.empty
+          (Map.toList bm0)
+      merges =
+        [ (minimum reps, tail (sort reps))
+        | reps <- Map.elems groups
+        , length reps > 1
+        ]
+   in case merges of
+        [] -> (f, False)
+        _ ->
+          let f1 = foldl' (\ff (rep, dups) -> foldl' (\g bad -> redirectBlockToRep g bad rep) ff dups) f merges
+           in (f1, True)
+
+redirectBlockToRep :: S.Func -> S.BlockId -> S.BlockId -> S.Func
+redirectBlockToRep f bad rep =
+  let bm = S.fBlocks f
+      bm1 =
+        Map.map
+          ( \b ->
+              b
+                { S.bInstrs = map (substPhiEdgesBid bad rep) (S.bInstrs b)
+                , S.bTerm = substTermBid bad rep (S.bTerm b)
+                }
+          )
+          bm
+      bm2 = Map.delete bad bm1
+      bm3 = recomputePredSucc bm2
+      entry' = if S.fEntry f == bad then rep else S.fEntry f
+   in f { S.fEntry = entry', S.fBlocks = bm3 }
+
+tailMergeFunc :: S.Func -> (S.Func, Bool)
+tailMergeFunc = mergeIdenticalBlocksFunc
+
+tailMergeProc :: SP.SSAProc -> (SP.SSAProc, Bool)
+tailMergeProc sp =
+  let (f', ch) = tailMergeFunc (SP.spFunc sp)
+   in (sp { SP.spFunc = f' }, ch)
+
+tailMergeProg :: SP.SSAProg -> (SP.SSAProg, Bool)
+tailMergeProg = mapProc tailMergeProc
+
+-- ---------------------------------------------------------------------------
+-- Dispatch: compare-chain detection (balanced lowering hook)
+
+data CmpLink = CmpLink
+  { clX :: Text
+  , clFalse :: S.BlockId
+  }
+
+readCmpLink :: S.Term -> Maybe CmpLink
+readCmpLink (S.TBrCmp _ _ (S.VVar x) (S.VConst _) _ f) = Just (CmpLink x f)
+readCmpLink _ = Nothing
+
+collectLinearCmpChain :: Map S.BlockId S.Block -> S.BlockId -> Maybe ([CmpLink], S.BlockId)
+collectLinearCmpChain bm start =
+  case Map.lookup start bm of
+    Nothing -> Nothing
+    Just b0 ->
+      case readCmpLink (S.bTerm b0) of
+        Nothing -> Nothing
+        Just s0 ->
+          let xv = clX s0
+              walk acc bid =
+                case Map.lookup bid bm of
+                  Nothing -> Just (acc, bid)
+                  Just b ->
+                    case readCmpLink (S.bTerm b) of
+                      Nothing -> Just (acc, bid)
+                      Just st ->
+                        if clX st /= xv
+                          then Just (acc, bid)
+                          else walk (acc ++ [st]) (clFalse st)
+           in walk [s0] (clFalse s0)
+
+balanceCmpChainFunc :: S.Func -> (S.Func, Bool)
+balanceCmpChainFunc f = (f, False)
+
+dispatchBalanceFunc :: S.Func -> (S.Func, Bool)
+dispatchBalanceFunc f =
+  case collectLinearCmpChain (S.fBlocks f) (S.fEntry f) of
+        Nothing -> (f, False)
+        Just (steps, _) | length steps < 4 -> (f, False)
+        _ -> balanceCmpChainFunc f
+
+dispatchBalanceProc :: SP.SSAProc -> (SP.SSAProc, Bool)
+dispatchBalanceProc sp =
+  let (f', ch) = dispatchBalanceFunc (SP.spFunc sp)
+   in (sp { SP.spFunc = f' }, ch)
+
+dispatchBalanceProg :: SP.SSAProg -> (SP.SSAProg, Bool)
+dispatchBalanceProg = mapProc dispatchBalanceProc
 
 -- ---------------------------------------------------------------------------
 -- Branch threading (very basic: TGoto to TGoto target)

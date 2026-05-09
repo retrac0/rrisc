@@ -35,11 +35,11 @@ data BinOp
   | TULt | TULe | TUGt | TUGe  -- unsigned comparisons
   | TUShr                        -- logical (unsigned) right shift
   | TUDiv | TUMod                -- unsigned divide / modulo
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 data UnOp
   = TNeg | TNot | TBNot
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 data Instr
   = ILabel   Label

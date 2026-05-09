@@ -61,8 +61,10 @@ executable rcc-fuzz
         Fuzz.AST
         Fuzz.OpMeta
         Fuzz.Gen
+        Fuzz.InvalidGen
         Fuzz.Print
         Fuzz.Run
+        Fuzz.NegativeRun
         Fuzz.Shrink
     build-depends:
           rcc

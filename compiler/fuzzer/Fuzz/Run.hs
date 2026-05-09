@@ -12,6 +12,8 @@ module Fuzz.Run
   , defaultToolPaths
   , runCase
   , runCaseFromAst
+  , caseBaseName
+  , runProcAllowFailure
   ) where
 
 import Control.Exception (SomeException, try)
@@ -259,6 +261,22 @@ runProc workDir exe args = do
         Right (code, out, err) -> case code of
           ExitSuccess   -> pure (Right (out, err))
           ExitFailure n -> pure $ Left $ StageError "" n err out
+
+-- | Like 'runProc', but returns the exit code instead of treating non-zero
+-- as an error.  Still 'Left' for a missing executable or an IO exception.
+runProcAllowFailure
+  :: FilePath -> FilePath -> [String]
+  -> IO (Either StageError (ExitCode, String, String))
+runProcAllowFailure workDir exe args = do
+  exists <- doesFileExist exe
+  if not exists
+    then pure $ Left $ StageError "" 127 ("missing tool: " <> exe) ""
+    else do
+      r <- try $ runProcess workDir exe args
+      case r of
+        Left ex -> pure $ Left $ StageError "" 1
+                          (show (ex :: SomeException)) ""
+        Right triple -> pure $ Right triple
 
 runProcess
   :: FilePath -> FilePath -> [String] -> IO (ExitCode, String, String)

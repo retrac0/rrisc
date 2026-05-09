@@ -14,7 +14,13 @@
 --   cabal run -v0 rcc-fuzz -- --count 200 --jobs 4
 --   cabal run -v0 rcc-fuzz -- --start-seed 12345 --count 1
 --   cabal run -v0 rcc-fuzz -- --replay 12345
+--   cabal run -v0 rcc-fuzz -- --negative --count 200
 -- @
+--
+-- With @--negative@, each case is a mutated (invalid) C file; @rcc@ and
+-- @gcc -fsyntax-only@ must both accept or both reject. A mismatch means
+-- either gcc rejected while rcc accepted (often worrisome) or the reverse
+-- (rcc may be stricter or incomplete vs gcc).
 module Main (main) where
 
 import Control.Concurrent.Async (forConcurrently_)
@@ -37,9 +43,11 @@ import System.FilePath ((</>))
 import System.IO (hFlush, hPutStrLn, stdout, stderr)
 
 import Fuzz.Gen    (defaultConfig, genProgram, GenConfig (..))
+import Fuzz.InvalidGen (invalidSource)
 import qualified Fuzz.Print as P
 import Fuzz.Print  (Target (..))
 import Fuzz.Run
+import Fuzz.NegativeRun (NegativeOutcome (..), runNegativeCase)
 import Fuzz.Shrink (shrinkProgram)
 
 -- ---------------------------------------------------------------------------
@@ -70,6 +78,8 @@ data Opts = Opts
   , oMaxExpr      :: !(Maybe Int)
   , oMaxLoopDepth :: !(Maybe Int)
   , oAutoShrink   :: !Bool
+  , oNegative     :: !Bool
+  , oFailDirNegative :: !FilePath
   } deriving (Show)
 
 defaultOpts :: FilePath -> Opts
@@ -91,6 +101,8 @@ defaultOpts root = Opts
   , oMaxExpr      = Nothing
   , oMaxLoopDepth = Nothing
   , oAutoShrink   = False
+  , oNegative     = False
+  , oFailDirNegative = root </> "compiler" </> "tests" </> "fuzz-fail-negative"
   }
 
 parseArgs :: [String] -> Opts -> Either String Opts
@@ -114,6 +126,8 @@ parseArgs ("--max-loop-depth":n:r)  o = readInt n "--max-loop-depth"  >>= \k -> 
 parseArgs ("--replay":n:r)     o = readInt n "--replay"     >>= \k -> parseArgs r o { oMode = MReplay k }
 parseArgs ("--shrink":n:r)     o = readInt n "--shrink"     >>= \k -> parseArgs r o { oMode = MShrink k }
 parseArgs ("--auto-shrink":r)  o = parseArgs r o { oAutoShrink = True }
+parseArgs ("--negative":r)     o = parseArgs r o { oNegative = True }
+parseArgs ("--fail-negative":d:r) o = parseArgs r o { oFailDirNegative = d }
 parseArgs ("--emit":n:r)       o = readInt n "--emit"       >>= \k -> parseArgs r o { oMode = MEmit k TargetRcc }
 parseArgs ("--emit-host":n:r)  o = readInt n "--emit-host"  >>= \k -> parseArgs r o { oMode = MEmit k TargetHost }
 parseArgs ("--help":_)         _ = Left helpText
@@ -154,6 +168,8 @@ helpText = unlines
   , "  --auto-shrink       in fuzz mode, shrink every failure into oFailDir"
   , "  --emit N            print the rcc-target .c source for seed N and exit"
   , "  --emit-host N       print the host-gcc .c source for seed N and exit"
+  , "  --negative          invalid-input mode: gcc -fsyntax-only vs rcc accept/reject must agree"
+  , "  --fail-negative DIR where to copy negative mismatches (default: .../fuzz-fail-negative)"
   , "  -h, --help          show this message"
   ]
 
@@ -181,16 +197,27 @@ main = do
             , oFailDir = if oFailDir opts0 == oFailDir cwdDefaults
                           then oRoot opts0 </> "compiler" </> "tests" </> "fuzz-fail"
                           else oFailDir opts0
+            , oFailDirNegative = if oFailDirNegative opts0 == oFailDirNegative cwdDefaults
+                          then oRoot opts0 </> "compiler" </> "tests" </> "fuzz-fail-negative"
+                          else oFailDirNegative opts0
             }
   let cfg = applyCfg opts defaultConfig
   case oMode opts of
     MEmit s tgt -> do
-      TIO.putStr (P.renderProgram tgt (genProgram cfg s))
+      if oNegative opts
+        then TIO.putStr (invalidSource cfg s)
+        else TIO.putStr (P.renderProgram tgt (genProgram cfg s))
       exitSuccess
     MReplay s -> do
-      r <- runOne opts cfg s
-      exitOnRun r
+      if oNegative opts
+        then negativeReplay opts cfg s
+        else do
+          r <- runOne opts cfg s
+          exitOnRun r
     MShrink s -> do
+      when (oNegative opts) $ do
+        hPutStrLn stderr "rcc-fuzz: --shrink is not supported with --negative"
+        exitFailure
       r <- runOne opts cfg s
       case r of
         OK -> do
@@ -199,7 +226,8 @@ main = do
         _  -> do
           shrinkOne opts cfg s r
           exitWith (ExitFailure 2)
-    MFuzz -> runMany opts cfg
+    MFuzz ->
+      if oNegative opts then runNegativeMany opts cfg else runMany opts cfg
 
 applyCfg :: Opts -> GenConfig -> GenConfig
 applyCfg o c = c
@@ -215,6 +243,108 @@ exitOnRun :: RunOutcome -> IO ()
 exitOnRun OK             = exitSuccess
 exitOnRun (Mismatch _ _) = exitWith (ExitFailure 2)
 exitOnRun (StageFail _)      = exitWith (ExitFailure 3)
+
+exitOnNegative :: NegativeOutcome -> IO ()
+exitOnNegative AgreeBothReject = exitSuccess
+exitOnNegative AgreeBothAccept = exitSuccess
+exitOnNegative NegativeMismatch{} = exitWith (ExitFailure 2)
+exitOnNegative (ToolFail _)  = exitWith (ExitFailure 3)
+
+negativeReplay :: Opts -> GenConfig -> Int -> IO ()
+negativeReplay opts cfg seed = do
+  when (oClean opts) (cleanDir (oFailDirNegative opts))
+  createDirectoryIfMissing True (oWorkDir opts)
+  let src   = invalidSource cfg seed
+      tp    = defaultToolPaths (oRoot opts)
+      base  = caseBaseName seed
+  writeFile (oWorkDir opts </> base ++ ".negative.seed") (show seed ++ "\n")
+  r <- runNegativeCase tp (oWorkDir opts) base src
+  reportNegative True opts seed r
+  promoteNegativeIfNeeded opts seed r
+  exitOnNegative r
+
+runNegativeMany :: Opts -> GenConfig -> IO ()
+runNegativeMany opts cfg = do
+  when (oClean opts) $ do
+    cleanDir (oFailDirNegative opts)
+    cleanDir (oWorkDir opts)
+  createDirectoryIfMissing True (oWorkDir opts)
+  createDirectoryIfMissing True (oFailDirNegative opts)
+  agreeRej  <- newIORef (0 :: Int)
+  agreeAcc  <- newIORef (0 :: Int)
+  mismatchN <- newIORef (0 :: Int)
+  toolFailN <- newIORef (0 :: Int)
+  printLock <- newMVar ()
+  let seeds = [oStartSeed opts .. oStartSeed opts + oCount opts - 1]
+      tp    = defaultToolPaths (oRoot opts)
+      jobs  = oJobs opts
+      partition = chunkRoundRobin jobs seeds
+  forConcurrently_ partition $ \chunk ->
+    mapM_ (\s -> do
+            let src  = invalidSource cfg s
+                base = caseBaseName s
+            writeFile (oWorkDir opts </> base ++ ".negative.seed") (show s ++ "\n")
+            r <- runNegativeCase tp (oWorkDir opts) base src
+            withMVar printLock $ \_ -> reportNegative (oVerbose opts) opts s r
+            promoteNegativeIfNeeded opts s r
+            case r of
+              AgreeBothReject -> atomicModifyIORef' agreeRej  (\n -> (n + 1, ()))
+              AgreeBothAccept -> atomicModifyIORef' agreeAcc  (\n -> (n + 1, ()))
+              NegativeMismatch{} -> atomicModifyIORef' mismatchN (\n -> (n + 1, ()))
+              ToolFail{}      -> atomicModifyIORef' toolFailN (\n -> (n + 1, ()))
+            ) chunk
+  ar <- readIORef agreeRej
+  aa <- readIORef agreeAcc
+  mm <- readIORef mismatchN
+  tf <- readIORef toolFailN
+  putStrLn $ "rcc-fuzz --negative: " <> show ar <> " both-reject, " <> show aa
+          <> " both-accept, " <> show mm <> " mismatches, " <> show tf <> " tool failures"
+  hFlush stdout
+  if mm == 0 && tf == 0 then exitSuccess else exitWith (ExitFailure 1)
+
+reportNegative :: Bool -> Opts -> Int -> NegativeOutcome -> IO ()
+reportNegative verbose _opts seed = \case
+  AgreeBothReject -> when verbose $ do
+    putStrLn ("reject  seed=" <> show seed <> " (both gcc and rcc)")
+    hFlush stdout
+  AgreeBothAccept -> when verbose $ do
+    putStrLn ("accept  seed=" <> show seed <> " (both gcc and rcc)")
+    hFlush stdout
+  NegativeMismatch rccOk gccOk -> do
+    putStrLn ("NEGATIVE-MISMATCH seed=" <> show seed
+              <> " rcc_ok=" <> show rccOk <> " gcc_ok=" <> show gccOk)
+    when (rccOk && not gccOk) $
+      putStrLn "  note: rcc accepted, gcc rejected (often the worrying direction)"
+    when (not rccOk && gccOk) $
+      putStrLn "  note: gcc accepted, rcc rejected (rcc stricter or incomplete)"
+    hFlush stdout
+  ToolFail e -> do
+    putStrLn ("NEGATIVE-TOOL-FAIL seed=" <> show seed
+              <> " stage=" <> seStage e
+              <> " exit="  <> show (seExit e))
+    when (not (null (seStderr e))) $
+      putStrLn ("  stderr: " <> take 800 (seStderr e))
+    hFlush stdout
+
+promoteNegativeIfNeeded :: Opts -> Int -> NegativeOutcome -> IO ()
+promoteNegativeIfNeeded opts seed = \case
+  NegativeMismatch{} -> copyNegativeArtefacts opts seed
+  _                  -> pure ()
+
+copyNegativeArtefacts :: Opts -> Int -> IO ()
+copyNegativeArtefacts opts seed = do
+  createDirectoryIfMissing True (oFailDirNegative opts)
+  let base = caseBaseName seed
+      names =
+        [ base ++ ".negative.c"
+        , base ++ ".negative.s"
+        , base ++ ".negative.seed"
+        ]
+  mapM_ (\n -> do
+      let src = oWorkDir opts </> n
+          dst = oFailDirNegative opts </> n
+      ok <- doesFileExist src
+      when ok $ copyFile src dst) names
 
 runOne :: Opts -> GenConfig -> Int -> IO RunOutcome
 runOne opts cfg seed = do
@@ -295,23 +425,19 @@ promoteFailureIfNeeded opts seed = \case
   _  -> do
     createDirectoryIfMissing True (oFailDir opts)
     let names =
-          [ caseName seed ++ ".rcc.c"
-          , caseName seed ++ ".host.c"
-          , caseName seed ++ ".s"
-          , caseName seed ++ ".bin"
-          , caseName seed ++ ".sim.out"
-          , caseName seed ++ ".host.out"
-          , caseName seed ++ ".seed"
+          [ caseBaseName seed ++ ".rcc.c"
+          , caseBaseName seed ++ ".host.c"
+          , caseBaseName seed ++ ".s"
+          , caseBaseName seed ++ ".bin"
+          , caseBaseName seed ++ ".sim.out"
+          , caseBaseName seed ++ ".host.out"
+          , caseBaseName seed ++ ".seed"
           ]
     mapM_ (\n -> do
         let src = oWorkDir opts </> n
             dst = oFailDir opts </> n
         ok <- doesFileExist src
         when ok $ copyFile src dst) names
-
-caseName :: Int -> FilePath
-caseName seed =
-  "case_" ++ replicate (max 0 (6 - length (show seed))) '0' ++ show seed
 
 isFailure :: RunOutcome -> Bool
 isFailure OK = False
@@ -345,7 +471,7 @@ shrinkOne :: Opts -> GenConfig -> Int -> RunOutcome -> IO ()
 shrinkOne opts cfg seed orig = do
   let prog0 = genProgram cfg seed
       tp    = defaultToolPaths (oRoot opts)
-      base  = caseName seed ++ ".shrunk"
+      base  = caseBaseName seed ++ ".shrunk"
       oracle prog = do
         r <- runCaseFromAst tp (oWorkDir opts) prog base Nothing
         pure (sameFailureKind orig r)

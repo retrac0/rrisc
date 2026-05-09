@@ -375,3 +375,6 @@ _epi_main:
     lwr r5, r6
     addi r6, 1
     jalr r0, r5
+
+; rcc: lib/librcc.s (integer multiply/divide/modulo)
+%include "librcc.s"

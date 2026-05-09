@@ -44,6 +44,12 @@ defaultSsaPasses =
       , passRun = \p -> let (out, ch) = SOpt.dceProg p in PassResult out ch
       }
   , Pass
+      { passId = PassId "ssa-phi-simplify"
+      , passDesc = "Trivial phi elimination (to copies)"
+      , passDefaultOn = []
+      , passRun = \p -> let (out, ch) = SOpt.phiSimplifyProg p in PassResult out ch
+      }
+  , Pass
       { passId = PassId "ssa-copy-prop"
       , passDesc = "Copy propagation / coalescing"
       , passDefaultOn = [Os, O1]
@@ -56,8 +62,62 @@ defaultSsaPasses =
       , passRun = \p -> let (out, ch) = SOpt.dceProg p in PassResult out ch
       }
   , Pass
+      { passId = PassId "ssa-cfg-shrink"
+      , passDesc = "Merge fall-through blocks, fold empty gotos, phis (fixpoint)"
+      , passDefaultOn = []
+      , passRun = \p -> let (out, ch) = SOpt.cfgShrinkProg p in PassResult out ch
+      }
+  , Pass
+      { passId = PassId "ssa-pure-cse"
+      , passDesc = "Common subexpression elimination on pure ops (per basic block)"
+      , passDefaultOn = []
+      , passRun = \p -> let (out, ch) = SOpt.pureCSEProg p in PassResult out ch
+      }
+  , Pass
+      { passId = PassId "ssa-copy-prop-post-cse"
+      , passDesc = "Copy propagation after CSE"
+      , passDefaultOn = []
+      , passRun = \p -> let (out, ch) = SOpt.copyPropProg p in PassResult out ch
+      }
+  , Pass
+      { passId = PassId "ssa-dce-post-cse"
+      , passDesc = "DCE after CSE and copy"
+      , passDefaultOn = []
+      , passRun = \p -> let (out, ch) = SOpt.dceProg p in PassResult out ch
+      }
+  , Pass
+      { passId = PassId "ssa-strength-reduce-mul"
+      , passDesc = "Strength-reduce multiply by power-of-two to a shift"
+      , passDefaultOn = []
+      , passRun = \p -> let (out, ch) = SOpt.strengthReduceMulProg p in PassResult out ch
+      }
+  , Pass
+      { passId = PassId "ssa-dce-post-strength"
+      , passDesc = "DCE after strength reduction"
+      , passDefaultOn = []
+      , passRun = \p -> let (out, ch) = SOpt.dceProg p in PassResult out ch
+      }
+  , Pass
+      { passId = PassId "ssa-tail-merge-blocks"
+      , passDesc = "Merge identical basic blocks"
+      , passDefaultOn = []
+      , passRun = \p -> let (out, ch) = SOpt.tailMergeProg p in PassResult out ch
+      }
+  , Pass
+      { passId = PassId "ssa-cfg-normalize-post-opt"
+      , passDesc = "Normalize CFG after optional CFG transforms"
+      , passDefaultOn = []
+      , passRun = \p -> let (out, ch) = SOpt.normalizeCFGProg p in PassResult out ch
+      }
+  , Pass
+      { passId = PassId "ssa-dispatch-balance"
+      , passDesc = "Compare-chain balancing (optional lowering)"
+      , passDefaultOn = []
+      , passRun = \p -> let (out, ch) = SOpt.dispatchBalanceProg p in PassResult out ch
+      }
+  , Pass
       { passId = PassId "ssa-cfg-thread"
-      , passDesc = "Jump/branch threading (O1)"
+      , passDesc = "Jump/branch threading"
       , passDefaultOn = [O1]
       , passRun = \p -> let (out, ch) = SOpt.branchThreadProg p in PassResult out ch
       }
@@ -91,6 +151,12 @@ defaultSsaPasses =
   , alias "ssa-float-copy" "ssa-float-arg-forward" SOpt.elimFloatCopiesProg
   , alias "ssa-callgraph-dce" "prog-dce" SOpt.eliminateDeadCodeProg
   , alias "ssa-dedupe-float-rodata" "global-dedupe-float-rodata" SOpt.dedupeFloatRoDataProg
+  , alias "ssa-shrink" "ssa-cfg-shrink" SOpt.cfgShrinkProg
+  , alias "ssa-cse" "ssa-pure-cse" SOpt.pureCSEProg
+  , alias "ssa-strength-mul" "ssa-strength-reduce-mul" SOpt.strengthReduceMulProg
+  , alias "ssa-tail-merge" "ssa-tail-merge-blocks" SOpt.tailMergeProg
+  , alias "ssa-dispatch" "ssa-dispatch-balance" SOpt.dispatchBalanceProg
+  , alias "ssa-phi" "ssa-phi-simplify" SOpt.phiSimplifyProg
   ]
   where
     alias pidOld pidNew f =
