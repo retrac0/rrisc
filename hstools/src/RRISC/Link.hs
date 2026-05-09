@@ -34,6 +34,12 @@ import RRISC.ISA
   ( addiOp, encodeR3, encodeRI, imm6Mask, jalrRb, luiOp, specOp, wordMask )
 import RRISC.Obj.Format
 
+-- | For each section name, indices of ItemBrel that were grown to the 4-word
+-- trampoline. Indices are section-local (per merged item list). A single
+-- 'IntSet' across all sections was wrong: text and data could both have a
+-- branch at index @i@, and relaxing one would incorrectly relax the other.
+type RelaxedBrels = M.Map Text IS.IntSet
+
 ------------------------------------------------------------
 -- Options / results / errors
 ------------------------------------------------------------
@@ -194,8 +200,8 @@ linkObjectFiles opts inputs = do
         | nm <- secOrder
         ]
 
-  -- Initial relax state: all brels unrelaxed.
-  let initRelaxed = IS.empty
+  -- Initial relax state: all brels unrelaxed (per section).
+  let initRelaxed = M.empty
 
   -- Fixed-point loop over relaxation flips.  Each iteration computes
   -- per-item offsets for every section, then derives the global symbol
@@ -204,7 +210,7 @@ linkObjectFiles opts inputs = do
 
   -- Final layout from the converged relax state.
   let finalLayouts =
-        [ (nm, layoutSection finalRelaxed items, items)
+        [ (nm, layoutSection (M.findWithDefault IS.empty nm finalRelaxed) items, items)
         | (nm, items) <- merged
         ]
       symbols = collectPlacedSymbols bases finalLayouts
@@ -370,14 +376,17 @@ resolveSym objFp name env =
 relaxLoop
   :: [(Text, [Item])]
   -> [(Text, Int)]
-  -> IS.IntSet
+  -> RelaxedBrels
   -> Int   -- iteration budget
-  -> Either LinkError IS.IntSet
+  -> Either LinkError RelaxedBrels
 relaxLoop merged bases relaxed budget
   | budget <= 0 =
       Left (LinkRelaxConvergence "(budget exhausted)")
   | otherwise = do
-      let layouts = [(nm, layoutSection relaxed its, its) | (nm, its) <- merged]
+      let layouts =
+            [ (nm, layoutSection (M.findWithDefault IS.empty nm relaxed) its, its)
+            | (nm, its) <- merged
+            ]
       symEnv <- buildSymbolEnv bases layouts
       (relaxed', changed) <- foldM (relaxOne bases symEnv) (relaxed, False) layouts
       if changed
@@ -387,13 +396,16 @@ relaxLoop merged bases relaxed budget
 relaxOne
   :: [(Text, Int)]
   -> SymbolEnv
-  -> (IS.IntSet, Bool)
+  -> (RelaxedBrels, Bool)
   -> (Text, Layout, [Item])
-  -> Either LinkError (IS.IntSet, Bool)
+  -> Either LinkError (RelaxedBrels, Bool)
 relaxOne bases symEnv (relaxed, changed) (nm, layout, items) = do
   let base = sectionBase bases nm
+      secRel0 = M.findWithDefault IS.empty nm relaxed
       pairs = zip3 [0..] items (lyOffsets layout)
-  foldM (step base) (relaxed, changed) pairs
+  (secRel1, ch1) <- foldM (step base) (secRel0, False) pairs
+  let relaxed' = M.insert nm secRel1 relaxed
+  return (relaxed', changed || ch1)
   where
     step base (rs, ch) (idx, ItemBrel fp _bk sym addend, off)
       | IS.member idx rs = Right (rs, ch)
@@ -412,14 +424,15 @@ relaxOne bases symEnv (relaxed, changed) (nm, layout, items) = do
 
 emitSection
   :: [(Text, Int)]
-  -> IS.IntSet
+  -> RelaxedBrels
   -> SymbolEnv
   -> (Text, Layout, [Item])
   -> Either LinkError [(Int, Int)]
 emitSection bases relaxed symEnv (nm, layout, items) = do
   let base = sectionBase bases nm
+      secRel = M.findWithDefault IS.empty nm relaxed
       pairs = zip3 [0..] items (lyOffsets layout)
-  concat <$> mapM (emitItem base relaxed symEnv) pairs
+  concat <$> mapM (emitItem base secRel symEnv) pairs
 
 emitItem
   :: Int
@@ -442,11 +455,11 @@ emitItem base _relaxed symEnv (_idx, ItemReloc fp kind ws sym addend, off) = do
     [ (base + off + i, w .&. wordMask)
     | (i, w) <- zip [0 :: Int ..] patched
     ]
-emitItem base relaxed symEnv (idx, ItemBrel fp bk sym addend, off) = do
+emitItem base secRel symEnv (idx, ItemBrel fp bk sym addend, off) = do
   target <- resolveSym fp sym symEnv
   let branchAddr = base + off
       offset = (target + addend) - branchAddr
-      isRelaxed = IS.member idx relaxed
+      isRelaxed = IS.member idx secRel
   if not isRelaxed
     then do
       when (offset < -64 || offset > 63) $

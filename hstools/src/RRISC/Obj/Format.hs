@@ -85,6 +85,14 @@ sectionWords sec = go (secRecords sec)
     go (RecZero n : rs) = replicate (max 0 n) 0 ++ go rs
     go (_ : rs) = go rs
 
+-- | Placeholder words covered by a reloc (must match 'RRISC.Link.relocSpan').
+relocPlaceholderWords :: RelocKind -> Int
+relocPlaceholderWords RkImm12 = 1
+relocPlaceholderWords RkLiImm12 = 2
+relocPlaceholderWords RkJmpTarget12 = 3
+relocPlaceholderWords RkCallTarget12 = 3
+relocPlaceholderWords RkImm6Pc = 1
+
 -- (name, linkage, offset) for every symbol in the section, in record order.
 -- Symbols declared without an explicit offset get the running offset at the
 -- point of declaration.
@@ -98,8 +106,8 @@ sectionSymbols sec = go 0 (secRecords sec)
       RecSym n lk Nothing -> (n, lk, off) : go off rs
       RecSym n lk (Just o) -> (n, lk, o) : go off rs
       RecLoc {} -> go off rs
-      RecReloc {} -> go off rs
-      RecBrel {} -> go off rs
+      RecReloc k _ _ -> go (off + relocPlaceholderWords k) rs
+      RecBrel {} -> go (off + 1) rs
 
 ------------------------------------------------------------
 -- Writer
