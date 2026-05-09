@@ -43,7 +43,7 @@ Examples (from repo root after make -C demos):
   # Full UART regression (20 RPN lines vs expected hex)
   ./demos/test_rpn.sh equations
 
-  # One-off: stack holds 3 and 4, add, print top, quit
+  # One-off: stack holds 3 and 4, add, print top, quit (UART includes guest echo of typed lines)
   printf '%s\\n' '3 4 +' p q | python3 sim.py --terminal --mem ram:0:0o7770 --start 0o100 --maxcycle 2000000 demos/rpn.bin
 
   # Interactive (same UART flags): type lines, then q to exit
@@ -74,7 +74,8 @@ uart_hex_visible() {
 }
 
 # Each test: one line of RPN ending with p (print top), then q on the next line (two gets() lines).
-# Expected value is the exact UART byte sequence from sim.py (puts adds a single newline after itoa).
+# Expected value is the exact UART byte sequence: guest echoes each line read by gets(), then
+# puts() adds a newline after itoa for `p`.
 cmd_equations() {
 	need_bin
 	local fails=0 n=0
@@ -87,9 +88,9 @@ cmd_equations() {
 		echo "#${n} ${desc}"
 		echo "  input (stdin to calculator, one line per gets):"
 		printf '%s' "${input}" | awk 'length { print "    [" ++i "] " $0 }'
-		echo "  expected UART (print + newline from puts): ${want_vis}"
+		echo "  expected UART (echo + print + newline from puts): ${want_vis}"
 		echo "  expected hex:  ${want}"
-		echo "  got UART (print + newline from puts):      ${got_vis}"
+		echo "  got UART (echo + print + newline from puts):      ${got_vis}"
 		echo "  got hex:       ${got:-<empty>}"
 		if [[ "$got" != "$want" ]]; then
 			echo "  -> FAIL" >&2
@@ -101,29 +102,29 @@ cmd_equations() {
 	}
 
 	# --- arithmetic ---
-	run_one "3 + 4" $'3 4 + p\nq\n' "370a"
-	run_one "1 + 2 + 3" $'1 2 3 + + p\nq\n' "360a"
-	run_one "10 - 3" $'10 3 - p\nq\n' "370a"
-	run_one "6 * 7" $'6 7 * p\nq\n' "34320a"
-	run_one "10 / 2" $'10 2 / p\nq\n' "350a"
-	run_one "15 / 4 trunc" $'15 4 / p\nq\n' "330a"
-	run_one "1 * 2 * 3" $'1 2 * 3 * p\nq\n' "360a"
-	run_one "8 * 3 / 2" $'8 3 * 2 / p\nq\n' "31320a"
-	run_one "11 + 11" $'11 11 + p\nq\n' "32320a"
-	run_one "100 + 200" $'100 200 + p\nq\n' "3330300a"
+	run_one "3 + 4" $'3 4 + p\nq\n' "332034202b20700a370a710a"
+	run_one "1 + 2 + 3" $'1 2 3 + + p\nq\n' "3120322033202b202b20700a360a710a"
+	run_one "10 - 3" $'10 3 - p\nq\n' "31302033202d20700a370a710a"
+	run_one "6 * 7" $'6 7 * p\nq\n' "362037202a20700a34320a710a"
+	run_one "10 / 2" $'10 2 / p\nq\n' "31302032202f20700a350a710a"
+	run_one "15 / 4 trunc" $'15 4 / p\nq\n' "31352034202f20700a330a710a"
+	run_one "1 * 2 * 3" $'1 2 * 3 * p\nq\n' "312032202a2033202a20700a360a710a"
+	run_one "8 * 3 / 2" $'8 3 * 2 / p\nq\n' "382033202a2032202f20700a31320a710a"
+	run_one "11 + 11" $'11 11 + p\nq\n' "3131203131202b20700a32320a710a"
+	run_one "100 + 200" $'100 200 + p\nq\n' "31303020323030202b20700a3330300a710a"
 	# 12-bit word wrap (unsigned view of sum)
-	run_one "4000 + 500 (12-bit)" $'4000 500 + p\nq\n' "3430340a"
+	run_one "4000 + 500 (12-bit)" $'4000 500 + p\nq\n' "3430303020353030202b20700a3430340a710a"
 	# signed MIN edge for itoa (2047 + 1 == -2048)
-	run_one "2047 + 1 wrap" $'2047 1 + p\nq\n' "2d323034380a"
-	run_one "2047 - 2047" $'2047 2047 - p\nq\n' "300a"
+	run_one "2047 + 1 wrap" $'2047 1 + p\nq\n' "323034372031202b20700a2d323034380a710a"
+	run_one "2047 - 2047" $'2047 2047 - p\nq\n' "323034372032303437202d20700a300a710a"
 	# --- unary / stack ops ---
-	run_one "negate 5" $'5 n p\nq\n' "2d350a"
-	run_one "dup then +" $'3 d + p\nq\n' "360a"
-	run_one "clear then 1" $'9 8 c 1 p\nq\n' "310a"
-	run_one "print lone 0" $'0 p\nq\n' "300a"
-	run_one "-12 + 3" $'-12 3 + p\nq\n' "2d390a"
-	run_one "(0 - 7) / 2" $'0 7 - 2 / p\nq\n' "2d330a"
-	run_one "3 * 4 then negate" $'3 4 * n p\nq\n' "2d31320a"
+	run_one "negate 5" $'5 n p\nq\n' "35206e20700a2d350a710a"
+	run_one "dup then +" $'3 d + p\nq\n' "332064202b20700a360a710a"
+	run_one "clear then 1" $'9 8 c 1 p\nq\n' "3920382063203120700a310a710a"
+	run_one "print lone 0" $'0 p\nq\n' "3020700a300a710a"
+	run_one "-12 + 3" $'-12 3 + p\nq\n' "2d31322033202b20700a2d390a710a"
+	run_one "(0 - 7) / 2" $'0 7 - 2 / p\nq\n' "302037202d2032202f20700a2d330a710a"
+	run_one "3 * 4 then negate" $'3 4 * n p\nq\n' "332034202a206e20700a2d31320a710a"
 
 	if [[ "$fails" -ne 0 ]]; then
 		echo "equations: $fails failure(s) out of $n" >&2

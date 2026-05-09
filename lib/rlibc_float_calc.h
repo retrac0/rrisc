@@ -30,8 +30,13 @@ int *gets(int *buf) {
     int *p = buf;
     while (1) {
         int ch = getchar();
-        if (ch == '\n') break;
-        if (ch == 0) break;
+        if (ch == 0) {
+            break;
+        }
+        putchar(ch);
+        if (ch == '\n') {
+            break;
+        }
         *p++ = ch;
     }
     *p = 0;

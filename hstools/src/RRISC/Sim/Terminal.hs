@@ -1,6 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
--- | UART terminal (terminal.py).
+-- | UART terminal (terminal.py parity).
 module RRISC.Sim.Terminal (
   TerminalOptions (..),
   attachTerminal,
@@ -67,7 +67,7 @@ popRx s =
     Seq.EmptyL -> (Nothing, s)
     v Seq.:< rest -> (Just v, rest)
 
--- | Register UART at @0o7770@–@0o7773@. Returns an action to restore stdin echo/buffering.
+-- | Register UART at @0o7770@–@0o7773@. Returns an action to restore stdin buffering.
 --
 -- When @termReadStdin@ is true we spawn a reader thread (same role as Python's daemon
 -- @terminal-rx@). It often blocks in @hGetChar@; we @killThread@ on shutdown so @rsim@
@@ -83,11 +83,18 @@ attachTerminal bus opts = do
           foldl (\acc b -> pushRx acc (fromIntegral b .&. 0xFF)) s0 (B.unpack bs)
     Nothing -> pure ()
 
-  tty <- hIsTerminalDevice stdin
-  when tty $ do
+  -- Match terminal.py: unbuffered byte reads for the RX thread.  Without this,
+  -- @hGetChar@ on a non-'hIsTerminalDevice' Handle stays line-buffered and
+  -- interactive @getchar()@ in the guest never sees keys until Enter.
+  termStdin <- hIsTerminalDevice stdin
+  -- Guest UART programs (e.g. RPN) echo input; suppress kernel echo on real TTYs.
+  let guestEchoesInput = termReadStdin opts && termStdin
+
+  when (termReadStdin opts) $ do
     hSetBinaryMode stdin True
     hSetBuffering stdin NoBuffering
-    hSetEcho stdin False
+
+  when guestEchoesInput $ hSetEcho stdin False
 
   -- Match terminal.py: stop the reader thread on stdin EOF (pipe/file closed), do not spin forever.
   when (termReadStdin opts) $ do
@@ -135,7 +142,7 @@ attachTerminal bus opts = do
 
   pure $ do
     readIORef readerTid >>= mapM_ killThread
-    when tty $ do
-      hSetEcho stdin True
+    when guestEchoesInput $ hSetEcho stdin True
+    when (termReadStdin opts) $ do
       hSetBuffering stdin LineBuffering
       hSetBinaryMode stdin False

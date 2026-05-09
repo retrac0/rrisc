@@ -33,6 +33,26 @@ from sixbit import encode_sixbit, decode_sixbit
 _RX_DEPTH = 16
 
 
+def _stdin_fd() -> int:
+    return sys.stdin.fileno()
+
+
+def _stdin_is_kernel_tty(fd: int) -> bool:
+    """True if fd refers to a terminal device (PTY or console).
+
+    Some IDE-integrated shells report isatty() == False even though stdin is
+    still a character device that benefits from cbreak + byte reads; ttyname()
+    succeeds for those.  Pipes and files raise OSError.
+    """
+    if sys.stdin.isatty():
+        return True
+    try:
+        os.ttyname(fd)
+        return True
+    except OSError:
+        return False
+
+
 class Terminal:
     def __init__(self, translate=False, preload=None, read_stdin=True):
         self._rx: deque[int] = deque()
@@ -49,9 +69,15 @@ class Terminal:
                     self._rx.append(b & 0xFF)
 
         if read_stdin:
-            if sys.stdin.isatty():
-                self._enter_cbreak()
-                self._stdin_read_fd = os.dup(sys.stdin.fileno())
+            fd = _stdin_fd()
+            # Dup + cbreak for real TTYs so each key is readable immediately.
+            # If cbreak fails, fall back to reading the same fd without dup.
+            if _stdin_is_kernel_tty(fd):
+                try:
+                    self._enter_cbreak()
+                    self._stdin_read_fd = os.dup(fd)
+                except (OSError, AttributeError, ImportError):
+                    self._stdin_read_fd = None
             t = threading.Thread(target=self._reader, name='terminal-rx', daemon=True)
             t.start()
 
@@ -75,30 +101,24 @@ class Terminal:
             self._old_term = None
 
     def _reader(self):
+        # Always use os.read on the raw fd.  sys.stdin.read(1) goes through the
+        # TextIOWrapper and is often line-buffered when stdin is not a TTY
+        # (and sometimes in IDE terminals), so interactive getchar() never sees
+        # keystrokes until Enter.
+        fd = self._stdin_read_fd if self._stdin_read_fd is not None else _stdin_fd()
         while True:
             try:
-                if self._stdin_read_fd is not None:
-                    data = os.read(self._stdin_read_fd, 1)
-                    if not data:
-                        break
-                    b0 = data[0]
-                    if self._translate:
-                        ch = chr(b0)
-                        v = encode_sixbit(ch)
-                        if v is None:
-                            continue
-                    else:
-                        v = b0 & 0xFF
+                data = os.read(fd, 1)
+                if not data:
+                    break
+                b0 = data[0]
+                if self._translate:
+                    ch = chr(b0)
+                    v = encode_sixbit(ch)
+                    if v is None:
+                        continue
                 else:
-                    ch = sys.stdin.read(1)
-                    if not ch:
-                        break
-                    if self._translate:
-                        v = encode_sixbit(ch)
-                        if v is None:
-                            continue
-                    else:
-                        v = ord(ch) & 0xFF
+                    v = b0 & 0xFF
             except (OSError, ValueError):
                 break
             with self._rx_lock:

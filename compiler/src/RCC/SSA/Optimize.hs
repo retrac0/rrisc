@@ -11,7 +11,7 @@ module RCC.SSA.Optimize
   , eliminateDeadCodeProg
   ) where
 
-import Data.List (foldl', nub)
+import Data.List (foldl', nub, sort)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -248,7 +248,7 @@ mask12 x = x .&. 0xFFF
 evalUn :: TAC.UnOp -> Int -> Int
 evalUn TAC.TNeg x = negate x
 evalUn TAC.TNot x = if x == 0 then 1 else 0
-evalUn TAC.TBNot x = complement x
+evalUn TAC.TBNot x = xor (x .&. 0xFFF) 0xFFF
 
 evalBin :: TAC.BinOp -> Int -> Int -> Int
 evalBin op a b =
@@ -280,9 +280,8 @@ evalBin op a b =
 
 sccpFunc :: S.Func -> (S.Func, Bool)
 sccpFunc f =
-  let bm = S.fBlocks f
-      env0 = Map.empty
-      (env, reachable) = fix env0 (Set.singleton (S.fEntry f))
+  let env0 = Map.empty
+      (env, reachable) = fix env0
       rewriteBlock b =
         let instrs = map (rwInstr env reachable) (S.bInstrs b)
             term = rwTerm env reachable (S.bId b) (S.bTerm b)
@@ -292,24 +291,60 @@ sccpFunc f =
       changed = env /= env0
    in (f', changed)
   where
-    fix env reach =
-      let (env', reach') = foldl' step (env, reach) (Map.elems (S.fBlocks f))
-       in if env' == env && reach' == reach then (env, reach) else fix env' reach'
+    bm = S.fBlocks f
+    entry = S.fEntry f
+    -- SCCP must recompute reachability when branches fold to constants. The old
+    -- implementation only grew 'reach', so dead successors stayed "reachable"
+    -- and phis merged constants from infeasible predecessors (miscompiles).
+    fix env =
+      let reach = bfsReach bm entry env
+          env' = propagateUntilStable reach bm
+          reach' = bfsReach bm entry env'
+       in if env' == env && reach' == reach then (env', reach') else fix env'
 
-    step (env, reach) b
-      | not (Set.member (S.bId b) reach) = (env, reach)
-      | otherwise =
-          let env' = foldl' upd env (S.bInstrs b)
-              reach' = Set.union reach (Set.fromList (succsTaken env' (S.bTerm b)))
-           in (env', reach')
+    bfsReach :: Map S.BlockId S.Block -> S.BlockId -> Map Text Lat -> Set S.BlockId
+    bfsReach bm0 start envLat =
+      let go seen [] = seen
+          go seen (bid : q)
+            | Set.member bid seen = go seen q
+            | otherwise =
+                case Map.lookup bid bm0 of
+                  Nothing -> go seen q
+                  Just b ->
+                    let ss = succsTaken envLat (S.bTerm b)
+                     in go (Set.insert bid seen) (ss ++ q)
+       in go Set.empty [start]
 
-    upd env i =
+    propagateUntilStable :: Set S.BlockId -> Map S.BlockId S.Block -> Map Text Lat
+    propagateUntilStable reach bm0 =
+      let blkOrder = sort (Set.toList reach)
+          onePass e =
+            foldl'
+              ( \e0 bid ->
+                  case Map.lookup bid bm0 of
+                    Nothing -> e0
+                    Just b -> foldl' (updInstr reach) e0 (S.bInstrs b)
+              )
+              e
+              blkOrder
+          go e = let e' = onePass e in if e' == e then e else go e'
+       in go Map.empty
+
+    updInstr :: Set S.BlockId -> Map Text Lat -> S.Instr -> Map Text Lat
+    updInstr reach env i =
       case i of
         S.IDef nm op ->
           let v = evalOpLat env op
            in Map.insertWith joinLat nm v env
         S.IPhi nm edges ->
-          let v = foldl' joinLat Undef [ latOfValue env val | (_, val) <- edges ]
+          let v =
+                foldl'
+                  joinLat
+                  Undef
+                  [ latOfValue env val
+                  | (p, val) <- edges
+                  , Set.member p reach
+                  ]
            in Map.insertWith joinLat nm v env
         _ -> env
 
@@ -325,21 +360,21 @@ sccpFunc f =
           case latOfValue env v of
             Const 0 -> [f']
             Const _ -> [t]
-            _       -> [t,f']
+            _ -> [t, f']
         S.TBrCmp inv op a b t f' ->
           case (latOfValue env a, latOfValue env b) of
             (Const x, Const y) ->
               let r = evalCmp op x y
                   taken = if inv then not r else r
                in [if taken then t else f']
-            _ -> [t,f']
+            _ -> [t, f']
 
     rwInstr env _ i =
       case i of
         S.IDef nm _ ->
           case Map.lookup nm env of
             Just (Const n) -> S.IDef nm (S.OCopy (S.VConst n))
-            _              -> i
+            _ -> i
         _ -> i
 
     rwTerm _ reach bid term =
