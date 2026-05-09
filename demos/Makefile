@@ -5,8 +5,9 @@ CABAL  ?= cabal
 # cabal run emits progress to stderr; -v0 silences it
 RCC := $(CABAL) -v0 run --project-file $(RCC_DIR)/cabal.project rcc --
 
-# Haskell assembler (same stack as run_tests.py); run from repo root for cabal.project
+# Haskell assembler / linker (same stack as run_tests.py); run from repo root for cabal.project
 HSASM_RUN := cd $(ROOT) && $(CABAL) -v0 run hsasm --
+HSLD_RUN  := cd $(ROOT) && $(CABAL) -v0 run hsld --
 
 # Full 0o7770-word flat RAM, IO page at 0o7770, code starting at 0o100.
 # Globals at 0o6600 (~65 words); stack grows down from 0o7770 (~580 words of stack).
@@ -19,31 +20,46 @@ SIM_START  := --start $(CODE_BASE)
 SIM := python3 $(ROOT)/sim.py --terminal $(SIM_MEM) $(SIM_START)
 
 RCC_FLAGS := --code-base $(CODE_BASE) --data-base $(DATA_BASE) --stack-top $(STACK_TOP)
+# Integer RPN: -Os can swap a/b temps before __div in this large main() (quotient 0); -O0 is safe.
+RPN_INT_RCC_FLAGS := $(RCC_FLAGS) -O0
 
 .PHONY: all run rpn_float clean
 
 all: rpn.bin
 
-# Soft-float RPN: source is supported, but the linked image exceeds 4k words on
-# the stock ISA; assembly fails (see rpn_float.c header). Kept for experimentation.
-rpn_float.s: rpn_float.c $(ROOT)/lib/rlibc.h
-	cd $(RCC_DIR) && $(RCC) $(RCC_FLAGS) \
+# Soft-float RPN: -O0 keeps this demo under 4k words with lib/itoa.s (not C itoa).
+RPN_FLOAT_RCC_FLAGS := $(RCC_FLAGS) -O0
+
+rpn_float.s: rpn_float.c $(ROOT)/lib/rlibc_float_calc.h
+	cd $(RCC_DIR) && $(RCC) $(RPN_FLOAT_RCC_FLAGS) \
 	    --preprocessor "cpp -P -I $(ROOT)/lib" \
 	    $(ROOT)/demos/rpn_float.c -o $(ROOT)/demos/rpn_float.s
 
+# Link crt0 + user only (no librcc): this program strength-reduces stkptr*4 and uses no idiv.
 rpn_float.bin: rpn_float.s
-	$(HSASM_RUN) -I lib demos/rpn_float.s -o demos/rpn_float.bin
+	$(HSASM_RUN) lib/crt0.s --obj-only --obj-out demos/rpn_float.crt0.o \
+	    -D RCC_STACK_TOP=$(STACK_TOP)
+	$(HSASM_RUN) demos/rpn_float.s -I lib --obj-only --obj-out demos/rpn_float.user.o
+	$(HSLD_RUN) demos/rpn_float.crt0.o demos/rpn_float.user.o -o demos/rpn_float.bin \
+	    --code-base $(CODE_BASE) --data-base $(DATA_BASE)
 
-rpn.s: rpn.c $(ROOT)/lib/rlibc.h
-	cd $(RCC_DIR) && $(RCC) $(RCC_FLAGS) \
+rpn_int.s: rpn_int.c $(ROOT)/lib/rlibc_float_calc.h
+	cd $(RCC_DIR) && $(RCC) $(RPN_INT_RCC_FLAGS) \
 	    --preprocessor "cpp -P -I $(ROOT)/lib" \
-	    $(ROOT)/demos/rpn.c -o $(ROOT)/demos/rpn.s
+	    $(ROOT)/demos/rpn_int.c -o $(ROOT)/demos/rpn_int.s
 
-rpn.bin: rpn.s
-	$(HSASM_RUN) -I lib demos/rpn.s -o demos/rpn.bin
+# Integer RPN needs __div/__mul; rcc already %include's librcc.s at end of rpn.s — do not link librcc.o twice.
+rpn.bin: rpn_int.s
+	$(HSASM_RUN) lib/crt0.s --obj-only --obj-out demos/rpn.crt0.o \
+	    -D RCC_STACK_TOP=$(STACK_TOP)
+	$(HSASM_RUN) demos/rpn_int.s -I lib --obj-only --obj-out demos/rpn.user.o
+	$(HSLD_RUN) demos/rpn.crt0.o demos/rpn.user.o -o demos/rpn.bin \
+	    --code-base $(CODE_BASE) --data-base $(DATA_BASE)
 
 run: rpn.bin
 	$(SIM) rpn.bin
 
 clean:
-	rm -f rpn.s rpn.bin rpn_float.s rpn_float.bin
+	rm -f rpn.s rpn.bin rpn_float.s rpn_float.bin \
+	    demos/rpn.crt0.o demos/rpn.user.o \
+	    demos/rpn_float.crt0.o demos/rpn_float.user.o

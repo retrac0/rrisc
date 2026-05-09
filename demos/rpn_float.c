@@ -1,91 +1,122 @@
 /*
- * rpn_float.c -- RPN floating-point calculator (soft-float runtime).
- *
- * The soft-float runtime (lib/float/*.s) plus __atof/__ftoa is larger than the RRISC
- * flat 12-bit address space (4096 words: code + rodata + globals must all fit in
- * 0..0o7777).  python3 asm.py will fail with "li value … out of 12-bit range".
- * Use integer demos/rpn.c for the stock demos layout, or a host build / larger
- * memory model if you extend the architecture.
- *
- * Compile like demos/rpn.c (same flags), output e.g. demos/rpn_float.s
+ * rpn_float.c -- soft-float RPN; int literals; truncated int print; fits 4k flat.
  */
+#include "rlibc_float_calc.h"
 
-#include "rlibc.h"
-
-float stk[16];
-int sp = 0;
+float stk[8];
+int stkptr;
+int gsbuf[8];
 
 int isdigitch(int c) {
     return c >= '0' && c <= '9';
 }
 
-int main() {
-    int buf[64];
-    int sbuf[16];
-    int *p;
+void stk_push1(float r) {
+    stk[stkptr] = r;
+    stkptr++;
+}
+
+void stk_pop2(float *a, float *b) {
+    stkptr--;
+    *b = stk[stkptr];
+    stkptr--;
+    *a = stk[stkptr];
+}
+
+void do_arith(int op) {
     float a;
     float b;
-    float r;
+    stk_pop2(&a, &b);
+    if (op == 0) stk_push1(a + b);
+    else if (op == 1) stk_push1(a - b);
+    else if (op == 2) stk_push1(a * b);
+    else stk_push1(a / b);
+}
 
+void do_neg() {
+    float a;
+    stkptr--;
+    a = stk[stkptr];
+    stk_push1(-a);
+}
+
+void do_dup() {
+    float a;
+    if (stkptr > 0) {
+        a = stk[stkptr - 1];
+        stk_push1(a);
+    }
+}
+
+void do_print(int *sb) {
+    int k;
+    if (stkptr > 0) {
+        k = (int)stk[stkptr - 1];
+        itoa(k, sb);
+        puts(sb);
+    }
+}
+
+int *parse_int(int *p) {
+    int n;
+    int neg;
+    int d;
+    float r;
+    n = 0;
+    neg = 0;
+    if (*p == '-') {
+        neg = 1;
+        p++;
+    }
+    while (isdigitch(*p)) {
+        d = *p - '0';
+        n = (n << 3) + (n << 1) + d;
+        p++;
+    }
+    if (neg) n = -n;
+    r = (float)n;
+    stk_push1(r);
+    return p;
+}
+
+int main() {
+    int buf[24];
+    int *p;
+
+    stkptr = 0;
     while (1) {
         gets(buf);
         p = buf;
-
         while (*p != 0) {
             while (*p == ' ' || *p == '\t') p++;
             if (*p == 0) break;
 
             if (isdigitch(*p) ||
-                (*p == '-' && isdigitch(*(p + 1))) ||
-                (*p == '.' && isdigitch(*(p + 1)))) {
-                atof(p, &r);
-                if (*p == '-') p++;
-                while (isdigitch(*p) || *p == '.') p++;
-                stk[sp] = r;
-                sp++;
+                (*p == '-' && isdigitch(*(p + 1)))) {
+                p = parse_int(p);
             } else if (*p == '+') {
-                sp--; b = stk[sp];
-                sp--; a = stk[sp];
-                r = a + b;
-                stk[sp] = r; sp++;
+                do_arith(0);
                 p++;
             } else if (*p == '-') {
-                sp--; b = stk[sp];
-                sp--; a = stk[sp];
-                r = a - b;
-                stk[sp] = r; sp++;
+                do_arith(1);
                 p++;
             } else if (*p == '*') {
-                sp--; b = stk[sp];
-                sp--; a = stk[sp];
-                r = a * b;
-                stk[sp] = r; sp++;
+                do_arith(2);
                 p++;
             } else if (*p == '/') {
-                sp--; b = stk[sp];
-                sp--; a = stk[sp];
-                r = a / b;
-                stk[sp] = r; sp++;
+                do_arith(3);
                 p++;
             } else if (*p == 'n') {
-                sp--; a = stk[sp];
-                r = -a;
-                stk[sp] = r; sp++;
+                do_neg();
                 p++;
             } else if (*p == 'p') {
-                if (sp > 0) {
-                    ftoa(&stk[sp - 1], sbuf);
-                    puts(sbuf);
-                }
+                do_print(gsbuf);
                 p++;
             } else if (*p == 'd') {
-                if (sp > 0) {
-                    a = stk[sp - 1];
-                    stk[sp] = a; sp++;
-                }
+                do_dup();
                 p++;
             } else if (*p == 'c') {
-                sp = 0;
+                stkptr = 0;
                 p++;
             } else if (*p == 'q') {
                 exit(0);
