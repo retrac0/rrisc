@@ -1729,6 +1729,37 @@ def run_float_suite(cfg: RunConfig) -> list[TResult]:
     return fails
 
 
+def run_float_fuzz_suite(cfg: RunConfig) -> list[TResult]:
+    """Drive tests/float/fuzz_float_routines.py (random asm+sim checks, fixed seed)."""
+    name = "float-fuzz"
+    driver = cfg.root / "tests" / "float" / "fuzz_float_routines.py"
+    if not driver.is_file():
+        return [TResult(False, name, f"missing driver {driver}")]
+    argv = [python_exe(), str(driver), "-n", "100", "--seed", "42"]
+    if cfg.verbose:
+        argv.append("--verbose")
+    r = run_capture(argv, cwd=cfg.root)
+    out = (r.stdout or "") + (r.stderr or "")
+    if r.returncode == 0:
+        return [TResult(True, name, out.strip() if cfg.verbose else "")]
+    fails: list[TResult] = []
+    cur_name: str | None = None
+    cur_lines: list[str] = []
+    for line in out.splitlines():
+        if line.startswith("[FAIL] "):
+            if cur_name:
+                fails.append(TResult(False, f"float-fuzz:{cur_name}", "\n".join(cur_lines)))
+            cur_name = line[len("[FAIL] "):].strip()
+            cur_lines = []
+        elif cur_name and line.startswith("  "):
+            cur_lines.append(line)
+    if cur_name:
+        fails.append(TResult(False, f"float-fuzz:{cur_name}", "\n".join(cur_lines)))
+    if not fails:
+        fails.append(TResult(False, name, out.strip()))
+    return fails
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="RRISC unified test runner")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
@@ -1788,15 +1819,15 @@ def main() -> int:
         metavar="SUITE,...",
         default="rcc,asm,examples",
         help=(
-            "comma-separated suites: rcc, asm, examples, io, float, toolchain, "
-            "size, librcc (default: rcc,asm,examples)"
+            "comma-separated suites: rcc, asm, examples, io, float, float-fuzz, "
+            "toolchain, size, librcc (default: rcc,asm,examples)"
         ),
     )
     args = ap.parse_args()
 
     only_parts = {x.strip() for x in args.only.split(",") if x.strip()}
     for p in only_parts:
-        if p not in ("rcc", "asm", "examples", "io", "float", "toolchain", "size", "librcc"):
+        if p not in ("rcc", "asm", "examples", "io", "float", "float-fuzz", "toolchain", "size", "librcc"):
             print(f"unknown suite in --only: {p!r}", file=sys.stderr)
             return 2
     want_rcc = "rcc" in only_parts
@@ -1804,6 +1835,7 @@ def main() -> int:
     want_ex = "examples" in only_parts
     want_io = "io" in only_parts
     want_float = "float" in only_parts
+    want_float_fuzz = "float-fuzz" in only_parts
     want_toolchain = "toolchain" in only_parts
     want_size = "size" in only_parts
     want_librcc = "librcc" in only_parts
@@ -1961,6 +1993,12 @@ def main() -> int:
             float_results = run_float_suite(cfg)
             all_results.extend(float_results)
             emit_verbose(cfg, float_results)
+
+        # float runtime fuzz (random programs vs Python oracle)
+        if want_float_fuzz:
+            ff_results = run_float_fuzz_suite(cfg)
+            all_results.extend(ff_results)
+            emit_verbose(cfg, ff_results)
 
         # lib/librcc.s direct harness (multiply / divide / mod)
         if want_librcc:
