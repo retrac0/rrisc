@@ -1,0 +1,37 @@
+; rcc-generated assembly
+%define RCC_CODE_BASE 0o1000
+%define RCC_DATA_BASE 0o0
+%define RCC_STACK_TOP 0o7770
+
+    .section text
+
+    .global main
+main:
+    subi r6, 2
+_B_main_0:
+;; int x
+;; x=1==1
+    li r3, 1
+    li r2, 1
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_main_ne_11
+    li r2, 0
+_L_main_ne_11:
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+;; return x
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    clrt
+    bf _epi_main
+_epi_main:
+    addi r6, 2
+    jalr r0, r5

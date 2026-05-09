@@ -1,0 +1,60 @@
+; rcc-generated assembly
+%define RCC_CODE_BASE 0o1000
+%define RCC_DATA_BASE 0o0
+%define RCC_STACK_TOP 0o7770
+
+    .section text
+
+    .global mul
+mul:
+    subi r6, 1
+    swr r5, r6
+    subi r6, 3
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    swr r3, r1
+_B_mul_0:
+    and r1, r6, r7
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    li r1, __mul
+    jalr r5, r1
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    clrt
+    bf _epi_mul
+_epi_mul:
+    addi r6, 3
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5
+
+    .global main
+main:
+    subi r6, 1
+    swr r5, r6
+    subi r6, 1
+_B_main_0:
+    li r2, 6
+    li r3, 7
+    li r1, mul
+    jalr r5, r1
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    lwr r2, r1
+    clrt
+    bf _epi_main
+_epi_main:
+    addi r6, 1
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

@@ -1,0 +1,42 @@
+; rcc-generated assembly
+%define RCC_CODE_BASE 0o1000
+%define RCC_DATA_BASE 0o0
+%define RCC_STACK_TOP 0o7770
+
+    .section text
+
+    .global main
+main:
+    subi r6, 3
+_B_main_0:
+;; unsigned a = ...
+    and r2, r7, r7
+    and r1, r6, r7
+    swr r2, r1
+;; unsigned b = ...
+    and r2, r7, r7
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+;; return a<=b
+    and r1, r6, r7
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    sub r1, r2, r3
+    li r2, 1
+    bf _L_main_ne_21
+    li r2, 0
+_L_main_ne_21:
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    clrt
+    bf _epi_main
+_epi_main:
+    addi r6, 3
+    jalr r0, r5

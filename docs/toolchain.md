@@ -30,7 +30,7 @@ cabal install exe:rcc exe:hsasm exe:hsld exe:rsim --overwrite-policy=always
 3. **`hsld`** (`hstools/`) links one or more `.o` files into a final image; bases must agree with the `%define` lines from step 1 (see contract below).
 4. **`rsim`** (`hstools/`) runs the binary; alternatives are [`sim.py`](../sim.py) and **`sim2`** (built via `make sim2`). CI usually gates on the Python simulator only.
 
-For **`rcc` CLI flags** (`-O0`, `-Os`, `-O2`, dumps, `--pass`, …), see [`compiler/app/Main.hs`](../compiler/app/Main.hs) and [`compiler/MANUAL.md`](../compiler/MANUAL.md) §13.
+For **`rcc` CLI flags** (`-O0`, `-Os`, `-O1`, `-O2` (alias of `-O1`), dumps, `--pass`, …), see [`compiler/app/Main.hs`](../compiler/app/Main.hs) and [`compiler/MANUAL.md`](../compiler/MANUAL.md) §13.
 
 ## Components
 

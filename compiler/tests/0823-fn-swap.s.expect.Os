@@ -1,0 +1,89 @@
+; rcc-generated assembly
+%define RCC_CODE_BASE 0o1000
+%define RCC_DATA_BASE 0o0
+%define RCC_STACK_TOP 0o7770
+
+    .section text
+
+    .global swap
+swap:
+    subi r6, 4
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    swr r3, r1
+_B_swap_0:
+    and r1, r6, r7
+    lwr r1, r1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r1, r1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    and r1, r6, r7
+    lwr r1, r1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r1, r1
+    swr r2, r1
+    clrt
+    bf _epi_swap
+_epi_swap:
+    addi r6, 4
+    jalr r0, r5
+
+    .global main
+main:
+    subi r6, 1
+    swr r5, r6
+    subi r6, 6
+_B_main_0:
+    li r2, 3
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    and r2, r1, r7
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    and r2, r1, r7
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r3, r1
+    li r1, swap
+    jalr r5, r1
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+    and r1, r6, r7
+    lwr r2, r1
+    clrt
+    bf _epi_main
+_epi_main:
+    addi r6, 6
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

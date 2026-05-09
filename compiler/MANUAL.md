@@ -451,9 +451,10 @@ rcc [options] <input.c>
 | `--data-base <n>`       | `0o0000`    | Address of mutable globals (and BSS) |
 | `--stack-top <n>`       | `0o7770`    | Initial value of r6 (stack grows down from here) |
 | `--preprocessor "<cmd>"` | none       | Run `<cmd> <input>` over the source first; line markers stripped |
-| `-O0`                   | —           | Disable optimizations (SSA + TAC pipelines) |
-| `-Os`                   | **default** | Optimize for size |
-| `-O2`                   | —           | More aggressive optimizations (pipeline may grow over time) |
+| `-O0`                   | —           | No Cytron SSA (plain CFG); no SSA opt pipeline; minimal TAC passes |
+| `-Os`                   | **default** | Optimize for size (SSA + TAC defaults) |
+| `-O1`                   | —           | Optimize for speed (e.g. branch threading on top of `-Os`) |
+| `-O2`                   | —           | Same as `-O1` (compat alias) |
 | `--pass +id,-id,…`      | none        | Enable/disable individual SSA/TAC passes (unioned with the `-O` defaults) |
 | `--optimize`            | —           | Compatibility: same as `-Os` |
 | `--no-optimize`         | —           | Compatibility: same as `-O0` |

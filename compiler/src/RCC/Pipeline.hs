@@ -12,7 +12,7 @@ import qualified Data.Map.Strict as Map
 import RCC.Pass (Pass(..), PassId)
 import qualified RCC.Pass as Pass
 
-data OptLevel = O0 | Os | O2
+data OptLevel = O0 | Os | O1
   deriving (Show, Eq)
 
 data Pipeline a = Pipeline
@@ -28,7 +28,7 @@ pipelineEnabledMap (Pipeline lvl ps) =
   let set = case lvl of
         O0 -> Pass.O0
         Os -> Pass.Os
-        O2 -> Pass.O2
+        O1 -> Pass.O1
    in Map.fromList
         [ (passId p, set `elem` passDefaultOn p)
         | p <- ps

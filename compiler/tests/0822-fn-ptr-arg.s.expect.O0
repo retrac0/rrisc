@@ -1,0 +1,64 @@
+; rcc-generated assembly
+%define RCC_CODE_BASE 0o1000
+%define RCC_DATA_BASE 0o0
+%define RCC_STACK_TOP 0o7770
+
+    .section text
+
+    .global set
+set:
+    subi r6, 2
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    swr r3, r1
+_B_set_0:
+;; *p=v
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    and r1, r6, r7
+    lwr r1, r1
+    swr r2, r1
+    clrt
+    bf _epi_set
+_epi_set:
+    addi r6, 2
+    jalr r0, r5
+
+    .global main
+main:
+    subi r6, 1
+    swr r5, r6
+    subi r6, 3
+_B_main_0:
+;; int x = ...
+    and r2, r0, r0
+    and r1, r6, r7
+    swr r2, r1
+;; set(&x,99)
+    and r1, r6, r7
+    and r2, r1, r7
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    li r3, 99
+    li r1, set
+    jalr r5, r1
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+;; return x
+    and r1, r6, r7
+    lwr r2, r1
+    clrt
+    bf _epi_main
+_epi_main:
+    addi r6, 3
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

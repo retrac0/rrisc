@@ -1,0 +1,246 @@
+; rcc-generated assembly
+%define RCC_CODE_BASE 0o1000
+%define RCC_DATA_BASE 0o0
+%define RCC_STACK_TOP 0o7770
+
+    .section text
+
+    .global main
+main:
+    subi r6, 12
+_B_main_0:
+;; int a = ...
+    li r2, 3
+    and r1, r6, r7
+    swr r2, r1
+;; int b = ...
+    li r2, 5
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+;; int result = ...
+    and r2, r0, r0
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+;; if (a<b&&b>2)
+    and r1, r6, r7
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    li r1, 0o4000
+    add r3, r3, r1
+    add r2, r2, r1
+    sub r1, r3, r2
+    rol r2, r0
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_1
+    clrt
+    bf _B_main_4
+_B_main_1:
+    and r1, r6, r7
+    addi r1, 1
+    lwr r3, r1
+    li r2, 2
+    li r1, 0o4000
+    add r3, r3, r1
+    add r2, r2, r1
+    sub r1, r2, r3
+    rol r2, r0
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_2
+    clrt
+    bf _B_main_4
+_B_main_2:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+    clrt
+    bf _B_main_5
+_B_main_4:
+    and r2, r0, r0
+    and r1, r6, r7
+    addi r1, 5
+    swr r2, r1
+    clrt
+    bf _B_main_5
+_B_main_5:
+    and r1, r6, r7
+    addi r1, 5
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_6
+    clrt
+    bf _B_main_14
+_B_main_6:
+;; if (a==3||b==10)
+    and r1, r6, r7
+    lwr r3, r1
+    li r2, 3
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_main_ne_89
+    li r2, 0
+_L_main_ne_89:
+    and r1, r6, r7
+    addi r1, 6
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 6
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_10
+    clrt
+    bf _B_main_7
+_B_main_7:
+    and r1, r6, r7
+    addi r1, 1
+    lwr r3, r1
+    li r2, 10
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_main_ne_110
+    li r2, 0
+_L_main_ne_110:
+    and r1, r6, r7
+    addi r1, 7
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 7
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_10
+    clrt
+    bf _B_main_8
+_B_main_8:
+    and r2, r0, r0
+    and r1, r6, r7
+    addi r1, 8
+    swr r2, r1
+    clrt
+    bf _B_main_11
+_B_main_10:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 8
+    swr r2, r1
+    clrt
+    bf _B_main_11
+_B_main_11:
+    and r1, r6, r7
+    addi r1, 8
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_12
+    clrt
+    bf _B_main_13
+_B_main_12:
+;; result=1
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    clrt
+    bf _B_main_13
+_B_main_13:
+    clrt
+    bf _B_main_14
+_B_main_14:
+;; if (a>b||b==0)
+    and r1, r6, r7
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    li r1, 0o4000
+    add r3, r3, r1
+    add r2, r2, r1
+    sub r1, r2, r3
+    rol r2, r0
+    and r1, r6, r7
+    addi r1, 9
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 9
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_18
+    clrt
+    bf _B_main_15
+_B_main_15:
+    and r1, r6, r7
+    addi r1, 1
+    lwr r3, r1
+    and r2, r0, r0
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_main_ne_186
+    li r2, 0
+_L_main_ne_186:
+    and r1, r6, r7
+    addi r1, 10
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 10
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_18
+    clrt
+    bf _B_main_16
+_B_main_16:
+    and r2, r0, r0
+    and r1, r6, r7
+    addi r1, 11
+    swr r2, r1
+    clrt
+    bf _B_main_19
+_B_main_18:
+    li r2, 1
+    and r1, r6, r7
+    addi r1, 11
+    swr r2, r1
+    clrt
+    bf _B_main_19
+_B_main_19:
+    and r1, r6, r7
+    addi r1, 11
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_20
+    clrt
+    bf _B_main_21
+_B_main_20:
+;; result=99
+    li r2, 99
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    clrt
+    bf _B_main_21
+_B_main_21:
+;; return result
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    clrt
+    bf _epi_main
+_epi_main:
+    addi r6, 12
+    jalr r0, r5

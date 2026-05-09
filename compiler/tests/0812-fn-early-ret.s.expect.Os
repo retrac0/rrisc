@@ -1,0 +1,92 @@
+; rcc-generated assembly
+%define RCC_CODE_BASE 0o1000
+%define RCC_DATA_BASE 0o0
+%define RCC_STACK_TOP 0o7770
+
+    .section text
+
+    .global sign
+sign:
+    subi r6, 4
+    and r1, r6, r7
+    swr r2, r1
+_B_sign_0:
+    and r1, r6, r7
+    lwr r3, r1
+    and r2, r0, r0
+    li r1, 0o4000
+    add r3, r3, r1
+    add r2, r2, r1
+    sub r1, r2, r3
+    rol r2, r0
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_sign_1
+    clrt
+    bf _B_sign_3
+_B_sign_1:
+    li r2, 1
+    clrt
+    bf _epi_sign
+_B_sign_3:
+    and r1, r6, r7
+    lwr r3, r1
+    and r2, r0, r0
+    li r1, 0o4000
+    add r3, r3, r1
+    add r2, r2, r1
+    sub r1, r3, r2
+    rol r2, r0
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_sign_4
+    clrt
+    bf _B_sign_6
+_B_sign_4:
+    and r2, r7, r7
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    clrt
+    bf _epi_sign
+_B_sign_6:
+    and r2, r0, r0
+    clrt
+    bf _epi_sign
+_epi_sign:
+    addi r6, 4
+    jalr r0, r5
+
+    .global main
+main:
+    subi r6, 1
+    swr r5, r6
+    subi r6, 1
+_B_main_0:
+    li r2, 5
+    li r1, sign
+    jalr r5, r1
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    lwr r2, r1
+    clrt
+    bf _epi_main
+_epi_main:
+    addi r6, 1
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

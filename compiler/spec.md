@@ -426,8 +426,9 @@ defines must stay consistent with the `%define` lines `rcc` emits — see
 versioning.
 
 **`rcc` driver (summary).** Typical flags: `-o`, `--code-base`, `--data-base`, `--stack-top`,
-`--preprocessor`, **`-O0`** (no optimizations), **`-Os`** (default, optimize for size),
-**`-O2`**, **`--pass +name,-name`** (per-pass overrides), **`--dump-ast`**, **`--dump-tac`**,
+`--preprocessor`, **`-O0`** (no Cytron SSA / no SSA opts), **`-Os`** (default, size),
+**`-O1`** (speed), **`-O2`** (same as `-O1`), **`--pass +name,-name`** (per-pass overrides),
+**`--dump-ast`**, **`--dump-tac`**,
 **`--dump-ssa`**, **`--optimize` / `--no-optimize`** (compat aliases for `-Os` / `-O0`). Full CLI
 and workflow examples are in [`MANUAL.md`](MANUAL.md).
 

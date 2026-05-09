@@ -2,6 +2,7 @@
 module RCC.SSA.CFG
   ( buildCFG
   , cfgFromRawBlockList
+  , cfgToSsaFunc
   , RawBlock(..)
   , RawTerm(..)
   , nullRawBlock
@@ -152,6 +153,35 @@ linkBlocks bs0 =
       foldl' (\m' s -> Map.insertWith (++) s [bId b] m') m (bSuccs b)
     fillPreds pm b =
       b { bPreds = Map.findWithDefault [] (bId b) pm }
+
+-- | Lowered CFG to an 'S.Func' with no @phi@ nodes (skips Cytron SSA).
+-- Terminators match the mapping used in "RCC.LowerToSSA" @cfgTermToSSA@.
+cfgToSsaFunc :: CFG -> S.Func
+cfgToSsaFunc g =
+  S.Func
+    (cfgName g)
+    (cfgParams g)
+    (toSid (cfgEntry g))
+    (Map.mapKeys toSid (Map.map blockToS (cfgBlocks g)))
+  where
+    toSid :: BlockId -> S.BlockId
+    toSid (BlockId n) = S.BlockId n
+    blockToS :: Block -> S.Block
+    blockToS b =
+      S.Block
+        (toSid (bId b))
+        (bLabel b)
+        (bBody b)
+        (termToS (bTerm b))
+        (map toSid (bPreds b))
+        (map toSid (bSuccs b))
+    termToS :: Term -> S.Term
+    termToS (TGoto x) = S.TGoto (toSid x)
+    termToS (TIfZ v tz fnz) = S.TBr v (toSid fnz) (toSid tz)
+    termToS (TIfNZ v tnz tz) = S.TBr v (toSid tnz) (toSid tz)
+    termToS (TIfCmp op a b t f) = S.TBrCmp False op a b (toSid t) (toSid f)
+    termToS (TIfNCmp op a b t f) = S.TBrCmp True op a b (toSid t) (toSid f)
+    termToS (TReturn mv) = S.TReturn mv
 
 -- ---------------------------------------------------------------------------
 -- Legacy: build CFG from flat TAC (tests / tacProcToSSA).

@@ -1,0 +1,143 @@
+; rcc-generated assembly
+%define RCC_CODE_BASE 0o1000
+%define RCC_DATA_BASE 0o0
+%define RCC_STACK_TOP 0o3000
+
+    .section text
+
+    .global odd_
+odd_:
+    subi r6, 1
+    swr r5, r6
+    subi r6, 4
+    and r1, r6, r7
+    swr r2, r1
+_B_odd__0:
+    and r1, r6, r7
+    lwr r3, r1
+    and r2, r0, r0
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_odd__ne_14
+    li r2, 0
+_L_odd__ne_14:
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_odd__1
+    clrt
+    bf _B_odd__3
+_B_odd__1:
+    and r2, r0, r0
+    clrt
+    bf _epi_odd_
+_B_odd__3:
+    and r1, r6, r7
+    lwr r3, r1
+    li r2, 1
+    sub r2, r3, r2
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    li r1, even_
+    jalr r5, r1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    clrt
+    bf _epi_odd_
+_epi_odd_:
+    addi r6, 4
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5
+
+    .global even_
+even_:
+    subi r6, 1
+    swr r5, r6
+    subi r6, 4
+    and r1, r6, r7
+    swr r2, r1
+_B_even__0:
+    and r1, r6, r7
+    lwr r3, r1
+    and r2, r0, r0
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_even__ne_14
+    li r2, 0
+_L_even__ne_14:
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_even__1
+    clrt
+    bf _B_even__3
+_B_even__1:
+    li r2, 1
+    clrt
+    bf _epi_even_
+_B_even__3:
+    and r1, r6, r7
+    lwr r3, r1
+    li r2, 1
+    sub r2, r3, r2
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    li r1, odd_
+    jalr r5, r1
+    and r1, r6, r7
+    addi r1, 3
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 3
+    lwr r2, r1
+    clrt
+    bf _epi_even_
+_epi_even_:
+    addi r6, 4
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5
+
+    .global main
+main:
+    subi r6, 1
+    swr r5, r6
+    subi r6, 1
+_B_main_0:
+    li r2, 4
+    li r1, even_
+    jalr r5, r1
+    and r1, r6, r7
+    swr r2, r1
+    and r1, r6, r7
+    lwr r2, r1
+    clrt
+    bf _epi_main
+_epi_main:
+    addi r6, 1
+    lwr r5, r6
+    addi r6, 1
+    jalr r0, r5

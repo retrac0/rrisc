@@ -23,6 +23,9 @@ Golden UART tests (manual expectations; never run --bless-output on these):
 Numbered RCC tests with simulator output goldens use a pair of files (both required if either exists):
   stem.output.expect      — stdout from linked binary built with default optimized rcc (-Os/--optimize)
   stem.output.expect.O0   — stdout from the same program built with -O0
+
+Assembly goldens (optional): either legacy stem.s.expect (matches default -Os asm) or all three of
+  stem.s.expect.O0, stem.s.expect.Os, stem.s.expect.O1
 """
 
 from __future__ import annotations
@@ -248,6 +251,14 @@ def rcc_output_expect_path(compiler_tests: Path, base: str) -> Path:
 
 def rcc_output_expect_o0_path(compiler_tests: Path, base: str) -> Path:
     return compiler_tests / f"{base}.output.expect.O0"
+
+
+def rcc_asm_expect_paths(compiler_tests: Path, base: str) -> tuple[Path, Path, Path]:
+    return (
+        compiler_tests / f"{base}.s.expect.O0",
+        compiler_tests / f"{base}.s.expect.Os",
+        compiler_tests / f"{base}.s.expect.O1",
+    )
 
 
 def _run_rcc_output_variant_sims(
@@ -661,16 +672,90 @@ def run_rcc_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
     if not ok_c:
         return [TResult(False, name, err_c)]
 
-    s_expect = compiler_tests / f"{base}.s.expect"
-    if s_expect.is_file():
+    s_expect_legacy = compiler_tests / f"{base}.s.expect"
+    asm_o0_p, asm_os_p, asm_o1_p = rcc_asm_expect_paths(compiler_tests, base)
+    n_asm_triple = sum(1 for p in (asm_o0_p, asm_os_p, asm_o1_p) if p.is_file())
+    if n_asm_triple not in (0, 3):
+        return [
+            TResult(
+                False,
+                name,
+                "assembly goldens: need all three "
+                f"{asm_o0_p.name}, {asm_os_p.name}, {asm_o1_p.name}, or none "
+                f"(found {n_asm_triple} of 3)",
+                sub="goldens",
+            )
+        ]
+    if s_expect_legacy.is_file() and n_asm_triple == 3:
+        return [
+            TResult(
+                False,
+                name,
+                f"remove legacy {s_expect_legacy.name} when using .s.expect.O0/.Os/.O1 triple",
+                sub="goldens",
+            )
+        ]
+
+    if n_asm_triple == 3:
+        got_os = asm_opt.read_text(encoding="utf-8")
+        exp_os = asm_os_p.read_text(encoding="utf-8")
+        if got_os != exp_os:
+            results.append(
+                TResult(
+                    False,
+                    name,
+                    diff_text(exp_os, got_os, str(asm_os_p), "generated asm (-Os)"),
+                    sub="s.expect.Os",
+                )
+            )
+            return results
+        asm_o0_out = tmp_root / f"{base}.chk.O0.s"
+        ok0, err0 = compile_rcc_to_asm(
+            cfg, src, asm_o0_out, extra_rcc_flags=("-O0", *per_test)
+        )
+        if not ok0:
+            results.append(TResult(False, name, f"rcc -O0 failed:\n{err0}", sub="s.expect.O0/compile"))
+            return results
+        exp0 = asm_o0_p.read_text(encoding="utf-8")
+        got0 = asm_o0_out.read_text(encoding="utf-8")
+        if got0 != exp0:
+            results.append(
+                TResult(
+                    False,
+                    name,
+                    diff_text(exp0, got0, str(asm_o0_p), "generated asm (-O0)"),
+                    sub="s.expect.O0",
+                )
+            )
+            return results
+        asm_o1_out = tmp_root / f"{base}.chk.O1.s"
+        ok1, err1 = compile_rcc_to_asm(
+            cfg, src, asm_o1_out, extra_rcc_flags=("-O1", *per_test)
+        )
+        if not ok1:
+            results.append(TResult(False, name, f"rcc -O1 failed:\n{err1}", sub="s.expect.O1/compile"))
+            return results
+        exp1 = asm_o1_p.read_text(encoding="utf-8")
+        got1 = asm_o1_out.read_text(encoding="utf-8")
+        if got1 != exp1:
+            results.append(
+                TResult(
+                    False,
+                    name,
+                    diff_text(exp1, got1, str(asm_o1_p), "generated asm (-O1)"),
+                    sub="s.expect.O1",
+                )
+            )
+            return results
+    elif s_expect_legacy.is_file():
         got = asm_opt.read_text(encoding="utf-8")
-        exp = s_expect.read_text(encoding="utf-8")
+        exp = s_expect_legacy.read_text(encoding="utf-8")
         if got != exp:
             results.append(
                 TResult(
                     False,
                     name,
-                    diff_text(exp, got, str(s_expect), "generated asm"),
+                    diff_text(exp, got, str(s_expect_legacy), "generated asm"),
                     sub="s.expect",
                 )
             )
@@ -1161,7 +1246,7 @@ def bless_io_host(cfg: RunConfig) -> int:
 
 
 def bless_rcc_asm(cfg: RunConfig) -> int:
-    """Rewrite compiler/tests/*.s.expect from current rcc."""
+    """Rewrite compiler/tests assembly goldens: .s.expect.O0, .Os, .O1 (and drop legacy .s.expect)."""
     rcc = cfg.rcc_path
     if not rcc:
         print("bless-asm: rcc not found", file=sys.stderr)
@@ -1172,25 +1257,36 @@ def bless_rcc_asm(cfg: RunConfig) -> int:
         base = src.stem
         if cfg.filter_re and not cfg.filter_re.search(base):
             continue
-        dest = compiler_tests / f"{base}.s.expect"
-        if not dest.is_file():
+        legacy = compiler_tests / f"{base}.s.expect"
+        p0, ps, p1 = rcc_asm_expect_paths(compiler_tests, base)
+        n_triple = sum(1 for p in (p0, ps, p1) if p.is_file())
+        if n_triple in (1, 2):
+            print(
+                f"bless-asm: skip {base} (incomplete triple: {n_triple}/3 of "
+                f"{p0.name}, {ps.name}, {p1.name})",
+                file=sys.stderr,
+            )
+            n_fail += 1
+            continue
+        if not legacy.is_file() and n_triple == 0:
             continue
         per_test = parse_flags_file(compiler_tests / f"{base}.rccflags")
-        argv = [
-            str(rcc),
-            *cfg.default_rcc_flags,
-            *per_test,
-            rcc_src_arg(cfg.root, src),
-            "-o",
-            str(dest),
-        ]
-        r = run_capture(argv, cwd=cfg.root / "compiler")
-        if r.returncode == 0:
-            print(f"bless-asm: {base}")
-            n_ok += 1
-        else:
-            print(f"bless-asm FAIL: {base}\n{r.stderr}", file=sys.stderr)
+        src_arg = rcc_src_arg(cfg.root, src)
+        ok_this = True
+        for flag, dest in (("-O0", p0), ("-Os", ps), ("-O1", p1)):
+            argv = [str(rcc), flag, *per_test, src_arg, "-o", str(dest)]
+            r = run_capture(argv, cwd=cfg.root / "compiler")
+            if r.returncode != 0:
+                print(f"bless-asm FAIL: {base} ({flag})\n{r.stderr}", file=sys.stderr)
+                ok_this = False
+                break
+        if not ok_this:
             n_fail += 1
+            continue
+        if legacy.is_file():
+            legacy.unlink()
+        print(f"bless-asm: {base}", flush=True)
+        n_ok += 1
     print(f"bless-asm: updated {n_ok}, failures {n_fail}")
     return 0 if n_fail == 0 else 1
 
@@ -1581,7 +1677,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="RRISC unified test runner")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--filter", metavar="REGEX", help="only tests whose stem matches")
-    ap.add_argument("--bless-asm", action="store_true", help="rewrite compiler/tests/*.s.expect")
+    ap.add_argument(
+        "--bless-asm",
+        action="store_true",
+        help="rewrite compiler/tests/*.s.expect.{O0,Os,O1} from rcc (drops legacy .s.expect)",
+    )
     ap.add_argument("--bless-size", action="store_true", help="rewrite tests/size_baseline.txt")
     ap.add_argument(
         "--bless-output",

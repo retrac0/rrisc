@@ -3,6 +3,7 @@
 module RCC.LowerToSSA
   ( lower
   , lowerToSSA
+  , lowerToSSAPlain
   , tacCfgToSSA
   , tacProcToSSA
   , RawBuilder(..)
@@ -198,6 +199,22 @@ lowerToSSA (Syn.Prog decls) =
                 case C.cfgFromRawBlockList (pbName p) (pbParams p) (pbRaws p) >>= tacCfgToSSA of
                   Left err -> error ("lowerToSSA: " ++ err)
                   Right f  -> f
+            , SP.spLocSzs = pbLocSzs p
+            }
+        | p <- reverse (lsProcs final)
+        ]
+   in SP.SSAProg (reverse (lsGlobalDefs final)) procs
+
+-- | Like 'lowerToSSA' but skips Cytron @phi@ insertion (CFG bodies stay in lowered form).
+lowerToSSAPlain :: Sema.CheckedProg -> SP.SSAProg
+lowerToSSAPlain (Syn.Prog decls) =
+  let final = execState (lowerProg decls) emptyLS
+      procs =
+        [ SP.SSAProc
+            { SP.spFunc =
+                case C.cfgFromRawBlockList (pbName p) (pbParams p) (pbRaws p) of
+                  Left err -> error ("lowerToSSAPlain: " ++ err)
+                  Right cfg -> C.cfgToSsaFunc cfg
             , SP.spLocSzs = pbLocSzs p
             }
         | p <- reverse (lsProcs final)

@@ -18,7 +18,7 @@ import qualified Data.Text as T
 newtype PassId = PassId { unPassId :: Text }
   deriving (Show, Eq, Ord)
 
-data PassSet = O0 | Os | O2
+data PassSet = O0 | Os | O1
   deriving (Show, Eq, Ord)
 
 data PassResult a = PassResult

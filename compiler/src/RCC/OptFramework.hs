@@ -30,7 +30,7 @@ defaultTacPasses =
   [ Pass
       { passId = PassId "tac-trivial-assign"
       , passDesc = "Remove self-assignments (x = x)"
-      , passDefaultOn = [Os, O2]
+      , passDefaultOn = [Os, O1]
       , passRun = \p ->
           let (out, ch) = elimTrivialAssignsProg p
            in PassResult out ch

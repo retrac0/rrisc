@@ -1,0 +1,87 @@
+; rcc-generated assembly
+%define RCC_CODE_BASE 0o1000
+%define RCC_DATA_BASE 0o0
+%define RCC_STACK_TOP 0o7770
+
+    .section text
+
+    .global main
+main:
+    subi r6, 3
+_B_main_0:
+;; int x = ...
+    li r2, 2
+    and r1, r6, r7
+    swr r2, r1
+;; if (x==1)
+    and r1, r6, r7
+    lwr r3, r1
+    li r2, 1
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_main_ne_15
+    li r2, 0
+_L_main_ne_15:
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_1
+    clrt
+    bf _B_main_4
+_B_main_1:
+;; return 1
+    li r2, 1
+    clrt
+    bf _epi_main
+_B_main_2:
+    clrt
+    bf _B_main_11
+_B_main_4:
+;; if (x==2)
+    and r1, r6, r7
+    lwr r3, r1
+    li r2, 2
+    sub r1, r3, r2
+    sub r0, r0, r1
+    li r2, 1
+    bf _L_main_ne_44
+    li r2, 0
+_L_main_ne_44:
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    sub r0, r0, r2
+    bt _B_main_5
+    clrt
+    bf _B_main_8
+_B_main_5:
+;; return 2
+    li r2, 2
+    clrt
+    bf _epi_main
+_B_main_6:
+    clrt
+    bf _B_main_10
+_B_main_8:
+;; return 3
+    li r2, 3
+    clrt
+    bf _epi_main
+_B_main_10:
+    clrt
+    bf _B_main_11
+_B_main_11:
+    and r2, r0, r0
+    clrt
+    bf _epi_main
+_epi_main:
+    addi r6, 3
+    jalr r0, r5

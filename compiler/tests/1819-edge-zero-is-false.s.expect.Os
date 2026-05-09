@@ -1,0 +1,18 @@
+; rcc-generated assembly
+%define RCC_CODE_BASE 0o1000
+%define RCC_DATA_BASE 0o0
+%define RCC_STACK_TOP 0o7770
+
+    .section text
+
+    .global main
+main:
+_B_main_0:
+    clrt
+    bf _B_main_3
+_B_main_3:
+    and r2, r0, r0
+    clrt
+    bf _epi_main
+_epi_main:
+    jalr r0, r5

@@ -84,7 +84,8 @@ parseArgs = go defaultOptions
     -- New optimization levels
     go opts ("-O0" : rest) = go opts{ optOptLevel = Pipe.O0 } rest
     go opts ("-Os" : rest) = go opts{ optOptLevel = Pipe.Os } rest
-    go opts ("-O2" : rest) = go opts{ optOptLevel = Pipe.O2 } rest
+    go opts ("-O1" : rest) = go opts{ optOptLevel = Pipe.O1 } rest
+    go opts ("-O2" : rest) = go opts{ optOptLevel = Pipe.O1 } rest
     -- Per-pass overrides
     go opts ("--pass" : spec : rest) = go opts{ optPassToggles = Just spec } rest
     go _ (('-' : '-' : _) : _) = Left "unknown option (try --help)"
@@ -101,9 +102,10 @@ usage prog =
     , "  --data-base <n>       RW globals base address (default: 0o0000)"
     , "  --stack-top <n>       initial stack pointer     (default: 0o7770)"
     , "  --preprocessor <cmd>  run <cmd> on source before compiling (e.g. 'cpp -P')"
-    , "  -O0                   disable optimizations"
+    , "  -O0                   no SSA opts (plain CFG lowering)"
     , "  -Os                   optimize for size (default)"
-    , "  -O2                   optimize (future: more aggressive)"
+    , "  -O1                   optimize for speed"
+    , "  -O2                   (compat) same as -O1"
     , "  --pass +id,-id,...    enable/disable specific passes"
     , "  --optimize            (compat) same as -Os"
     , "  --no-optimize         (compat) same as -O0"
@@ -160,20 +162,26 @@ main = do
     Right p -> return p
 
   let ssa :: SSA.SSAProg
-      ssa = LowerSSA.lowerSSA checked
+      ssa =
+        case optOptLevel opts of
+          Pipe.O0 -> LowerSSA.lowerSSAPlain checked
+          _       -> LowerSSA.lowerSSA checked
 
   when (optDumpSsa opts) $ print ssa >> exitSuccess
 
-  -- SSA-stage optimization pipeline (new default path).
-  let ssaPipe = Pipe.defaultPipeline (optOptLevel opts) OFSSA.defaultSsaPasses
-  let ssaBaseEnabled = Pipe.pipelineEnabledMap ssaPipe
-  ssaEnabled <- case optPassToggles opts of
-    Nothing -> pure ssaBaseEnabled
-    Just s  ->
-      case Pass.parsePassToggles s of
-        Left e -> die ("--pass: " <> e)
-        Right m -> pure (m `Map.union` ssaBaseEnabled)
-  let ssa' = OFSSA.optimizeSSAWith ssaEnabled (Pipe.plPasses ssaPipe) ssa
+  -- SSA-stage optimization pipeline (skipped entirely at -O0).
+  ssa' <- case optOptLevel opts of
+    Pipe.O0 -> pure ssa
+    _ -> do
+      let ssaPipe = Pipe.defaultPipeline (optOptLevel opts) OFSSA.defaultSsaPasses
+          ssaBaseEnabled = Pipe.pipelineEnabledMap ssaPipe
+      ssaEnabled <- case optPassToggles opts of
+        Nothing -> pure ssaBaseEnabled
+        Just s  ->
+          case Pass.parsePassToggles s of
+            Left e -> die ("--pass: " <> e)
+            Right m -> pure (m `Map.union` ssaBaseEnabled)
+      pure (OFSSA.optimizeSSAWith ssaEnabled (Pipe.plPasses ssaPipe) ssa)
 
   let tac :: TAC.TACProg
       tac = ToTACProg.toTACProg ssa'

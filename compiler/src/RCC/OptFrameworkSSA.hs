@@ -16,67 +16,67 @@ defaultSsaPasses =
   [ Pass
       { passId = PassId "ssa-cfg-normalize"
       , passDesc = "Recompute preds/succs and drop unreachable blocks"
-      , passDefaultOn = [O0, Os, O2]
+      , passDefaultOn = [O0, Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.normalizeCFGProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-cfg-simplify"
       , passDesc = "CFG simplification (branch folding, unreachable removal)"
-      , passDefaultOn = [Os, O2]
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.simplifyCFGProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-const-sccp"
       , passDesc = "Sparse conditional constant propagation"
-      , passDefaultOn = [Os, O2]
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.sccpProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-cfg-simplify-post-sccp"
       , passDesc = "CFG cleanup after SCCP"
-      , passDefaultOn = [Os, O2]
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.simplifyCFGProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-dce"
       , passDesc = "Dead code elimination (incl. phi cleanup)"
-      , passDefaultOn = [Os, O2]
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.dceProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-copy-prop"
       , passDesc = "Copy propagation / coalescing"
-      , passDefaultOn = [Os, O2]
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.copyPropProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-dce-post-copy"
       , passDesc = "DCE cleanup after copy propagation"
-      , passDefaultOn = [Os, O2]
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.dceProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-cfg-thread"
-      , passDesc = "Jump/branch threading (O2)"
-      , passDefaultOn = [O2]
+      , passDesc = "Jump/branch threading (O1)"
+      , passDefaultOn = [O1]
       , passRun = \p -> let (out, ch) = SOpt.branchThreadProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-float-arg-forward"
       , passDesc = "Eliminate float temp copies by arg forwarding"
-      , passDefaultOn = [Os, O2]
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.elimFloatCopiesProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "prog-dce"
       , passDesc = "Whole-program procedure DCE (callgraph reachability)"
-      , passDefaultOn = [Os, O2]
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.eliminateDeadCodeProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "global-dedupe-float-rodata"
       , passDesc = "Deduplicate float rodata globals"
-      , passDefaultOn = [Os, O2]
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.dedupeFloatRoDataProg p in PassResult out ch
       }
 
