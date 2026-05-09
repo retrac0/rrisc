@@ -26,6 +26,7 @@ import System.IO (
   BufferMode (..),
   hGetChar,
   hIsTerminalDevice,
+  hSetBinaryMode,
   hSetBuffering,
   hSetEcho,
   hFlush,
@@ -84,6 +85,7 @@ attachTerminal bus opts = do
 
   tty <- hIsTerminalDevice stdin
   when tty $ do
+    hSetBinaryMode stdin True
     hSetBuffering stdin NoBuffering
     hSetEcho stdin False
 
@@ -136,3 +138,4 @@ attachTerminal bus opts = do
     when tty $ do
       hSetEcho stdin True
       hSetBuffering stdin LineBuffering
+      hSetBinaryMode stdin False

@@ -365,30 +365,6 @@ def disasm_block(cpu : CPU, start: int, end: int) -> str:
     return res
 
 
-# translates ASCII to sixbit where top two bits are stripped and if the ascii value was > 0x40 (64) then 32 is subtracted
-def encode_sixbit(c):
-    oldc = c
-    c = c.upper()
-    if c == "\n":
-        c = "_"
-    v = ord(c) & 0x3F
-    if v > 0x40:
-        v -= 0x20
-
-    print(f"encoding {oldc} {ord(oldc):02x} -> {c} {v:02o}")
-    return v
-
-def decode_sixbit(c):
-    return None
-
-
-def test_sixbit():
-    test_str = " Hello, World!\n"
-    encoded = [encode_sixbit(c) for c in test_str]
-    print("Encoded sixbit values:")
-    for c, v in zip(test_str, encoded):
-        print(f"'{c}': {v:02o}")
-
 def run(cpu, summary=False):
     while cpu.running:
         cpu.step()

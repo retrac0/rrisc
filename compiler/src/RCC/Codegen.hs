@@ -66,7 +66,7 @@ slotOf t = do
   m <- gets cgSlots
   case Map.lookup t m of
     Just s  -> pure s
-    Nothing -> pure 0   -- shouldn't happen
+    Nothing -> error ("RCC.Codegen.slotOf: missing stack slot for temp " <> T.unpack t)
 
 -- ---------------------------------------------------------------------------
 -- Top-level codegen

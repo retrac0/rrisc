@@ -20,8 +20,6 @@ SIM_START  := --start $(CODE_BASE)
 SIM := python3 $(ROOT)/sim.py --terminal $(SIM_MEM) $(SIM_START)
 
 RCC_FLAGS := --code-base $(CODE_BASE) --data-base $(DATA_BASE) --stack-top $(STACK_TOP)
-# Integer RPN: -Os can swap a/b temps before __div in this large main() (quotient 0); -O0 is safe.
-RPN_INT_RCC_FLAGS := $(RCC_FLAGS) -O0
 
 .PHONY: all run rpn_float clean
 
@@ -44,16 +42,18 @@ rpn_float.bin: rpn_float.s
 	    --code-base $(CODE_BASE) --data-base $(DATA_BASE)
 
 rpn_int.s: rpn_int.c $(ROOT)/lib/rlibc_float_calc.h
-	cd $(RCC_DIR) && $(RCC) $(RPN_INT_RCC_FLAGS) \
+	cd $(RCC_DIR) && $(RCC) $(RCC_FLAGS) \
 	    --preprocessor "cpp -P -I $(ROOT)/lib" \
 	    $(ROOT)/demos/rpn_int.c -o $(ROOT)/demos/rpn_int.s
 
 # Integer RPN needs __div/__mul; rcc already %include's librcc.s at end of rpn.s — do not link librcc.o twice.
-rpn.bin: rpn_int.s
+# ../lib/rpn_err.s: hand-written rpn_emit_err so rcc does not place a void helper before main (stack bug).
+rpn.bin: rpn_int.s $(ROOT)/lib/rpn_err.s
 	$(HSASM_RUN) lib/crt0.s --obj-only --obj-out demos/rpn.crt0.o \
 	    -D RCC_STACK_TOP=$(STACK_TOP)
 	$(HSASM_RUN) demos/rpn_int.s -I lib --obj-only --obj-out demos/rpn.user.o
-	$(HSLD_RUN) demos/rpn.crt0.o demos/rpn.user.o -o demos/rpn.bin \
+	$(HSASM_RUN) lib/rpn_err.s -I lib --obj-only --obj-out lib/rpn_err.o
+	$(HSLD_RUN) demos/rpn.crt0.o lib/rpn_err.o demos/rpn.user.o -o demos/rpn.bin \
 	    --code-base $(CODE_BASE) --data-base $(DATA_BASE)
 
 run: rpn.bin
@@ -61,5 +61,5 @@ run: rpn.bin
 
 clean:
 	rm -f rpn.s rpn.bin rpn_float.s rpn_float.bin \
-	    demos/rpn.crt0.o demos/rpn.user.o \
+	    demos/rpn.crt0.o demos/rpn.user.o $(ROOT)/lib/rpn_err.o \
 	    demos/rpn_float.crt0.o demos/rpn_float.user.o

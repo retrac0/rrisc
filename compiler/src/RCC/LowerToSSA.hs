@@ -13,7 +13,7 @@ module RCC.LowerToSSA
 import Control.Monad (forM, forM_, when, unless)
 import Control.Monad.State.Strict
 import Data.Bits ((.&.), (.|.), shiftL, shiftR)
-import Data.List (foldl')
+import Data.List (foldl', nub)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
@@ -1333,6 +1333,17 @@ ssaPlacePhis vars blocks df =
                  in (pl', ws')
        in go acc work0
 
+-- | Merge phi predecessor maps; duplicate predecessor with differing values is a compiler bug.
+phiInnerUnion :: Map Ssa.BlockId Ssa.Value -> Map Ssa.BlockId Ssa.Value -> Map Ssa.BlockId Ssa.Value
+phiInnerUnion = Map.unionWithKey mergePhiEdge
+  where
+    mergePhiEdge predBlk new old
+      | new == old = old
+      | otherwise =
+          error $
+            "RCC.LowerToSSA.phiInnerUnion: conflicting phi operand from predecessor "
+              ++ show predBlk ++ ": " ++ show (new, old)
+
 ssaRenameAll :: C.CFG
           -> Map C.BlockId [C.BlockId]
           -> Map C.BlockId [SsaBVar]
@@ -1353,8 +1364,8 @@ ssaRenameAll cfg children phiMap bid = do
   term <- cfgTermToSSA (C.bTerm b)
 
   let sbid = Ssa.BlockId (C.unBlockId bid)
-      preds = [Ssa.BlockId (C.unBlockId p) | p <- C.bPreds b]
-      succs = [Ssa.BlockId (C.unBlockId s) | s <- C.bSuccs b]
+      preds = [Ssa.BlockId (C.unBlockId p) | p <- nub (C.bPreds b)]
+      succs = [Ssa.BlockId (C.unBlockId s) | s <- nub (C.bSuccs b)]
       phis = [Ssa.IPhi nm [] | (_, nm) <- phiDefs]
       sb = Ssa.Block
         { Ssa.bId = sbid
@@ -1367,7 +1378,7 @@ ssaRenameAll cfg children phiMap bid = do
   modify $ \s -> s { rsBlocks = Map.insert sbid sb (rsBlocks s) }
 
   -- Add phi arguments for successors from current environment (after body).
-  forM_ (C.bSuccs b) $ \succBid -> do
+  forM_ (nub (C.bSuccs b)) $ \succBid -> do
     let succVars = Map.findWithDefault [] succBid phiMap
         succSbid = Ssa.BlockId (C.unBlockId succBid)
     forM_ succVars $ \v -> do
@@ -1376,7 +1387,7 @@ ssaRenameAll cfg children phiMap bid = do
       modify $ \s ->
         s { rsPhiArgs =
               Map.insertWith
-                (Map.unionWith (\_new old -> old))
+                phiInnerUnion
                 (succSbid, v)
                 (Map.singleton sbid val)
                 (rsPhiArgs s)

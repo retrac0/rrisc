@@ -8,7 +8,7 @@ examples/*.output
 */dist-newstyle/*
 ras
 rcc
-demos/rpn.s
+demos/rpn_int*.s
 rsim
 demos/rpn-noopt.s
 hsim

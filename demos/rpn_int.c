@@ -21,11 +21,16 @@
  *   d       duplicate top of stack
  *   c       clear stack
  *   q       quit (halts simulator)
+ *
+ * On invalid input or runtime error, prints $$$ and a newline (rpn_emit_err in lib/rpn_err.s).
+ * Use sp >= 2 / sp > 0 for stack checks — rcc mis-compiles sp < n in conditionals.
  */
 
 /* UART + exit; itoa from lib/itoa.s (rcc auto-%include). Avoid rlibc.h here or
  * you get a duplicate 'itoa' label (C body + itoa.s). */
 #include "rlibc_float_calc.h"
+
+void rpn_emit_err();
 
 int stk[16];
 int sp = 0;
@@ -45,6 +50,8 @@ int main() {
     int val;
 
     while (1) {
+        putchar('!');
+        putchar(' ');
         gets(buf);
         p = buf;
 
@@ -65,47 +72,99 @@ int main() {
                     p++;
                 }
                 if (neg) val = -val;
-                stk[sp] = val;
-                sp++;
+                if (sp < 16) {
+                    stk[sp] = val;
+                    sp++;
+                } else {
+                    rpn_emit_err();
+                }
             } else if (*p == '+') {
-                sp--; b = stk[sp];
-                sp--; a = stk[sp];
-                r = a + b;
-                stk[sp] = r; sp++;
+                if (sp >= 2) {
+                    sp--;
+                    b = stk[sp];
+                    sp--;
+                    a = stk[sp];
+                    r = a + b;
+                    stk[sp] = r;
+                    sp++;
+                } else {
+                    rpn_emit_err();
+                }
                 p++;
             } else if (*p == '-') {
-                sp--; b = stk[sp];
-                sp--; a = stk[sp];
-                r = a - b;
-                stk[sp] = r; sp++;
+                if (sp >= 2) {
+                    sp--;
+                    b = stk[sp];
+                    sp--;
+                    a = stk[sp];
+                    r = a - b;
+                    stk[sp] = r;
+                    sp++;
+                } else {
+                    rpn_emit_err();
+                }
                 p++;
             } else if (*p == '*') {
-                sp--; b = stk[sp];
-                sp--; a = stk[sp];
-                r = a * b;
-                stk[sp] = r; sp++;
+                if (sp >= 2) {
+                    sp--;
+                    b = stk[sp];
+                    sp--;
+                    a = stk[sp];
+                    r = a * b;
+                    stk[sp] = r;
+                    sp++;
+                } else {
+                    rpn_emit_err();
+                }
                 p++;
             } else if (*p == '/') {
-                sp--; b = stk[sp];
-                sp--; a = stk[sp];
-                r = a / b;
-                stk[sp] = r; sp++;
+                if (sp >= 2) {
+                    b = stk[sp - 1];
+                    if (b == 0) {
+                        rpn_emit_err();
+                    } else {
+                        sp--;
+                        b = stk[sp];
+                        sp--;
+                        a = stk[sp];
+                        r = a / b;
+                        stk[sp] = r;
+                        sp++;
+                    }
+                } else {
+                    rpn_emit_err();
+                }
                 p++;
             } else if (*p == 'n') {
-                sp--; a = stk[sp];
-                r = -a;
-                stk[sp] = r; sp++;
+                if (sp > 0) {
+                    sp--;
+                    a = stk[sp];
+                    r = -a;
+                    stk[sp] = r;
+                    sp++;
+                } else {
+                    rpn_emit_err();
+                }
                 p++;
             } else if (*p == 'p') {
                 if (sp > 0) {
                     itoa(stk[sp - 1], sbuf);
                     puts(sbuf);
+                } else {
+                    rpn_emit_err();
                 }
                 p++;
             } else if (*p == 'd') {
                 if (sp > 0) {
-                    a = stk[sp - 1];
-                    stk[sp] = a; sp++;
+                    if (sp < 16) {
+                        a = stk[sp - 1];
+                        stk[sp] = a;
+                        sp++;
+                    } else {
+                        rpn_emit_err();
+                    }
+                } else {
+                    rpn_emit_err();
                 }
                 p++;
             } else if (*p == 'c') {
@@ -114,6 +173,7 @@ int main() {
             } else if (*p == 'q') {
                 exit(0);
             } else {
+                rpn_emit_err();
                 p++;
             }
         }

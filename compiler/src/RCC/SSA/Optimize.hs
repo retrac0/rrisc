@@ -11,7 +11,7 @@ module RCC.SSA.Optimize
   , eliminateDeadCodeProg
   ) where
 
-import Data.List (foldl')
+import Data.List (foldl', nub)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -36,9 +36,9 @@ allBlocks :: S.Func -> [S.Block]
 allBlocks f = Map.elems (S.fBlocks f)
 
 succsOf :: S.Term -> [S.BlockId]
-succsOf (S.TGoto b) = [b]
-succsOf (S.TBr _ t f) = [t,f]
-succsOf (S.TBrCmp _ _ _ _ t f) = [t,f]
+succsOf (S.TGoto b) = nub [b]
+succsOf (S.TBr _ t f) = nub [t, f]
+succsOf (S.TBrCmp _ _ _ _ t f) = nub [t, f]
 succsOf (S.TReturn _) = []
 
 usesValue :: S.Value -> [Text]

@@ -17,7 +17,7 @@ module RCC.SSA.CFG
   , resolveRawTerm
   ) where
 
-import Data.List (foldl')
+import Data.List (foldl', nub)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (mapMaybe)
@@ -137,11 +137,11 @@ rawToBlock lblMap fallthrough rb =
         }
 
 succsOf :: Term -> [BlockId]
-succsOf (TGoto b) = filter (/= BlockId (-1)) [b]
-succsOf (TIfZ _ t f) = filter (/= BlockId (-1)) [t, f]
-succsOf (TIfNZ _ t f) = filter (/= BlockId (-1)) [t, f]
-succsOf (TIfCmp _ _ _ t f) = filter (/= BlockId (-1)) [t, f]
-succsOf (TIfNCmp _ _ _ t f) = filter (/= BlockId (-1)) [t, f]
+succsOf (TGoto b) = filter (/= BlockId (-1)) (nub [b])
+succsOf (TIfZ _ t f) = filter (/= BlockId (-1)) (nub [t, f])
+succsOf (TIfNZ _ t f) = filter (/= BlockId (-1)) (nub [t, f])
+succsOf (TIfCmp _ _ _ t f) = filter (/= BlockId (-1)) (nub [t, f])
+succsOf (TIfNCmp _ _ _ t f) = filter (/= BlockId (-1)) (nub [t, f])
 succsOf (TReturn _) = []
 
 linkBlocks :: [Block] -> [Block]
