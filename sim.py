@@ -411,7 +411,8 @@ def main():
     parser.add_argument('--randomize', action='store_true', help='randomize registers and RAM before loading program')
     parser.add_argument('--terminal', action='store_true', help='attach UART terminal device')
     parser.add_argument('--uart-preload', default=None, metavar='STR',
-                        help='UTF-8 string to push into the RX FIFO before run (disables stdin reader; for scripted runs)')
+                        help='UTF-8 string to push into the RX FIFO before run (disables stdin reader; for scripted runs). '
+                             'In bash avoid "$(printf \'a\\nb\\n\')" — $(...) strips trailing newlines; use $\'a\\nb\\n\' instead.')
     parser.add_argument('--translate', action='store_true',
                         help='enable SIXBIT translation on the terminal (default: pass raw bytes)')
     parser.add_argument('--start', default='0', metavar='ADDR', help='start address in octal (default 0)')

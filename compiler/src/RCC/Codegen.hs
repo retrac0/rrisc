@@ -17,6 +17,8 @@ import Numeric (showOct)
 
 import qualified RCC.TAC as TAC
 
+import RCC.RuntimeDeps (asmCalleeName, floatRuntimeIncludeLines)
+
 -- ---------------------------------------------------------------------------
 -- Options
 
@@ -40,13 +42,6 @@ octT n = "0o" <> T.pack (showOct n "")
 
 line :: Text -> Text
 line t = "    " <> t
-
--- | Assembly entry symbol for calls emitted from TAC (libc float I/O uses __* names).
-asmCalleeName :: Text -> Text
-asmCalleeName f
-  | f == "atof" = "__atof"
-  | f == "ftoa" = "__ftoa"
-  | otherwise   = f
 
 -- ---------------------------------------------------------------------------
 -- Per-procedure code generation state
@@ -77,11 +72,13 @@ slotOf t = do
 -- Top-level codegen
 
 codegen :: CodegenOpts -> TAC.TACProg -> Text
-codegen opts (TAC.TACProg globals procs) = T.unlines $
+codegen opts prog@(TAC.TACProg globals procs) = T.unlines $
   prelude
   ++ rwPackedData
   ++ textSectionDecl
   ++ concatMap genProc procs
+  ++ floatRuntimeBlock
+  ++ librccRuntimeBlock
   ++ rodata
   ++ rwSplitData
   where
@@ -126,6 +123,16 @@ codegen opts (TAC.TACProg globals procs) = T.unlines $
 
     rodata = if null roGlobs then [] else
       [""] ++ concatMap genGlobal roGlobs
+
+    floatRuntimeBlock =
+      case floatRuntimeIncludeLines prog of
+        []   -> []
+        incs -> "" : "; rcc: runtime library (auto-included)" : incs
+
+    librccRuntimeBlock =
+      if any (procUsesLibrcc . TAC.procInstrs) procs
+        then ["", "; rcc: lib/librcc.s (integer multiply/divide/modulo)", "%include \"librcc.s\""]
+        else []
 
 genGlobal :: TAC.Global -> [Text]
 genGlobal g =

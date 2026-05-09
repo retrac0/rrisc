@@ -42,6 +42,8 @@ library
         RCC.SSA.Optimize
         RCC.OptFrameworkSSA
         RCC.Codegen
+    other-modules:
+        RCC.RuntimeDeps
 
 executable rcc
     import:          rcc-common
