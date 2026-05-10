@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Shared path resolution, flags, and argv builders for RRISC tooling (tests, scripts).
 
-Haskell-first: prefer `hsasm` / `hsld` / `rsim` from cabal-built binaries under
-`hstools/`. Python `asm.py` remains available for deprecation / fallback paths.
+Haskell-first: prefer `ras` / `rld` / `rsim` from cabal-built binaries under
+`tools/`. Python `asm.py` remains available for deprecation / fallback paths.
 """
 
 from __future__ import annotations
@@ -130,31 +130,31 @@ def resolve_rcc(root: Path, override: str | None) -> Path | None:
     return _usable_exe(root / "rcc")
 
 
-def resolve_hsasm(root: Path, override: str | None) -> Path | None:
+def resolve_ras(root: Path, override: str | None) -> Path | None:
     w = _usable_exe(which_or_path(override))
     if w:
         return w
-    built = _usable_exe(cabal_list_bin(root / "hstools", "exe:hsasm"))
+    built = _usable_exe(cabal_list_bin(root / "tools", "exe:ras"))
     if built:
         return built
-    return _usable_exe(root / "ras")
+    return _usable_exe(which_or_path("ras"))
 
 
-def resolve_hsld(root: Path, override: str | None) -> Path | None:
+def resolve_rld(root: Path, override: str | None) -> Path | None:
     w = _usable_exe(which_or_path(override))
     if w:
         return w
-    built = _usable_exe(cabal_list_bin(root / "hstools", "exe:hsld"))
+    built = _usable_exe(cabal_list_bin(root / "tools", "exe:rld"))
     if built:
         return built
-    return None
+    return _usable_exe(which_or_path("rld"))
 
 
 def resolve_rsim(root: Path, override: str | None) -> Path | None:
     w = _usable_exe(which_or_path(override))
     if w:
         return w
-    built = _usable_exe(cabal_list_bin(root / "hstools", "exe:rsim"))
+    built = _usable_exe(cabal_list_bin(root / "tools", "exe:rsim"))
     if built:
         return built
     return _usable_exe(root / "rsim")
@@ -186,15 +186,15 @@ def py_asm_cmd(
     return argv
 
 
-def hsasm_cmd(
+def ras_cmd(
     root: Path,
-    hsasm: Path,
+    ras: Path,
     *,
     src: Path,
     out: Path,
     include_dirs: Sequence[Path] | None = None,
 ) -> list[str]:
-    argv = [str(hsasm), str(src), "-o", str(out)]
+    argv = [str(ras), str(src), "--format", "bin", "-o", str(out)]
     for d in include_dirs or ():
         argv.extend(["-I", str(d)])
     return argv
@@ -213,15 +213,15 @@ def parse_rcc_defines(text: str) -> dict[str, str]:
     return d
 
 
-def hsasm_emit_obj_cmd(
-    hsasm: Path,
+def ras_emit_obj_cmd(
+    ras: Path,
     src: Path,
     obj_out: Path,
     *,
     include_dirs: Sequence[Path] | None = None,
     cli_defines: Sequence[tuple[str, str]] | None = None,
 ) -> list[str]:
-    argv = [str(hsasm), str(src), "--obj-only", "--obj-out", str(obj_out)]
+    argv = [str(ras), str(src), "-o", str(obj_out)]
     for d in include_dirs or ():
         argv.extend(["-I", str(d)])
     for k, v in cli_defines or ():
@@ -229,8 +229,8 @@ def hsasm_emit_obj_cmd(
     return argv
 
 
-def hsld_cmd(
-    hsld: Path,
+def rld_cmd(
+    rld: Path,
     objs: Sequence[Path],
     out_bin: Path,
     *,
@@ -238,7 +238,7 @@ def hsld_cmd(
     data_base: str | None,
 ) -> list[str]:
     argv = [
-        str(hsld),
+        str(rld),
         *[str(o) for o in objs],
         "-o",
         str(out_bin),

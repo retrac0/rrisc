@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- | Assembler driver: whole-program flat output and relocatable 'ObjectFile' emission.
 module RRISC.Asm (
-  -- legacy whole-program path (kept for the .bin output of hsasm)
+  -- legacy whole-program path (kept for flat .bin output of ras)
   assembleFile,
   AsmResult (..),
   formatListing,

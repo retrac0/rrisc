@@ -9,7 +9,7 @@ module Fuzz.Run
   ( ToolPaths (..)
   , RunOutcome (..)
   , StageError (..)
-  , defaultToolPaths
+  , resolveToolPaths
   , runCase
   , runCaseFromAst
   , caseBaseName
@@ -17,6 +17,7 @@ module Fuzz.Run
   ) where
 
 import Control.Exception (SomeException, try)
+import Data.Either (lefts)
 import qualified Data.Text.IO as TIO
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Exit (ExitCode (..))
@@ -26,7 +27,9 @@ import System.Process
   ( CreateProcess (..)
   , StdStream (..)
   , createProcess
+  , cwd
   , proc
+  , readCreateProcess
   , waitForProcess
   )
 
@@ -39,24 +42,57 @@ import Fuzz.Print  (Target (..), renderProgram)
 data ToolPaths = ToolPaths
   { tpRcc  :: !FilePath
   , tpRas  :: !FilePath
-  , tpHsld :: !FilePath
+  , tpRld  :: !FilePath
   , tpRsim :: !FilePath
   , tpGcc  :: !FilePath
   , tpCpp  :: !String
   , tpRoot :: !FilePath
   } deriving (Show)
 
-defaultToolPaths :: FilePath -> ToolPaths
-defaultToolPaths root = ToolPaths
-  { tpRcc  = root </> "rcc"
-  , tpRas  = root </> "ras"
-  , tpHsld = root </> "hsld"
-  , tpRsim = root </> "rsim"
-  , tpGcc  = "/usr/bin/gcc"
-  , tpCpp  = "cpp -P -I " ++ (root </> "lib")
-                ++ " -I " ++ (root </> "compiler/tests/io")
-  , tpRoot = root
-  }
+-- | Resolve @rcc@, @ras@, @rld@, and @rsim@ via @cabal list-bin@ (run from repo root).
+resolveToolPaths :: FilePath -> IO (Either String ToolPaths)
+resolveToolPaths root = do
+  ercc <- cabalListBin (root </> "compiler") "exe:rcc"
+  eras <- cabalListBin (root </> "tools") "exe:ras"
+  erld <- cabalListBin (root </> "tools") "exe:rld"
+  ersim <- cabalListBin (root </> "tools") "exe:rsim"
+  case (ercc, eras, erld, ersim) of
+    (Right a, Right b, Right c, Right d) ->
+      pure $
+        Right
+          ToolPaths
+            { tpRcc = a
+            , tpRas = b
+            , tpRld = c
+            , tpRsim = d
+            , tpGcc = "/usr/bin/gcc"
+            , tpCpp =
+                "cpp -P -I " ++ (root </> "lib")
+                  ++ " -I " ++ (root </> "compiler/tests/io")
+            , tpRoot = root
+            }
+    _ ->
+      pure $
+        Left
+          ( unlines
+              ("resolveToolPaths: cabal list-bin failed (build exe:rcc exe:ras exe:rld exe:rsim):" : lefts [ercc, eras, erld, ersim])
+          )
+
+cabalListBin :: FilePath -> String -> IO (Either String FilePath)
+cabalListBin projectDir exeTarget = do
+  let cp = (proc "cabal" ["list-bin", exeTarget]) {cwd = Just projectDir}
+  er <- try $ readCreateProcess cp ""
+  case er of
+    Left ex -> pure $ Left (show (ex :: SomeException))
+    Right out ->
+      case filter (not . null) (lines out) of
+        [] -> pure $ Left ("cabal list-bin " ++ exeTarget ++ ": empty output")
+        ls -> do
+          let fp = last ls
+          ok <- doesFileExist fp
+          if ok
+            then pure (Right fp)
+            else pure $ Left ("not an executable file: " ++ fp)
 
 -- ---------------------------------------------------------------------------
 -- Outcome
@@ -168,14 +204,14 @@ pipeline tp p =
       , "--stack-top", "0o7770"
       , "--preprocessor", tpCpp tp
       , apRccC p, "-o", apS p ]
-  , Stage "hsasm-crt0" $ run (tpRas tp)
+  , Stage "ras-crt0" $ run (tpRas tp)
       [ tpRoot tp </> "lib" </> "crt0.s"
-      , "--obj-only", "--obj-out", apCrt0Obj p
+      , "-o", apCrt0Obj p
       , "-D", "RCC_STACK_TOP=0o7770" ]
-  , Stage "hsasm-user" $ run (tpRas tp)
-      [ apS p, "--obj-only", "--obj-out", apUserObj p
+  , Stage "ras-user" $ run (tpRas tp)
+      [ apS p, "-o", apUserObj p
       , "-I", tpRoot tp </> "lib" ]
-  , Stage "hsld"       $ run (tpHsld tp)
+  , Stage "rld"        $ run (tpRld tp)
       [ apCrt0Obj p, apUserObj p
       , "-o", apBin p
       , "--code-base", "0o100"
@@ -238,7 +274,7 @@ runStages = go Nothing Nothing
 
 cleanEnv :: [(String, String)]
 cleanEnv =
-  -- UTF-8 locale: ras/hsasm reads source files via lazy Text, so a C locale
+  -- UTF-8 locale: ras reads source files via lazy Text, so a C locale
   -- chokes on non-ASCII bytes (e.g. comments in lib/crt0.s).
   [ ("PATH",   "/usr/local/sbin:/usr/local/bin:/usr/bin:/bin")
   , ("LANG",   "C.UTF-8")

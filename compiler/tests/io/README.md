@@ -1,6 +1,6 @@
 # UART / dual-target IO tests
 
-Sources under this directory are built twice: **RCC** → asm → hsasm/hsld → simulators with `--terminal`, and **host gcc** with `-DRRISC_IO_TEST_HOST`. Both must match the same `*.stdout.expect` bytes.
+Sources under this directory are built twice: **RCC** → asm → ras/rld → simulators with `--terminal`, and **host gcc** with `-DRRISC_IO_TEST_HOST`. Both must match the same `*.stdout.expect` bytes.
 
 ## Adding a test
 

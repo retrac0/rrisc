@@ -35,7 +35,7 @@ import Options.Applicative (
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (hPutStrLn, stderr)
 
-import Paths_hstools (version)
+import Paths_rrisc_tools (version)
 
 import RRISC.ISA (wordMask)
 import RRISC.Sim.Bus (setBusTrace)

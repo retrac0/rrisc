@@ -1076,7 +1076,7 @@ def format_listing(flat_lines, listing_entries):
 
 def main():
     print(
-        "asm.py: deprecated: use hsasm instead (cd hstools && cabal run hsasm -- …).",
+        "asm.py: deprecated: use ras instead (cd tools && cabal run ras -- …).",
         file=sys.stderr,
     )
     parser = argparse.ArgumentParser(description='RRISC assembler')

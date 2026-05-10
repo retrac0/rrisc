@@ -3,7 +3,7 @@
 Direct regression tests for lib/librcc.s (integer runtime used by rcc).
 
 Each case builds crt0.o + librcc.o + a tiny user.o (main loads r3/r2, jalr to one
-helper, halt), links with hsld, runs sim.py --summary, and checks **r2** at halt
+helper, halt), links with rld, runs sim.py --summary, and checks **r2** at halt
 against the expected 12-bit word.
 
 Run:
@@ -29,12 +29,12 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from rrisc_toolchain import (  # noqa: E402
-    hsasm_emit_obj_cmd,
-    hsld_cmd,
     lib_dir,
     python_exe,
-    resolve_hsasm,
-    resolve_hsld,
+    ras_emit_obj_cmd,
+    resolve_ras,
+    resolve_rld,
+    rld_cmd,
     sim_py_path,
 )
 
@@ -75,7 +75,7 @@ def expect_mod(r3w: int, r2w: int) -> int:
 
 
 def oct_lit(w: int) -> str:
-    """Octal literal for a 12-bit word (hsasm)."""
+    """Octal literal for a 12-bit word (ras)."""
     return f"0o{(w & 0xFFF):o}"
 
 
@@ -149,8 +149,8 @@ def all_cases() -> list[Case]:
 
 def link_one_case(
     *,
-    hsasm: Path,
-    hsld: Path,
+    ras: Path,
+    rld: Path,
     lib: Path,
     tmp: Path,
     case: Case,
@@ -166,44 +166,44 @@ def link_one_case(
     bin_path = tmp / "a.bin"
 
     r0 = subprocess.run(
-        hsasm_emit_obj_cmd(hsasm, crt0_s, crt0_o, cli_defines=[("RCC_STACK_TOP", STACK_TOP)]),
+        ras_emit_obj_cmd(ras, crt0_s, crt0_o, cli_defines=[("RCC_STACK_TOP", STACK_TOP)]),
         cwd=str(ROOT),
         capture_output=True,
         text=True,
         check=False,
     )
     if r0.returncode != 0:
-        return False, f"crt0.hsasm:\n{r0.stderr or r0.stdout}"
+        return False, f"crt0.ras:\n{r0.stderr or r0.stdout}"
 
     ru = subprocess.run(
-        hsasm_emit_obj_cmd(hsasm, user_s, user_o, include_dirs=[lib]),
+        ras_emit_obj_cmd(ras, user_s, user_o, include_dirs=[lib]),
         cwd=str(ROOT),
         capture_output=True,
         text=True,
         check=False,
     )
     if ru.returncode != 0:
-        return False, f"user.hsasm:\n{ru.stderr or ru.stdout}"
+        return False, f"user.ras:\n{ru.stderr or ru.stdout}"
 
     rl = subprocess.run(
-        hsasm_emit_obj_cmd(hsasm, librcc_s, librcc_o, include_dirs=[lib]),
+        ras_emit_obj_cmd(ras, librcc_s, librcc_o, include_dirs=[lib]),
         cwd=str(ROOT),
         capture_output=True,
         text=True,
         check=False,
     )
     if rl.returncode != 0:
-        return False, f"librcc.hsasm:\n{rl.stderr or rl.stdout}"
+        return False, f"librcc.ras:\n{rl.stderr or rl.stdout}"
 
     rk = subprocess.run(
-        hsld_cmd(hsld, [crt0_o, librcc_o, user_o], bin_path, code_base=CODE_BASE, data_base=DATA_BASE),
+        rld_cmd(rld, [crt0_o, librcc_o, user_o], bin_path, code_base=CODE_BASE, data_base=DATA_BASE),
         cwd=str(ROOT),
         capture_output=True,
         text=True,
         check=False,
     )
     if rk.returncode != 0:
-        return False, f"hsld:\n{rk.stderr or rk.stdout}"
+        return False, f"rld:\n{rk.stderr or rk.stdout}"
 
     sim = subprocess.run(
         [
@@ -237,18 +237,18 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="lib/librcc.s regression harness")
     ap.add_argument("--verbose", "-v", action="store_true")
     ap.add_argument("--filter", metavar="REGEX", help="only cases whose name matches")
-    ap.add_argument("--hsasm", type=Path, metavar="PATH", help="override hsasm executable")
-    ap.add_argument("--hsld", type=Path, metavar="PATH", help="override hsld executable")
+    ap.add_argument("--ras", type=Path, metavar="PATH", help="override ras executable")
+    ap.add_argument("--rld", type=Path, metavar="PATH", help="override rld executable")
     args = ap.parse_args()
 
     filt = re.compile(args.filter) if args.filter else None
-    hsasm = resolve_hsasm(ROOT, str(args.hsasm) if args.hsasm else None)
-    hsld = resolve_hsld(ROOT, str(args.hsld) if args.hsld else None)
-    if not hsasm:
-        print("librcc-tests: hsasm not found (build exe:hsasm in hstools/)", file=sys.stderr)
+    ras = resolve_ras(ROOT, str(args.ras) if args.ras else None)
+    rld = resolve_rld(ROOT, str(args.rld) if args.rld else None)
+    if not ras:
+        print("librcc-tests: ras not found (build exe:ras in tools/)", file=sys.stderr)
         return 2
-    if not hsld:
-        print("librcc-tests: hsld not found (build exe:hsld in hstools/)", file=sys.stderr)
+    if not rld:
+        print("librcc-tests: rld not found (build exe:rld in tools/)", file=sys.stderr)
         return 2
 
     lib = lib_dir(ROOT)
@@ -261,7 +261,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="rrisc-librcc-") as td:
         tmp = Path(td)
         for c in cases:
-            ok, detail = link_one_case(hsasm=hsasm, hsld=hsld, lib=lib, tmp=tmp, case=c)
+            ok, detail = link_one_case(ras=ras, rld=rld, lib=lib, tmp=tmp, case=c)
             if ok:
                 if args.verbose:
                     print(f"PASS {c.name}", flush=True)

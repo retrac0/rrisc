@@ -10,7 +10,7 @@ import System.Exit (exitFailure, exitSuccess)
 import System.FilePath (replaceExtension, takeExtension)
 import System.IO (hPutStrLn, stderr)
 
-import Paths_hstools (version)
+import Paths_rrisc_tools (version)
 
 import RRISC.Asm (writeBinary, writeReadmemb)
 import RRISC.Link
@@ -18,7 +18,7 @@ import RRISC.Link
 usage :: String
 usage =
   unlines
-    [ "Usage: hsld input.o [input2.o ...] [-o output] [--format bin|readmemb]"
+    [ "Usage: rld input.o [input2.o ...] [-o output] [--format bin|readmemb]"
     , "             [--map output.map] [--code-base <addr>] [--data-base <addr>]"
     , "  -V, --version         print version and exit"
     ]
@@ -39,7 +39,7 @@ main :: IO ()
 main = do
   argv <- getArgs
   when (argv == ["--version"] || argv == ["-V"]) $ do
-    putStrLn $ "hsld " ++ showVersion version
+    putStrLn $ "rld " ++ showVersion version
     exitSuccess
   case parseArgs argv emptyArgs of
     Nothing -> hPutStrLn stderr usage >> exitFailure
@@ -79,16 +79,16 @@ deriveOutput inp fmt =
         else replaceExtension inp ext
 
 parseArgs :: [String] -> Args -> Maybe Args
-parseArgs [] acc = Just acc { aInputs = reverse (aInputs acc) }
+parseArgs [] acc = Just acc {aInputs = reverse (aInputs acc)}
 parseArgs ("-o" : p : rest) acc =
-  parseArgs rest acc { aOutput = Just p }
+  parseArgs rest acc {aOutput = Just p}
 parseArgs ("--output" : p : rest) acc =
-  parseArgs rest acc { aOutput = Just p }
+  parseArgs rest acc {aOutput = Just p}
 parseArgs ("--format" : f : rest) acc
-  | f `elem` ["bin", "readmemb"] = parseArgs rest acc { aFormat = f }
+  | f `elem` ["bin", "readmemb"] = parseArgs rest acc {aFormat = f}
   | otherwise = Nothing
 parseArgs ("--map" : p : rest) acc =
-  parseArgs rest acc { aMap = Just p }
+  parseArgs rest acc {aMap = Just p}
 parseArgs ("--code-base" : v : rest) acc =
   case parseIntArg v of
     Just n -> parseArgs rest acc {aCodeBase = Just n}
@@ -100,7 +100,7 @@ parseArgs ("--data-base" : v : rest) acc =
 parseArgs (x : _) _
   | "-" `isPrefixOf` x = Nothing
 parseArgs (x : rest) acc =
-  parseArgs rest acc { aInputs = x : aInputs acc }
+  parseArgs rest acc {aInputs = x : aInputs acc}
 
 parseIntArg :: String -> Maybe Int
 parseIntArg s = case s of

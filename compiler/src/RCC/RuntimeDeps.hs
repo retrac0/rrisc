@@ -84,7 +84,7 @@ usesStandaloneLibItoa (TAC.TACProg _ procs) =
     isItoa (TAC.ICall _ fname _) = fname == "itoa"
     isItoa _ = False
 
--- | @%include@ lines (paths relative to @lib/@, for @hsasm -I lib@). Empty if no soft-float is used.
+-- | @%include@ lines (paths relative to @lib/@, for @ras -I lib@). Empty if no soft-float is used.
 floatRuntimeIncludeLines :: TAC.TACProg -> [Text]
 floatRuntimeIncludeLines prog =
   let used = collectUsedFloatRoutines prog

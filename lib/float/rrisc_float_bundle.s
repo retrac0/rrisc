@@ -1,5 +1,5 @@
 ; rrisc_float_bundle.s — one translation unit for soft-float + itoa, built as a
-; single relocatable object (hsasm --emit-obj) and linked with hsld after RCC output.
+; single relocatable object (ras -o …) and linked with rld after RCC output.
 ;
 ; Export linker-visible entry points (C-like global linkage). Internal helpers
 ; stay file-local unless given .global in their source file.

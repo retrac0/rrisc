@@ -27,7 +27,7 @@ main :: IO ()
 main =
   defaultMain $
     testGroup
-      "hstools"
+      "rrisc-tools"
       [ testCase "object render/parse round-trip" $ do
           let txt = renderObject minimalObj :: Text
           case parseObject "roundtrip.o" txt of

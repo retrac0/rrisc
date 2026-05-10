@@ -1,9 +1,9 @@
 # RRISC production toolchain
 
 This document describes how to **build and wire together** the Haskell tools:
-**`rcc`** (compiler frontend), **`hsasm`** / **`ras`**, **`hsld`**, and **`rsim`**.
+**`rcc`** (compiler frontend), **`ras`** (assembler), **`rld`** (linker), and **`rsim`** (simulator).
 For the **language** definition (syntax, semantics, ABI summary), see
-[`compiler/spec.md`](../compiler/spec.md) (**§11b** documents **`rcc` + hstools** at language-doc level).
+[`compiler/spec.md`](../compiler/spec.md) (**§11b** documents **`rcc` + rrisc-tools** at language-doc level).
 For a **tutorial and everyday commands** (UART, memory layout, inline asm), see
 [`compiler/MANUAL.md`](../compiler/MANUAL.md) (Part I §3 and Part IV reference).
 [`run_tests.py`](../run_tests.py) and [`rrisc_toolchain.py`](../rrisc_toolchain.py)
@@ -13,22 +13,24 @@ Build everything from the repository root (see [`cabal.project`](../cabal.projec
 
 ```bash
 cabal update
-cabal build exe:rcc exe:hsasm exe:hsld exe:rsim
+cabal build exe:rcc exe:ras exe:rld exe:rsim
 make sim2   # optional: C simulator for run_tests.py matrix
 ```
 
 Install into a prefix (optional):
 
 ```bash
-cabal install exe:rcc exe:hsasm exe:hsld exe:rsim --overwrite-policy=always
+cabal install exe:rcc exe:ras exe:rld exe:rsim --overwrite-policy=always
 ```
 
-## End-to-end flow (`rcc` + hstools)
+Binaries are produced under `dist-newstyle/`; use `cabal list-bin exe:ras` (etc.) or add them to your `PATH`. The root [`Makefile`](../Makefile) targets `ras`, `rld`, `rsim`, and `rcc` build and then print `list-bin` paths (no repo-root symlinks).
+
+## End-to-end flow (`rcc` + `tools/`)
 
 1. **`rcc`** (`compiler/` cabal package) reads one `.c` file (optional host `cpp`) and prints RRISC **assembly** (`.s`): `%define RCC_CODE_BASE`, `RCC_DATA_BASE`, `RCC_STACK_TOP`, then `%include` of [`lib/crt0.s`](../lib/crt0.s), code, and data sections.
-2. **`hsasm`** (also installed as **`ras`**, `hstools/` package) assembles `.s` to a **flat** raw `.bin` / `$readmemb` **or**, with **`--emit-obj`**, to a relocatable **`.o`** file (`rrisc-obj` text format; see [Object file format versioning](#object-file-format-versioning)).
-3. **`hsld`** (`hstools/`) links one or more `.o` files into a final image; bases must agree with the `%define` lines from step 1 (see contract below).
-4. **`rsim`** (`hstools/`) runs the binary; alternatives are [`sim.py`](../sim.py) and **`sim2`** (built via `make sim2`). CI usually gates on the Python simulator only.
+2. **`ras`** ([`tools/`](../tools/), package **`rrisc-tools`**) assembles `.s` to a relocatable **`.o`** by default (`-o` optional; same stem with `.o` if omitted). For a **flat** raw `.bin` or `$readmemb` **`.mem`**, pass **`--format bin`** or **`--format readmemb`** (see [`tools/app/Main.hs`](../tools/app/Main.hs)).
+3. **`rld`** links one or more `.o` files into a final image; bases must agree with the `%define` lines from step 1 (see contract below).
+4. **`rsim`** runs the binary; alternatives are [`sim.py`](../sim.py) and **`sim2`** (built via `make sim2`). CI usually gates on the Python simulator only.
 
 For **`rcc` CLI flags** (`-O0`, `-Os`, `-O1`, `-O2` (alias of `-O1`), dumps, `--pass`, …), see [`compiler/app/Main.hs`](../compiler/app/Main.hs) and [`compiler/MANUAL.md`](../compiler/MANUAL.md) §13.
 
@@ -37,23 +39,23 @@ For **`rcc` CLI flags** (`-O0`, `-Os`, `-O1`, `-O2` (alias of `-O1`), dumps, `--
 | Tool | Package | Role |
 |------|---------|------|
 | `rcc` | `compiler/` | C-like frontend → **assembly** (`.s`), not object files |
-| `hsasm` | `hstools/` | Assembler → flat `.bin` / `.mem` and/or relocatable `.o` |
-| `hsld` | `hstools/` | Linker → final `.bin` from one or more `.o` files |
-| `rsim` | `hstools/` | Haskell simulator (optional vs `sim.py` / `sim2`) |
+| `ras` | `rrisc-tools` (`tools/`) | Assembler → default **`.o`**; flat **`.bin`** / **`.mem`** with `--format` |
+| `rld` | `rrisc-tools` (`tools/`) | Linker → final `.bin` from one or more `.o` files |
+| `rsim` | `rrisc-tools` (`tools/`) | Haskell simulator (optional vs `sim.py` / `sim2`) |
 
 Stable automation for tests and scripts lives in [`rrisc_toolchain.py`](../rrisc_toolchain.py) (path resolution, argv builders). Object / link checks are in [`toolchain_checks.py`](../toolchain_checks.py).
 
-## rcc → hsasm → hsld contract
+## rcc → ras → rld contract
 
 1. **Emitted prelude** — `rcc` prints `%define RCC_CODE_BASE`, `RCC_DATA_BASE`, and `RCC_STACK_TOP` (octal) near the top of generated assembly. The test harness and [`lib/crt0.s`](../lib/crt0.s) rely on these names.
-2. **Sections** — Generated code uses `.section text` and, when needed, `.section data`. The linker places sections according to `hsld` options (e.g. `--code-base`, `--data-base`) and [`defaultLinkOptions`](../hstools/src/RRISC/Link.hs).
-3. **Startup** — Typical executables assemble **`crt0.o`** (stack init from `RCC_STACK_TOP`), **`librcc.o`** from [`lib/librcc.s`](../lib/librcc.s) (integer `__mul` / divide / modulo helpers used by `rcc`), then the compiler-produced `.o`, and link with `hsld` in that order using bases parsed from the `%define` lines (see [`run_tests.py`](../run_tests.py)). Soft-float stays separate under `lib/float/`.
+2. **Sections** — Generated code uses `.section text` and, when needed, `.section data`. The linker places sections according to `rld` options (e.g. `--code-base`, `--data-base`) and [`defaultLinkOptions`](../tools/src/RRISC/Link.hs).
+3. **Startup** — Typical executables assemble **`crt0.o`** (stack init from `RCC_STACK_TOP`), **`librcc.o`** from [`lib/librcc.s`](../lib/librcc.s) (integer `__mul` / divide / modulo helpers used by `rcc`), then the compiler-produced `.o`, and link with `rld` in that order using bases parsed from the `%define` lines (see [`run_tests.py`](../run_tests.py)). Soft-float stays separate under `lib/float/`.
 4. **Symbols** — Cross-file visibility uses `.global` / extern semantics documented in [`compiler/MANUAL.md`](../compiler/MANUAL.md).
 
 ## Object file format versioning
 
-- The text object format carries a version on the first line (`rrisc-obj N`). The canonical constant is [`objVersion`](../hstools/src/RRISC/Obj/Format.hs) in `RRISC.Obj.Format`.
-- **Bump `objVersion` only** when older `hsld` / `hsasm` must reject new `.o` files (breaking layout or record kinds). When bumping: document the change here, increment the field, and extend [`formatObjParseError`](../hstools/src/RRISC/Obj/Format.hs) if new failure modes apply.
+- The text object format carries a version on the first line (`rrisc-obj N`). The canonical constant is [`objVersion`](../tools/src/RRISC/Obj/Format.hs) in `RRISC.Obj.Format`.
+- **Bump `objVersion` only** when older `rld` / `ras` must reject new `.o` files (breaking layout or record kinds). When bumping: document the change here, increment the field, and extend [`formatObjParseError`](../tools/src/RRISC/Obj/Format.hs) if new failure modes apply.
 
 ## CI vs local testing
 
@@ -65,10 +67,10 @@ Stable automation for tests and scripts lives in [`rrisc_toolchain.py`](../rrisc
 
 - The **`librcc`** suite runs [`tests/librcc/run_librcc_tests.py`](../tests/librcc/run_librcc_tests.py): small linked programs call **`__mul`** / **`__udiv`** / **`__umod`** / **`__div`** / **`__mod`** from [`lib/librcc.s`](../lib/librcc.s) and assert **r2** at halt (no `rcc` required).
 
-- The **`toolchain`** suite exercises [`toolchain_checks.py`](../toolchain_checks.py) on [`tests/toolchain/*.s`](../tests/toolchain/) only. Those files intentionally omit ``.org`` so the flat ``hsasm`` image matches a single-input ``hsld`` link (text placed at address 0). Programs that set ``.org 0o1000`` (most examples) produce a padded flat ``.bin`` that is **not** byte-identical to the packed link of the same ``.o``.
+- The **`toolchain`** suite exercises [`toolchain_checks.py`](../toolchain_checks.py) on [`tests/toolchain/*.s`](../tests/toolchain/) only. Those files intentionally omit ``.org`` so the flat ``ras --format bin`` image matches a single-input ``rld`` link (text placed at address 0). Programs that set ``.org 0o1000`` (most examples) produce a padded flat ``.bin`` that is **not** byte-identical to the packed link of the same ``.o``.
 
 - **Local** runs may use `--simulators py,c,hs` and `--assemblers hs,py` for broader coverage; use `--skip-unavailable` when a binary is not built.
 
 ## Version flags
 
-All of `rcc`, `hsasm`, `hsld`, and `rsim` accept `-V` / `--version` (where applicable) and print the Cabal package version for the underlying package.
+All of `rcc`, `ras`, `rld`, and `rsim` accept `-V` / `--version` (where applicable) and print the Cabal package version for the underlying package.

@@ -1,7 +1,7 @@
 cabal-version:      3.0
-name:               hstools
+name:               rrisc-tools
 version:            0.1.0.0
-synopsis:           RRISC assembler and simulator (Haskell tools)
+synopsis:           RRISC assembler, linker, and simulator
 license:            MIT
 author:             rrisc
 build-type:         Simple
@@ -44,33 +44,33 @@ library
     build-depends: unix >= 2.8 && < 2.10
 
 
-executable hsasm
+executable ras
   main-is:          Main.hs
   hs-source-dirs:   app
   default-language: GHC2021
   ghc-options:      -Wall -Wcompat
-  other-modules:    Paths_hstools
-  autogen-modules:  Paths_hstools
+  other-modules:    Paths_rrisc_tools
+  autogen-modules:  Paths_rrisc_tools
   build-depends:
     base >= 4.16 && < 5,
     containers,
     directory,
     filepath,
-    hstools,
+    rrisc-tools,
     text
 
 
-executable hsld
-  main-is:          HsldMain.hs
+executable rld
+  main-is:          RldMain.hs
   hs-source-dirs:   app
   default-language: GHC2021
   ghc-options:      -Wall -Wcompat
-  other-modules:    Paths_hstools
-  autogen-modules:  Paths_hstools
+  other-modules:    Paths_rrisc_tools
+  autogen-modules:  Paths_rrisc_tools
   build-depends:
     base >= 4.16 && < 5,
     filepath,
-    hstools,
+    rrisc-tools,
     text
 
 
@@ -79,18 +79,18 @@ executable rsim
   hs-source-dirs:   app
   default-language: GHC2021
   ghc-options:      -Wall -Wcompat -threaded
-  other-modules:    Paths_hstools
-  autogen-modules:  Paths_hstools
+  other-modules:    Paths_rrisc_tools
+  autogen-modules:  Paths_rrisc_tools
   build-depends:
     base >= 4.16 && < 5,
     bytestring,
-    hstools,
+    rrisc-tools,
     optparse-applicative >= 0.17 && < 0.19,
     random,
     unix
 
 
-test-suite hstools-test
+test-suite rrisc-tools-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test-haskell
   main-is:          Main.hs
@@ -98,7 +98,7 @@ test-suite hstools-test
   ghc-options:      -Wall -Wcompat
   build-depends:
     base >= 4.16 && < 5,
-    hstools,
+    rrisc-tools,
     tasty       >= 1.4  && < 1.6,
     tasty-hunit >= 0.10 && < 0.11,
     text

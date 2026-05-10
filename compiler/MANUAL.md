@@ -23,8 +23,8 @@ Companion documents:
   patterns.
 - [`compiler/spec.md`](spec.md) — the language reference (precedence tables, EBNF
   grammar). Read it after this manual when you need a single-page lookup.
-- [`docs/toolchain.md`](../docs/toolchain.md) — building `rcc` and **hstools**
-  (`hsasm`, `hsld`, `rsim`), the **`rcc` → `hsasm` → `hsld`** contract, object-format
+- [`docs/toolchain.md`](../docs/toolchain.md) — building `rcc` and **rrisc-tools**
+  (`ras`, `rld`, `rsim`), the **`rcc` → `ras` → `rld`** contract, object-format
   versioning, and how CI exercises the toolchain.
 
 ---
@@ -68,9 +68,9 @@ in the supported subset (copy fields or work through pointers).
 **One C translation unit per `rcc` run.** `rcc` reads one `.c` file (after optional
 host `cpp`) and emits one `.s`. There are no C-level `extern`/`static` or multi-file
 linking inside the compiler; combine C sources with `#include`. To join separately
-assembled **assembly** objects, use **`hsasm --emit-obj`** and **`hsld`** (see
-[`docs/toolchain.md`](../docs/toolchain.md), [§14](#14-cli-hsasm--ras-and-deprecated-asmpy),
-and [compiler/spec.md §11b](spec.md#11b-rrisc-toolchain-rcc-and-hstools)).
+assembled **assembly** objects, use **`ras`** (default `.o` output) and **`rld`** (see
+[`docs/toolchain.md`](../docs/toolchain.md), [§14](#14-cli-ras-and-deprecated-asmpy),
+and [compiler/spec.md §11b](spec.md#11b-rrisc-toolchain-rcc-and-rrisc-tools)).
 
 **No function pointers, no `goto`, no `switch`, no variadics, no dynamic allocation.**
 See [What is not implemented](#24-what-is-not-implemented) in the reference.
@@ -130,10 +130,10 @@ A few RRISC-isms that bite C programmers:
                               │
               ┌───────────────┴───────────────┐
               ▼                               ▼
-    ras / hsasm  -o myprog.bin      ras / hsasm --emit-obj → myprog.o
+    ras --format bin -o myprog.bin      ras -o myprog.o
     (flat assemble)                          │
               │                               ▼
-              │                         hsld  (link .o → .bin)
+              │                         rld  (link .o → .bin)
               │                               │
               └───────────────┬───────────────┘
                               ▼
@@ -143,11 +143,11 @@ A few RRISC-isms that bite C programmers:
                   rsim (Haskell)  or  sim.py (Python)  or  sim2 (C)
 ```
 
-The usual **flat** path is `rcc` → **`ras`/`hsasm`** → `.bin` → simulator. The
-**relocatable** path (`--emit-obj` → **`hsld`**) is how you combine hand-written
+The usual **flat** path is `rcc` → **`ras --format bin`** → `.bin` → simulator. The
+**relocatable** path (**`ras`** → **`.o`** → **`rld`**) is how you combine hand-written
 assembly objects with generated code or split asm across files; see
 [`docs/toolchain.md`](../docs/toolchain.md). The three simulator implementations and
-the two assembler implementations (`hsasm` vs deprecated `asm.py`) are
+the two assembler implementations (`ras` vs deprecated `asm.py`) are
 **behaviourally identical** for our purposes. This manual uses `rcc` / `ras` / `rsim`
 by default.
 
@@ -155,7 +155,7 @@ A typical full build is three commands:
 
 ```sh
 rcc  --preprocessor "cpp -P -I lib"  myprog.c        -o myprog.s
-ras  -I lib                          myprog.s        -o myprog.bin
+ras  --format bin -I lib             myprog.s        -o myprog.bin
 rsim --terminal --start 0o1000       myprog.bin
 ```
 
@@ -195,7 +195,7 @@ Build it:
 
 ```sh
 rcc  --preprocessor "cpp -P -I lib"  hello.c  -o hello.s
-ras  -I lib                          hello.s  -o hello.bin
+ras  --format bin -I lib             hello.s  -o hello.bin
 ```
 
 Run it under the simulator with the UART terminal attached:
@@ -469,22 +469,26 @@ octal, `0xFF` for hex, decimal otherwise. `rcc` itself does not implement `#incl
 or `#define`; pipe through `cpp -P` (or any other preprocessor that emits plain C
 without linemarkers).
 
-### 14. CLI: `hsasm` / `ras` and deprecated `asm.py`
+### 14. CLI: `ras` and deprecated `asm.py`
 
-The supported assembler is the Haskell tool (`hsasm`, also installed as `ras`). The Python `asm.py` driver is **deprecated** (it prints a warning) and remains only for backward compatibility.
+The supported assembler is the Haskell tool **`ras`**. The Python `asm.py` driver is **deprecated** (it prints a warning) and remains only for backward compatibility.
 
-Both implementations accept exactly the same flags:
+**`ras`** (default): emits a relocatable **`.o`** (`-o` optional; otherwise `<source>.o`). For a **flat** image, pass **`--format bin`** or **`--format readmemb`**; then `-o` names the `.bin` or `.mem` file.
+
+`asm.py` keeps a legacy interface (flat output by default):
 
 ```
-ras / hsasm / asm.py  source.s  [-o output.bin]  [-I dir]…  [--format bin|readmemb]  [--list]
+ras  source.s  [-o file.o]  [-I dir]…  [--format bin|readmemb]  [--list]  [--dump-syms file.o]
+asm.py  source.s  [-o output.bin]  [-I dir]…  [--format bin|readmemb]  [--list]
 ```
 
-| Flag | Default | Effect |
+| Flag | `ras` default | Effect |
 |------|---------|--------|
-| `-o, --output <file>`           | `<source>.bin` | Output path |
+| `-o, --output <file>`           | `<source>.o` (no `--format`); with `--format`, `<source>.bin` or `.mem` | Output path |
 | `-I <dir>`                      | (cwd only)     | Add include search dir; repeatable. Search order is the source file's directory, then `-I` dirs in order |
-| `--format bin\|readmemb`        | `bin`          | `bin` = raw bytes (see §17). `readmemb` = Verilog `$readmemb` text, one 12-bit binary word per line |
-| `--list`                        | off            | Print an assembly listing to stdout |
+| `--format bin\|readmemb`        | (off — object mode) | Flat output: `bin` = raw bytes (see §17). `readmemb` = Verilog `$readmemb` text, one 12-bit binary word per line |
+| `--list`                        | off            | Print an assembly listing to stdout (**flat mode only**) |
+| `--dump-syms <file.o>`          | —              | Print symbols from a textual `.o` and exit |
 
 `lw` and `sw` (without the `r` suffix) are deliberately rejected. Use `lwr` and
 `swr` — every load/store on RRISC is register-indirect.
@@ -523,7 +527,7 @@ exceeded.
 
 ### 16. Assembler directives
 
-The Haskell assembler (`hsasm` / `ras`) is canonical; deprecated `asm.py` agrees on these forms:
+The Haskell assembler (`ras`) is canonical; deprecated `asm.py` agrees on these forms:
 
 | Directive | Form | Meaning |
 |-----------|------|---------|
@@ -531,7 +535,7 @@ The Haskell assembler (`hsasm` / `ras`) is canonical; deprecated `asm.py` agrees
 | `%include` | `%include "file.s"` | Splice another source file inline. Searches the current source's directory, then `-I` dirs. Cycle detection. |
 | `%ifdef` / `%ifeq` / `%ifneq` | `%ifdef NAME` … | Conditional inclusion. Pair with `%endif` |
 | `%macro` / `%endm` | `%macro NAME [p1, p2]` … `%endm`  *or*  `%macro NAME N` … (positional `%1`..`%N`) | Macro definition. NASM-style positional or named parameters |
-| `.global` / `.globl` | `.global name [, name …]` | **Object / linking (`hsasm --emit-obj`, `hsld` only):** mark definitions as **global** (visible across `.o` files), like C file-scope symbols without `static`. Labels default to **local** (visible only within the same relocatable object). |
+| `.global` / `.globl` | `.global name [, name …]` | **Object / linking (`ras` → `.o`, `rld` only):** mark definitions as **global** (visible across `.o` files), like C file-scope symbols without `static`. Labels default to **local** (visible only within the same relocatable object). |
 | `.local` | `.local name [, name …]` | **Linking:** force **local** linkage; later `.global` / `.globl` in the same file can still override for names listed again after `.local`. |
 | `.word` | `.word v1, v2, …` | Emit one raw 12-bit word per value |
 | `.float` | `.float f1, f2, …` | Emit four 12-bit words per float (48-bit float48 layout) |
@@ -736,8 +740,8 @@ clobber list). To pass a value in or out, take its address with `&` and use
 
 Most of `lib/` is pulled in by hand-written asm or by listing sources on the
 assembler / linker command line. Float helpers are **not** `%include`d by `rcc`;
-link `lib/float/*.s` (flat assembly) or the matching `.o` files (`hsasm --emit-obj`,
-then `hsld`). The Haskell tools under `hstools/` include `hsld` for relocatable
+link `lib/float/*.s` (flat assembly) or the matching `.o` files (`ras -o …`,
+then `rld`). The Haskell package **`rrisc-tools`** under [`tools/`](../tools/) provides `rld` for relocatable
 objects.
 
 | File | Purpose |
@@ -755,7 +759,7 @@ objects.
 
 Hand-written asm demos live under `examples/` (top level) and `examples/float/`
 for the soft-float walk-throughs (`demo-add`, `demo-mul`, `demo-div`, `demo-parse`).
-Assemble any of them with `cabal run hsasm -- -I lib examples/float/demo-add.s` (from `hstools/`) or the `ras` binary on your `PATH`.
+Assemble any of them with `cabal run ras -- --format bin -I lib examples/float/demo-add.s` (from the repo root, using [`cabal.project`](../cabal.project)) or a `ras` binary on your `PATH`.
 
 **Float / runtime symbol names.** Globals that the compiler or headers rely on use a `__` prefix (`__fadd`, `__atof`, …). That keeps a single reserved namespace for the flat-assembler world: your C code and prototypes stay conventional (`atof`, `ftoa`, `+` on floats), while emitted `jalr` targets and `%include` bodies cannot collide with a user-defined asm label `fadd` or `atof`. Labels *inside* each `lib/float/*.s` file also use that prefix (or a file-unique prefix) so local branches do not pick up the user’s `skip:` by accident. An alternative would be unprefixed public globals (`atof`, `fadd`) with only locals underscored; that reads nicely in isolation but makes duplicate-symbol mistakes much easier whenever user asm or a second `%include` reuses a libc name.
 
@@ -774,8 +778,8 @@ A non-exhaustive list of things a C programmer might reach for and not find:
 - **No `do…while`.**
 - **No C-level multi-file linking or `extern`/`static`.** One `.c` file per `rcc`
   invocation → one `.s`. Combine C with `#include`. **Assembly-level** linking is
-  supported: `hsasm --emit-obj` → **`hsld`**. See [`docs/toolchain.md`](../docs/toolchain.md)
-  and [spec §11b](spec.md#11b-rrisc-toolchain-rcc-and-hstools).
+  supported: **`ras`** (`.o`) → **`rld`**. See [`docs/toolchain.md`](../docs/toolchain.md)
+  and [spec §11b](spec.md#11b-rrisc-toolchain-rcc-and-rrisc-tools).
 - **No `extern` / `static` visibility modifiers.** Every top-level name is
   global to the translation unit.
 - **No `char`, `short`, `long`, `double`.** Use `int` for character codes;

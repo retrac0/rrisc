@@ -2,7 +2,7 @@
 -- | rcc-fuzz: differential fuzzer for the RRISC C compiler.
 --
 -- Generates random programs in the rcc subset of C, compiles each one
--- through the full RRISC toolchain ('rcc' → 'hsasm' → 'hsld' → 'rsim') and
+-- through the full RRISC toolchain ('rcc' → 'ras' → 'rld' → 'rsim') and
 -- through host 'gcc -DRRISC_IO_TEST_HOST', and reports any cases where the
 -- two stdouts differ (that's a likely 'rcc' bug, with the no-UB contract
 -- in "Fuzz.Gen" carrying the burden of "this program means the same thing
@@ -47,6 +47,14 @@ import Fuzz.InvalidGen (invalidSource)
 import qualified Fuzz.Print as P
 import Fuzz.Print  (Target (..))
 import Fuzz.Run
+  ( ToolPaths
+  , RunOutcome (..)
+  , StageError (..)
+  , resolveToolPaths
+  , runCase
+  , runCaseFromAst
+  , caseBaseName
+  )
 import Fuzz.NegativeRun (NegativeOutcome (..), runNegativeCase)
 import Fuzz.Shrink (shrinkProgram)
 
@@ -212,19 +220,21 @@ main = do
       if oNegative opts
         then negativeReplay opts cfg s
         else do
-          r <- runOne opts cfg s
+          tp <- requireToolPaths (oRoot opts)
+          r <- runOne opts cfg tp s
           exitOnRun r
     MShrink s -> do
       when (oNegative opts) $ do
         hPutStrLn stderr "rcc-fuzz: --shrink is not supported with --negative"
         exitFailure
-      r <- runOne opts cfg s
+      tp <- requireToolPaths (oRoot opts)
+      r <- runOne opts cfg tp s
       case r of
         OK -> do
           putStrLn ("seed=" <> show s <> " passed; nothing to shrink")
           exitSuccess
         _  -> do
-          shrinkOne opts cfg s r
+          shrinkOne opts cfg tp s r
           exitWith (ExitFailure 2)
     MFuzz ->
       if oNegative opts then runNegativeMany opts cfg else runMany opts cfg
@@ -250,12 +260,18 @@ exitOnNegative AgreeBothAccept = exitSuccess
 exitOnNegative NegativeMismatch{} = exitWith (ExitFailure 2)
 exitOnNegative (ToolFail _)  = exitWith (ExitFailure 3)
 
+requireToolPaths :: FilePath -> IO ToolPaths
+requireToolPaths root =
+  resolveToolPaths root >>= \case
+    Left msg -> hPutStrLn stderr msg >> exitFailure
+    Right tp -> pure tp
+
 negativeReplay :: Opts -> GenConfig -> Int -> IO ()
 negativeReplay opts cfg seed = do
   when (oClean opts) (cleanDir (oFailDirNegative opts))
   createDirectoryIfMissing True (oWorkDir opts)
+  tp <- requireToolPaths (oRoot opts)
   let src   = invalidSource cfg seed
-      tp    = defaultToolPaths (oRoot opts)
       base  = caseBaseName seed
   writeFile (oWorkDir opts </> base ++ ".negative.seed") (show seed ++ "\n")
   r <- runNegativeCase tp (oWorkDir opts) base src
@@ -270,13 +286,13 @@ runNegativeMany opts cfg = do
     cleanDir (oWorkDir opts)
   createDirectoryIfMissing True (oWorkDir opts)
   createDirectoryIfMissing True (oFailDirNegative opts)
+  tp <- requireToolPaths (oRoot opts)
   agreeRej  <- newIORef (0 :: Int)
   agreeAcc  <- newIORef (0 :: Int)
   mismatchN <- newIORef (0 :: Int)
   toolFailN <- newIORef (0 :: Int)
   printLock <- newMVar ()
   let seeds = [oStartSeed opts .. oStartSeed opts + oCount opts - 1]
-      tp    = defaultToolPaths (oRoot opts)
       jobs  = oJobs opts
       partition = chunkRoundRobin jobs seeds
   forConcurrently_ partition $ \chunk ->
@@ -346,12 +362,11 @@ copyNegativeArtefacts opts seed = do
       ok <- doesFileExist src
       when ok $ copyFile src dst) names
 
-runOne :: Opts -> GenConfig -> Int -> IO RunOutcome
-runOne opts cfg seed = do
+runOne :: Opts -> GenConfig -> ToolPaths -> Int -> IO RunOutcome
+runOne opts cfg tp seed = do
   when (oClean opts) (cleanDir (oFailDir opts))
   createDirectoryIfMissing True (oWorkDir opts)
   let prog = genProgram cfg seed
-      tp   = defaultToolPaths (oRoot opts)
   result <- runCase tp (oWorkDir opts) prog seed
   reportOne True opts seed result
   promoteFailureIfNeeded opts seed result
@@ -364,12 +379,12 @@ runMany opts cfg = do
     cleanDir (oWorkDir opts)
   createDirectoryIfMissing True (oWorkDir opts)
   createDirectoryIfMissing True (oFailDir opts)
+  tp <- requireToolPaths (oRoot opts)
   okCount    <- newIORef (0 :: Int)
   failCount  <- newIORef (0 :: Int)
   stageCount <- newIORef (0 :: Int)
   printLock  <- newMVar ()
   let seeds = [oStartSeed opts .. oStartSeed opts + oCount opts - 1]
-      tp    = defaultToolPaths (oRoot opts)
       jobs  = oJobs opts
       partition = chunkRoundRobin jobs seeds
   forConcurrently_ partition $ \chunk ->
@@ -379,7 +394,7 @@ runMany opts cfg = do
             withMVar printLock $ \_ -> reportOne (oVerbose opts) opts s r
             promoteFailureIfNeeded opts s r
             when (oAutoShrink opts && isFailure r) $
-              shrinkOne opts cfg s r
+              shrinkOne opts cfg tp s r
             case r of
               OK         -> atomicModifyIORef' okCount    (\n -> (n+1, ()))
               Mismatch{} -> atomicModifyIORef' failCount  (\n -> (n+1, ()))
@@ -467,10 +482,9 @@ sameFailureKind _               _               = False
 -- restriction the shrinker would happily produce ill-typed reproducers
 -- (e.g. a call to a function it just dropped) which all stage-fail at
 -- some other point and are useless for triage.
-shrinkOne :: Opts -> GenConfig -> Int -> RunOutcome -> IO ()
-shrinkOne opts cfg seed orig = do
+shrinkOne :: Opts -> GenConfig -> ToolPaths -> Int -> RunOutcome -> IO ()
+shrinkOne opts cfg tp seed orig = do
   let prog0 = genProgram cfg seed
-      tp    = defaultToolPaths (oRoot opts)
       base  = caseBaseName seed ++ ".shrunk"
       oracle prog = do
         r <- runCaseFromAst tp (oWorkDir opts) prog base Nothing

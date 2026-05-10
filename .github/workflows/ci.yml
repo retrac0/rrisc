@@ -27,10 +27,10 @@ jobs:
       - name: Build toolchain
         run: |
           cabal update
-          cabal build exe:rcc exe:hsasm exe:hsld exe:rsim
+          cabal build exe:rcc exe:ras exe:rld exe:rsim
 
       - name: Haskell unit tests
-        run: cabal test rcc-test hstools-test
+        run: cabal test rcc-test rrisc-tools-test
 
       - name: Build C simulator
         run: make sim2

@@ -34,7 +34,7 @@ see [`MANUAL.md`](MANUAL.md). The hardware ISA reference is [`Arch.md`](../Arch.
 runtime helper calls (`__fadd`, `__fsub`, `__fmul`, `__fdiv`, `__fcmp`, `__ftoi`,
 `__itof`, `__fcopy`, `__fneg`). Implementations live under `lib/float/`. The compiler
 does not embed those files; supply them when assembling (for example list the needed
-`.s` files or link prebuilt `.o` objects with `hsld`).
+`.s` files or link prebuilt `.o` objects with `rld`).
 
 ### Derived
 
@@ -412,16 +412,16 @@ See [`MANUAL.md`](MANUAL.md) for discussion and workarounds.
 
 ---
 
-## 11b. RRISC toolchain (`rcc` and hstools)
+## 11b. RRISC toolchain (`rcc` and `rrisc-tools`)
 
 The **language** is implemented by **`rcc`** ([`compiler/`](../compiler)), which emits RRISC
 assembly (`.s`) including the crt0 prelude above.
 
-The **hstools** package ([`hstools/`](../hstools)) provides the supported assembler and linker:
-**`hsasm`** (also installed as **`ras`**) turns `.s` into a flat `.bin`/`.mem` image or, with
-**`--emit-obj`**, into relocatable **`.o`** files; **`hsld`** links one or more `.o` files into a
-final image. **`rsim`** is the Haskell simulator (alternatives: `sim.py`, `sim2`). Bases and
-defines must stay consistent with the `%define` lines `rcc` emits — see
+The **`rrisc-tools`** package ([`tools/`](../tools)) provides the supported assembler, linker, and simulator:
+**`ras`** assembles `.s` to a relocatable **`.o`** by default (`-o` optional); **`--format bin`**
+or **`--format readmemb`** emits a flat **`.bin`** or **`.mem`** instead. **`rld`** links one or
+more `.o` files into a final image. **`rsim`** is the Haskell simulator (alternatives: `sim.py`,
+`sim2`). Bases and defines must stay consistent with the `%define` lines `rcc` emits — see
 [`docs/toolchain.md`](../docs/toolchain.md) for the contract, build commands, and object-format
 versioning.
 
@@ -538,7 +538,7 @@ yields **0** (12-bit). Link **`librcc.o`** after **`crt0.o`** and before the use
 The compiler emits calls to the symbols below when needed; assembly sources live in `lib/`.
 The compiler output `%include`s `lib/crt0.s` for `_start`. Soft-float and string helpers are
 **not** inlined into the generated `.s`; link `lib/float/*.s` (or prebuilt `.o` objects from
-`lib/float/`) so **`hsld`** or flat **`hsasm`** resolves `__f*` symbols as documented in
+`lib/float/`) so **`rld`** or flat **`ras --format bin`** resolves `__f*` symbols as documented in
 [`docs/toolchain.md`](../docs/toolchain.md).
 
 | Symbol     | Signature                                        | Description                              | Source                |

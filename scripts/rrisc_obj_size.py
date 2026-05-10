@@ -55,7 +55,7 @@ def section_word_count(obj_path: Path, section: str) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("obj", type=Path, help="RRISC textual .o (hsasm --emit-obj)")
+    ap.add_argument("obj", type=Path, help="RRISC textual .o (ras default output)")
     ap.add_argument(
         "--sections",
         default="text,data",

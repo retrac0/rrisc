@@ -9,7 +9,7 @@
 ;   **Soft-float** and string helpers live under **lib/float/** and **lib/itoa.s**
 ;   etc.; link those separately when the program uses those features.
 ;
-; Linking (relocatable objects with hsasm --emit-obj + hsld)
+; Linking (relocatable objects: ras -o *.o, then rld)
 ;   Recommended order:  crt0.o  →  librcc.o  →  user.o
 ;   so `_start` and integer helpers resolve before your rcc-generated `.o`.
 ;   The Python test harness uses this order (see run_tests.py).

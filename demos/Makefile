@@ -6,8 +6,8 @@ CABAL  ?= cabal
 RCC := $(CABAL) -v0 run --project-file $(RCC_DIR)/cabal.project rcc --
 
 # Haskell assembler / linker (same stack as run_tests.py); run from repo root for cabal.project
-HSASM_RUN := cd $(ROOT) && $(CABAL) -v0 run hsasm --
-HSLD_RUN  := cd $(ROOT) && $(CABAL) -v0 run hsld --
+RAS_RUN := cd $(ROOT) && $(CABAL) -v0 run ras --
+RLD_RUN  := cd $(ROOT) && $(CABAL) -v0 run rld --
 
 # Full 0o7770-word flat RAM, IO page at 0o7770, code starting at 0o100.
 # Globals at 0o6600 (~65 words); stack grows down from 0o7770 (~580 words of stack).
@@ -35,10 +35,10 @@ rpn_float.s: rpn_float.c $(ROOT)/lib/rlibc_float_calc.h
 
 # Link crt0 + user only (no librcc): this program strength-reduces stkptr*4 and uses no idiv.
 rpn_float.bin: rpn_float.s
-	$(HSASM_RUN) lib/crt0.s --obj-only --obj-out demos/rpn_float.crt0.o \
+	$(RAS_RUN) lib/crt0.s -o demos/rpn_float.crt0.o \
 	    -D RCC_STACK_TOP=$(STACK_TOP)
-	$(HSASM_RUN) demos/rpn_float.s -I lib --obj-only --obj-out demos/rpn_float.user.o
-	$(HSLD_RUN) demos/rpn_float.crt0.o demos/rpn_float.user.o -o demos/rpn_float.bin \
+	$(RAS_RUN) demos/rpn_float.s -I lib -o demos/rpn_float.user.o
+	$(RLD_RUN) demos/rpn_float.crt0.o demos/rpn_float.user.o -o demos/rpn_float.bin \
 	    --code-base $(CODE_BASE) --data-base $(DATA_BASE)
 
 rpn_int.s: rpn_int.c $(ROOT)/lib/rlibc_float_calc.h
@@ -49,11 +49,11 @@ rpn_int.s: rpn_int.c $(ROOT)/lib/rlibc_float_calc.h
 # Integer RPN needs __div/__mul; rcc already %include's librcc.s at end of rpn.s — do not link librcc.o twice.
 # ../lib/rpn_err.s: hand-written rpn_emit_err so rcc does not place a void helper before main (stack bug).
 rpn.bin: rpn_int.s $(ROOT)/lib/rpn_err.s
-	$(HSASM_RUN) lib/crt0.s --obj-only --obj-out demos/rpn.crt0.o \
+	$(RAS_RUN) lib/crt0.s -o demos/rpn.crt0.o \
 	    -D RCC_STACK_TOP=$(STACK_TOP)
-	$(HSASM_RUN) demos/rpn_int.s -I lib --obj-only --obj-out demos/rpn.user.o
-	$(HSASM_RUN) lib/rpn_err.s -I lib --obj-only --obj-out lib/rpn_err.o
-	$(HSLD_RUN) demos/rpn.crt0.o lib/rpn_err.o demos/rpn.user.o -o demos/rpn.bin \
+	$(RAS_RUN) demos/rpn_int.s -I lib -o demos/rpn.user.o
+	$(RAS_RUN) lib/rpn_err.s -I lib -o lib/rpn_err.o
+	$(RLD_RUN) demos/rpn.crt0.o lib/rpn_err.o demos/rpn.user.o -o demos/rpn.bin \
 	    --code-base $(CODE_BASE) --data-base $(DATA_BASE)
 
 run: rpn.bin

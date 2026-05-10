@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Unified RRISC test runner: RCC compiler tests, flat-assembler tests, examples,
-optional toolchain (obj round-trip / hsld) checks on tests/toolchain/*.s,
+optional toolchain (obj round-trip / rld) checks on tests/toolchain/*.s,
 and optional lib/librcc.s direct harness (tests/librcc/run_librcc_tests.py).
 
 Replaces compiler/run_tests.sh and runtests.sh with one subprocess-based harness:
@@ -47,33 +47,33 @@ from rrisc_toolchain import (
     IO_RCC_EXTRA_DEFAULT,
     IO_SIM_EXTRA_DEFAULT,
     asm_py_path,
-    hsasm_cmd,
-    hsasm_emit_obj_cmd,
-    hsld_cmd,
     lib_dir,
     parse_flags_file,
     parse_rcc_defines,
     py_asm_cmd,
     python_exe,
+    ras_cmd,
+    ras_emit_obj_cmd,
     repo_root,
     rcc_src_arg,
     resolve_gcc,
-    resolve_hsasm,
-    resolve_hsld,
+    resolve_ras,
     resolve_rcc,
+    resolve_rld,
     resolve_rsim,
     resolve_sim2,
+    rld_cmd,
     sim_py_path,
 )
 from toolchain_checks import (
     collect_toolchain_asm_sources,
-    verify_hsld_equivalence,
     verify_obj_roundtrip,
+    verify_rld_equivalence,
 )
 
 PY_ASM_IN_MATRIX_DEPRECATION = (
     "run_tests: warning: --assemblers py (asm.py) is deprecated; "
-    "use hsasm (default --assemblers hs). Example: cabal run hsasm -- from hstools/."
+    "use ras (default --assemblers hs). Example: cabal build exe:ras && cabal list-bin exe:ras."
 )
 
 
@@ -165,8 +165,8 @@ class RunConfig:
     verbose: bool
     keep_temps: bool
     rcc_path: Path | None
-    hsasm_path: Path | None
-    hsld_path: Path | None
+    ras_path: Path | None
+    rld_path: Path | None
     sim2_path: Path | None
     rsim_path: Path | None
     default_rcc_flags: list[str] = field(default_factory=lambda: ["--optimize"])
@@ -389,6 +389,11 @@ def _run_rcc_output_variant_sims(
     return results
 
 
+def rcc_asm_embeds_librcc(asm_out: Path) -> bool:
+    """True when rcc emitted ``%include \"librcc.s\"`` (integer runtime already in user.o)."""
+    return '%include "librcc.s"' in asm_out.read_text(encoding="utf-8")
+
+
 def link_rcc_asm_with_crt0(
     cfg: RunConfig,
     asm_out: Path,
@@ -400,18 +405,18 @@ def link_rcc_asm_with_crt0(
     data_base: str | None,
     stack_top: str,
 ) -> tuple[bool, str, str]:
-    """Assemble crt0 + one rcc .s and hsld-link. On failure, third element is TResult.sub."""
-    if not cfg.hsasm_path or not cfg.hsld_path:
+    """Assemble crt0 + one rcc .s and rld-link. On failure, third element is TResult.sub."""
+    if not cfg.ras_path or not cfg.rld_path:
         return (
             False,
-            "hsasm+hsld required (cabal build exe:hsasm exe:hsld in hstools/)",
+            "ras+rld required (cabal build exe:ras exe:rld in tools/)",
             "",
         )
     lib = lib_dir(cfg.root)
     crt0_s = cfg.root / "lib" / "crt0.s"
     ar0 = run_capture(
-        hsasm_emit_obj_cmd(
-            cfg.hsasm_path,
+        ras_emit_obj_cmd(
+            cfg.ras_path,
             crt0_s,
             crt0_o,
             cli_defines=[("RCC_STACK_TOP", stack_top)],
@@ -419,25 +424,29 @@ def link_rcc_asm_with_crt0(
         cwd=cfg.root,
     )
     if ar0.returncode != 0:
-        return False, "hsasm (crt0) failed:\n" + (ar0.stderr or ar0.stdout or ""), "crt0.o"
+        return False, "ras (crt0) failed:\n" + (ar0.stderr or ar0.stdout or ""), "crt0.o"
     aru = run_capture(
-        hsasm_emit_obj_cmd(cfg.hsasm_path, asm_out, user_o, include_dirs=[lib]),
+        ras_emit_obj_cmd(cfg.ras_path, asm_out, user_o, include_dirs=[lib]),
         cwd=cfg.root / "compiler",
     )
     if aru.returncode != 0:
-        return False, "hsasm (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""), "user.o"
-    librcc_s = cfg.root / "lib" / "librcc.s"
-    librcc_o = user_o.parent / (user_o.stem + "_librcc.o")
-    arm = run_capture(
-        hsasm_emit_obj_cmd(cfg.hsasm_path, librcc_s, librcc_o, include_dirs=[lib]),
-        cwd=cfg.root,
-    )
-    if arm.returncode != 0:
-        return False, "hsasm (librcc.s) failed:\n" + (arm.stderr or arm.stdout or ""), "librcc.o"
+        return False, "ras (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""), "user.o"
+    link_objs: list[Path] = [crt0_o]
+    if not rcc_asm_embeds_librcc(asm_out):
+        librcc_s = cfg.root / "lib" / "librcc.s"
+        librcc_o = user_o.parent / (user_o.stem + "_librcc.o")
+        arm = run_capture(
+            ras_emit_obj_cmd(cfg.ras_path, librcc_s, librcc_o, include_dirs=[lib]),
+            cwd=cfg.root,
+        )
+        if arm.returncode != 0:
+            return False, "ras (librcc.s) failed:\n" + (arm.stderr or arm.stdout or ""), "librcc.o"
+        link_objs.append(librcc_o)
+    link_objs.append(user_o)
     arl = run_capture(
-        hsld_cmd(
-            cfg.hsld_path,
-            [crt0_o, librcc_o, user_o],
+        rld_cmd(
+            cfg.rld_path,
+            link_objs,
             bin_path,
             code_base=code_base,
             data_base=data_base,
@@ -445,7 +454,7 @@ def link_rcc_asm_with_crt0(
         cwd=cfg.root,
     )
     if arl.returncode != 0:
-        return False, "hsld failed:\n" + (arl.stderr or arl.stdout or ""), "hsld"
+        return False, "rld failed:\n" + (arl.stderr or arl.stdout or ""), "rld"
     return True, "", ""
 
 
@@ -524,8 +533,8 @@ def collect_size_tests(cfg: RunConfig) -> list[Path]:
 def build_rcc_linked_bin(cfg: RunConfig, src: Path, tmp_root: Path) -> tuple[bool, Path | None, str]:
     """Build a linked .bin (crt0 + rcc output) and return (ok, bin_path, detail)."""
     base = src.stem
-    if not cfg.hsasm_path or not cfg.hsld_path:
-        return False, None, "hsasm+hsld required (cabal build exe:hsasm exe:hsld in hstools/)"
+    if not cfg.ras_path or not cfg.rld_path:
+        return False, None, "ras+rld required (cabal build exe:ras exe:rld in tools/)"
 
     compiler_tests = cfg.root / "compiler" / "tests"
     per_test = parse_flags_file(compiler_tests / f"{base}.rccflags")
@@ -597,8 +606,8 @@ def bless_size(cfg: RunConfig) -> int:
     if not cfg.rcc_path:
         print("bless-size: rcc not found", file=sys.stderr)
         return 2
-    if not cfg.hsasm_path or not cfg.hsld_path:
-        print("bless-size: hsasm+hsld required", file=sys.stderr)
+    if not cfg.ras_path or not cfg.rld_path:
+        print("bless-size: ras+rld required", file=sys.stderr)
         return 2
 
     out: dict[str, int] = {}
@@ -769,8 +778,8 @@ def run_rcc_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
     input_path = compiler_tests / f"{base}.input"
     has_input = input_path.is_file()
 
-    if not cfg.hsasm_path or not cfg.hsld_path:
-        msg = "hsasm+hsld required to link crt0 with rcc output (cabal build exe:hsasm exe:hsld in hstools/)"
+    if not cfg.ras_path or not cfg.rld_path:
+        msg = "ras+rld required to link crt0 with rcc output (cabal build exe:ras exe:rld in tools/)"
         if cfg.skip_unavailable:
             return [TResult(True, name, f"(skipped) {msg}")]
         return [TResult(False, name, msg)]
@@ -872,8 +881,8 @@ def run_io_terminal_test(cfg: RunConfig, src: Path, tmp_root: Path, gcc_path: Pa
     if not ok_c:
         return [TResult(False, name, err_c)]
 
-    if not cfg.hsasm_path or not cfg.hsld_path:
-        msg = "hsasm+hsld required (cabal build exe:hsasm exe:hsld in hstools/)"
+    if not cfg.ras_path or not cfg.rld_path:
+        msg = "ras+rld required (cabal build exe:ras exe:rld in tools/)"
         if cfg.skip_unavailable:
             return [TResult(True, name, f"(skipped) {msg}")]
         return [TResult(False, name, msg)]
@@ -1046,7 +1055,7 @@ def run_io_terminal_test(cfg: RunConfig, src: Path, tmp_root: Path, gcc_path: Pa
 
 
 def bless_rcc_output(cfg: RunConfig) -> int:
-    """Rewrite compiler/tests/[0-9]*.output.expect and paired .output.expect.O0 via rcc + hsld + py sim.
+    """Rewrite compiler/tests/[0-9]*.output.expect and paired .output.expect.O0 via rcc + rld + py sim.
 
     Golden UART expectations live under compiler/tests/io/*.stdout.expect and are maintained by hand.
     """
@@ -1056,16 +1065,16 @@ def bless_rcc_output(cfg: RunConfig) -> int:
         return 1
     compiler_tests = cfg.root / "compiler" / "tests"
     lib = lib_dir(cfg.root)
-    if not cfg.hsasm_path:
+    if not cfg.ras_path:
         print(
-            "bless-output: warning: hsasm not found; using deprecated asm.py. "
-            "Build exe:hsasm in hstools/.",
+            "bless-output: warning: ras not found; using deprecated asm.py. "
+            "Build exe:ras in tools/.",
             file=sys.stderr,
         )
-    elif not cfg.hsld_path:
+    elif not cfg.rld_path:
         print(
-            "bless-output: warning: hsld not found; falling back to flat hsasm/asm.py "
-            "(build exe:hsld for crt0 link).",
+            "bless-output: warning: rld not found; falling back to flat ras/asm.py "
+            "(build exe:rld for crt0 link).",
             file=sys.stderr,
         )
     n_ok = n_fail = n_skip = 0
@@ -1106,7 +1115,7 @@ def bless_rcc_output(cfg: RunConfig) -> int:
                 code_b, data_opt, stack_t, defs = rcc_asm_bases(
                     asm_txt, code_fb=code_fb, data_fb=data_fb, stack_fb=stack_fb
                 )
-                if cfg.hsasm_path and cfg.hsld_path:
+                if cfg.ras_path and cfg.rld_path:
                     crt0_o = tdir / f"{base}.{label}.crt0.o"
                     user_o = tdir / f"{base}.{label}.rcc.o"
                     ok_l, err_l, _ = link_rcc_asm_with_crt0(
@@ -1127,10 +1136,10 @@ def bless_rcc_output(cfg: RunConfig) -> int:
                         n_fail += 1
                         variant_failed = True
                         break
-                elif cfg.hsasm_path:
+                elif cfg.ras_path:
                     ar = run_capture(
-                        hsasm_cmd(
-                            cfg.root, cfg.hsasm_path, src=asm_out, out=bin_out, include_dirs=[lib]
+                        ras_cmd(
+                            cfg.root, cfg.ras_path, src=asm_out, out=bin_out, include_dirs=[lib]
                         ),
                         cwd=cfg.root / "compiler",
                     )
@@ -1300,8 +1309,20 @@ def bless_rcc_asm(cfg: RunConfig) -> int:
 def run_asm_error_test(cfg: RunConfig, src: Path) -> TResult:
     base = src.stem
     expect = cfg.root / "tests" / f"{base}.err.expect"
-    if cfg.hsasm_path:
-        r = run_capture([str(cfg.hsasm_path), str(src)], cwd=cfg.root)
+    if cfg.ras_path:
+        with tempfile.TemporaryDirectory(prefix="rrisc-asmerr-") as td:
+            out_bin = Path(td) / "out.bin"
+            r = run_capture(
+                [
+                    str(cfg.ras_path),
+                    str(src),
+                    "--format",
+                    "bin",
+                    "-o",
+                    str(out_bin),
+                ],
+                cwd=cfg.root,
+            )
     else:
         r = run_capture([python_exe(), str(asm_py_path(cfg.root)), str(src)], cwd=cfg.root)
     if r.returncode == 0:
@@ -1309,7 +1330,7 @@ def run_asm_error_test(cfg: RunConfig, src: Path) -> TResult:
     if not expect.is_file():
         return TResult(True, f"asmerr:{base}", "(no .err.expect)")
     err = r.stderr or ""
-    if not cfg.hsasm_path:
+    if not cfg.ras_path:
         err = _stderr_without_py_asm_deprecation(err)
     exp = expect.read_text(encoding="utf-8")
     if err != exp:
@@ -1332,10 +1353,10 @@ def run_asm_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
     bins: dict[str, Path] = {}
 
     for asm_id in cfg.assemblers:
-        if asm_id == "hs" and not cfg.hsasm_path:
+        if asm_id == "hs" and not cfg.ras_path:
             if cfg.skip_unavailable:
                 continue
-            results.append(TResult(False, name, "hsasm not found", sub="hsasm"))
+            results.append(TResult(False, name, "ras not found", sub="ras"))
             continue
         bin_path = tmp_root / f"{base}.{asm_id}.bin"
         if asm_id == "py":
@@ -1345,7 +1366,7 @@ def run_asm_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
             )
         else:
             ar = run_capture(
-                hsasm_cmd(cfg.root, cfg.hsasm_path, src=src, out=bin_path, include_dirs=()),
+                ras_cmd(cfg.root, cfg.ras_path, src=src, out=bin_path, include_dirs=()),
                 cwd=cfg.root,
             )
         if ar.returncode != 0:
@@ -1381,7 +1402,7 @@ def run_asm_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
     if "py" in bins and "hs" in bins:
         if bins["py"].read_bytes() != bins["hs"].read_bytes():
             results.append(
-                TResult(False, name, "pyasm and hsasm produced different .bin", sub="bin-compare")
+                TResult(False, name, "pyasm and ras produced different .bin", sub="bin-compare")
             )
             return results
 
@@ -1457,10 +1478,10 @@ def run_example_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]
 
     tried: list[str] = []
     for asm_id in cfg.assemblers:
-        if asm_id == "hs" and not cfg.hsasm_path:
+        if asm_id == "hs" and not cfg.ras_path:
             if cfg.skip_unavailable:
                 continue
-            tried.append("hs: (hsasm missing)")
+            tried.append("hs: (ras missing)")
             continue
         if asm_id == "py":
             ar = run_capture(
@@ -1469,7 +1490,7 @@ def run_example_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]
             )
         else:
             ar = run_capture(
-                hsasm_cmd(cfg.root, cfg.hsasm_path, src=src, out=bin_path, include_dirs=[lib]),
+                ras_cmd(cfg.root, cfg.ras_path, src=src, out=bin_path, include_dirs=[lib]),
                 cwd=cfg.root,
             )
         if ar.returncode != 0:
@@ -1586,9 +1607,9 @@ def collect_examples(cfg: RunConfig) -> list[Path]:
 
 
 def run_toolchain_suite(cfg: RunConfig, tmp_root: Path) -> list[TResult]:
-    """Obj round-trip + hsld single-object equivalence for ``tests/toolchain/*.s``."""
-    if not cfg.hsasm_path or not cfg.hsld_path:
-        msg = "hsasm+hsld required (cabal build exe:hsasm exe:hsld in hstools/)"
+    """Obj round-trip + rld single-object equivalence for ``tests/toolchain/*.s``."""
+    if not cfg.ras_path or not cfg.rld_path:
+        msg = "ras+rld required (cabal build exe:ras exe:rld in tools/)"
         if cfg.skip_unavailable:
             return [TResult(True, "toolchain", f"(skipped) {msg}")]
         return [TResult(False, "toolchain", msg)]
@@ -1608,7 +1629,7 @@ def run_toolchain_suite(cfg: RunConfig, tmp_root: Path) -> list[TResult]:
         rel = str(src.relative_to(cfg.root))
         name_base = f"toolchain:{rel}"
         r1: list[TResult] = []
-        ok, det = verify_obj_roundtrip(cfg.hsasm_path, src, t, incs)
+        ok, det = verify_obj_roundtrip(cfg.ras_path, src, t, incs)
         r1.append(
             TResult(
                 ok,
@@ -1617,13 +1638,13 @@ def run_toolchain_suite(cfg: RunConfig, tmp_root: Path) -> list[TResult]:
                 sub="obj-roundtrip",
             )
         )
-        ok2, det2 = verify_hsld_equivalence(cfg.hsasm_path, cfg.hsld_path, src, t, incs)
+        ok2, det2 = verify_rld_equivalence(cfg.ras_path, cfg.rld_path, src, t, incs)
         r1.append(
             TResult(
                 ok2,
-                f"{name_base}:hsld",
+                f"{name_base}:rld",
                 det2,
-                sub="hsld-eq",
+                sub="rld-eq",
             )
         )
         return r1
@@ -1648,8 +1669,8 @@ def run_librcc_suite(cfg: RunConfig) -> list[TResult]:
     driver = cfg.root / "tests" / "librcc" / "run_librcc_tests.py"
     if not driver.is_file():
         return [TResult(False, "librcc", f"missing driver {driver}")]
-    if not cfg.hsasm_path or not cfg.hsld_path:
-        msg = "hsasm+hsld required (librcc suite)"
+    if not cfg.ras_path or not cfg.rld_path:
+        msg = "ras+rld required (librcc suite)"
         if cfg.skip_unavailable:
             return [TResult(True, "librcc", f"(skipped) {msg}")]
         return [TResult(False, "librcc", msg)]
@@ -1657,10 +1678,10 @@ def run_librcc_suite(cfg: RunConfig) -> list[TResult]:
     argv = [
         python_exe(),
         str(driver),
-        "--hsasm",
-        str(cfg.hsasm_path),
-        "--hsld",
-        str(cfg.hsld_path),
+        "--ras",
+        str(cfg.ras_path),
+        "--rld",
+        str(cfg.rld_path),
     ]
     if cfg.filter_re:
         argv.extend(["--filter", cfg.filter_re.pattern])
@@ -1786,12 +1807,12 @@ def main() -> int:
             "(still run --only io with simulators before commit)"
         ),
     )
-    ap.add_argument("--skip-unavailable", action="store_true", help="skip hsasm/rsim/sim2 if missing")
+    ap.add_argument("--skip-unavailable", action="store_true", help="skip ras/rsim/sim2 if missing")
     ap.add_argument("--keep", action="store_true", help="keep temp dirs (print path)")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--rcc", metavar="PATH", help="rcc executable")
-    ap.add_argument("--hsasm", metavar="PATH", help="Haskell assembler (hsasm/ras)")
-    ap.add_argument("--hsld", metavar="PATH", help="Haskell linker (hsld)")
+    ap.add_argument("--ras", metavar="PATH", help="RRISC assembler (ras)")
+    ap.add_argument("--rld", metavar="PATH", help="RRISC linker (rld)")
     ap.add_argument("--rsim", metavar="PATH", help="Haskell simulator (rsim)")
     ap.add_argument("--sim2", metavar="PATH", help="C simulator binary")
     ap.add_argument(
@@ -1859,8 +1880,8 @@ def main() -> int:
             return 2
 
     rcc_path = resolve_rcc(root, args.rcc)
-    hsasm_path = resolve_hsasm(root, args.hsasm)
-    hsld_path = resolve_hsld(root, getattr(args, "hsld", None))
+    ras_path = resolve_ras(root, args.ras)
+    rld_path = resolve_rld(root, args.rld)
     rsim_path = resolve_rsim(root, args.rsim)
     sim2_path = resolve_sim2(root, args.sim2)
     gcc_path = resolve_gcc()
@@ -1877,8 +1898,8 @@ def main() -> int:
         verbose=args.verbose,
         keep_temps=args.keep,
         rcc_path=rcc_path,
-        hsasm_path=hsasm_path,
-        hsld_path=hsld_path,
+        ras_path=ras_path,
+        rld_path=rld_path,
         sim2_path=sim2_path,
         rsim_path=rsim_path,
         default_rcc_flags=default_rcc,
@@ -1895,12 +1916,12 @@ def main() -> int:
 
     if not args.skip_unavailable:
         missing = []
-        if (want_rcc or want_io or want_toolchain or want_librcc) and not hsld_path:
-            missing.append("hsld (cabal build exe:hsld in hstools/)")
-        if (want_toolchain or want_librcc or "hs" in assemblers) and not hsasm_path:
-            missing.append("hsasm (make ras, or cabal build exe:hsasm in hstools/)")
+        if (want_rcc or want_io or want_toolchain or want_librcc) and not rld_path:
+            missing.append("rld (cabal build exe:rld in tools/)")
+        if (want_toolchain or want_librcc or "hs" in assemblers) and not ras_path:
+            missing.append("ras (cabal build exe:ras in tools/)")
         if "hs" in simulators and not rsim_path:
-            missing.append("rsim (make rsim, or cabal build exe:rsim in hstools/)")
+            missing.append("rsim (cabal build exe:rsim in tools/)")
         if "c" in simulators and not sim2_path:
             missing.append("sim2 (make sim2)")
         if missing:
@@ -2012,7 +2033,7 @@ def main() -> int:
             all_results.extend(size_results)
             emit_verbose(cfg, size_results)
 
-        # hsasm .o round-trip + hsld flat equivalence (see toolchain_checks.py)
+        # ras .o round-trip + rld flat equivalence (see toolchain_checks.py)
         if want_toolchain:
             tc_results = run_toolchain_suite(cfg, tmp_root)
             all_results.extend(tc_results)

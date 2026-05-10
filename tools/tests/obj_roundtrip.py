@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""hsld vs flat hsasm equivalence: see toolchain_checks.verify_hsld_equivalence."""
+"""Object-file round-trip check: see toolchain_checks.verify_obj_roundtrip."""
 
 from __future__ import annotations
 
@@ -11,25 +11,21 @@ _REPO = Path(__file__).resolve().parents[2]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from toolchain_checks import collect_toolchain_asm_sources, verify_hsld_equivalence
-from rrisc_toolchain import resolve_hsasm, resolve_hsld, repo_root
+from toolchain_checks import collect_toolchain_asm_sources, verify_obj_roundtrip
+from rrisc_toolchain import repo_root, resolve_ras
 
 
 def main() -> int:
     root = repo_root()
-    hsasm = resolve_hsasm(root, None)
-    hsld = resolve_hsld(root, None)
-    if not hsasm or not hsld:
-        print(
-            "hsasm and hsld required (cabal build exe:hsasm exe:hsld from repo root)",
-            file=sys.stderr,
-        )
+    ras = resolve_ras(root, None)
+    if not ras:
+        print("ras not found (build: cabal build exe:ras from repo root)", file=sys.stderr)
         return 2
-    tmp = Path(tempfile.mkdtemp(prefix="rrisc-hsld-equivalence-"))
+    tmp = Path(tempfile.mkdtemp(prefix="rrisc-obj-roundtrip-"))
     ok_n = 0
     fail: list[str] = []
     for src, incs in collect_toolchain_asm_sources(root):
-        passed, msg = verify_hsld_equivalence(hsasm, hsld, src, tmp, incs)
+        passed, msg = verify_obj_roundtrip(ras, src, tmp, incs)
         rel = src.relative_to(root)
         if passed:
             ok_n += 1

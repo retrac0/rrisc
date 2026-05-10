@@ -16,6 +16,6 @@ build/*
 dist-newstyle/*
 compiler/tests/fuzz-work/*
 compiler/tests/fuzz-fail/*
-hsld
+rld
 rcc-fuzz
 *.o

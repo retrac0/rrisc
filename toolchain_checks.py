@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Object round-trip and hsld equivalence checks (shared by run_tests.py and hstools/tests/*.py)."""
+"""Object round-trip and rld equivalence checks (shared by run_tests.py and tools/tests/*.py)."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from typing import Sequence
 
 
 def collect_toolchain_asm_sources(root: Path) -> list[tuple[Path, list[Path]]]:
-    """Assembly inputs for obj round-trip / hsld equivalence.
+    """Assembly inputs for obj round-trip / rld equivalence.
 
     Only includes ``tests/toolchain/*.s``: programs with ``.org`` emit a sparse flat
-    ``.bin`` (zeros before the org) while ``hsld`` packs the ``text`` section from
+    ``.bin`` (zeros before the org) while ``rld`` packs the ``text`` section from
     base 0, so byte-identical single-object link checks do not apply repo-wide.
     """
     lib = root / "lib"
@@ -87,28 +87,36 @@ def _trim_trailing_zeros(ws: list[int]) -> list[int]:
     return ws[:end]
 
 
+def _ras_inc_args(include_dirs: Sequence[Path]) -> list[str]:
+    out: list[str] = []
+    for d in include_dirs:
+        out.extend(["-I", str(d)])
+    return out
+
+
 def verify_obj_roundtrip(
-    hsasm: Path,
+    ras: Path,
     src: Path,
     tmp: Path,
     include_dirs: Sequence[Path],
 ) -> tuple[bool, str]:
     bin_path = tmp / (src.stem + ".bin")
     obj_path = tmp / (src.stem + ".o")
-    cmd = [
-        str(hsasm),
-        str(src),
-        "-o",
-        str(bin_path),
-        "--emit-obj",
-        "--obj-out",
-        str(obj_path),
-    ]
-    for d in include_dirs:
-        cmd.extend(["-I", str(d)])
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0:
-        return False, f"hsasm failed: {(res.stderr or res.stdout or '').strip()}"
+    inc = _ras_inc_args(include_dirs)
+    r1 = subprocess.run(
+        [str(ras), str(src), "-o", str(obj_path), *inc],
+        capture_output=True,
+        text=True,
+    )
+    if r1.returncode != 0:
+        return False, f"ras (.o) failed: {(r1.stderr or r1.stdout or '').strip()}"
+    r2 = subprocess.run(
+        [str(ras), str(src), "--format", "bin", "-o", str(bin_path), *inc],
+        capture_output=True,
+        text=True,
+    )
+    if r2.returncode != 0:
+        return False, f"ras (flat .bin) failed: {(r2.stderr or r2.stdout or '').strip()}"
     bin_words = _trim_trailing_zeros(_read_bin(bin_path))
     obj_words = _trim_trailing_zeros(_parse_obj_text_section_words(obj_path))
     if bin_words != obj_words:
@@ -125,9 +133,9 @@ def verify_obj_roundtrip(
     return True, ""
 
 
-def verify_hsld_equivalence(
-    hsasm: Path,
-    hsld: Path,
+def verify_rld_equivalence(
+    ras: Path,
+    rld: Path,
     src: Path,
     tmp: Path,
     include_dirs: Sequence[Path],
@@ -135,27 +143,28 @@ def verify_hsld_equivalence(
     bin_path = tmp / (src.stem + ".bin")
     obj_path = tmp / (src.stem + ".o")
     linked_path = tmp / (src.stem + ".linked.bin")
-    cmd = [
-        str(hsasm),
-        str(src),
-        "-o",
-        str(bin_path),
-        "--emit-obj",
-        "--obj-out",
-        str(obj_path),
-    ]
-    for d in include_dirs:
-        cmd.extend(["-I", str(d)])
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0:
-        return False, f"hsasm failed: {(res.stderr or res.stdout or '').strip()}"
+    inc = _ras_inc_args(include_dirs)
+    r1 = subprocess.run(
+        [str(ras), str(src), "-o", str(obj_path), *inc],
+        capture_output=True,
+        text=True,
+    )
+    if r1.returncode != 0:
+        return False, f"ras (.o) failed: {(r1.stderr or r1.stdout or '').strip()}"
+    r2 = subprocess.run(
+        [str(ras), str(src), "--format", "bin", "-o", str(bin_path), *inc],
+        capture_output=True,
+        text=True,
+    )
+    if r2.returncode != 0:
+        return False, f"ras (flat .bin) failed: {(r2.stderr or r2.stdout or '').strip()}"
     res = subprocess.run(
-        [str(hsld), str(obj_path), "-o", str(linked_path)],
+        [str(rld), str(obj_path), "-o", str(linked_path)],
         capture_output=True,
         text=True,
     )
     if res.returncode != 0:
-        return False, f"hsld failed: {(res.stderr or res.stdout or '').strip()}"
+        return False, f"rld failed: {(res.stderr or res.stdout or '').strip()}"
     if not filecmp.cmp(bin_path, linked_path, shallow=False):
         a = bin_path.read_bytes()
         b = linked_path.read_bytes()
@@ -165,7 +174,7 @@ def verify_hsld_equivalence(
             ax = a[i] if i < len(a) else None
             bx = b[i] if i < len(b) else None
             if ax != bx:
-                diffs.append(f"  byte {i}: hsasm={ax} hsld={bx}")
+                diffs.append(f"  byte {i}: ras-flat={ax} rld={bx}")
                 if len(diffs) >= 8:
                     break
         return False, "binary mismatch:\n" + "\n".join(diffs)
