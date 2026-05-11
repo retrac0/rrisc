@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-sixbit-badchar.s:1: character '~' has no SIXBIT representation

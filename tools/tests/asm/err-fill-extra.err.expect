@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-fill-extra.s:1: .fill takes at most 2 operands, got 3

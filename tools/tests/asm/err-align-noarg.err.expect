@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-align-noarg.s:1: .align requires an argument

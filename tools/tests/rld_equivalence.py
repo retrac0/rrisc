@@ -7,7 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-_REPO = Path(__file__).resolve().parents[2]
+_REPO = next(p for p in Path(__file__).resolve().parents if (p / "rrisc_toolchain.py").is_file())
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 

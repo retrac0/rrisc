@@ -1,1 +1,0 @@
-/home/joel/rrisc/tests/err-expr-undef-in-word.s:1: in 'undefined_sym': undefined label 'undefined_sym'

@@ -36,6 +36,6 @@ examples:
 	@make -C examples all
 
 clean:
-	-rm -f sim2 *.bin tests/*.bin tests/*.output tests/*.sim2.output tests/*.err
+	-rm -f sim2 *.bin tools/tests/asm/*.bin tools/tests/asm/*.output tools/tests/asm/*.sim2.output tools/tests/asm/*.err
 	-rm -f examples/*.bin examples/*.output examples/*.sim2.output
 	-rm -rf examples/build

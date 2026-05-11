@@ -1,5 +1,5 @@
 __pycache__/
-tests/*.output
+tools/tests/asm/*.output
 sim2
 *.bin
 TODO.md

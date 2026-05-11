@@ -1,1 +1,0 @@
-/home/joel/rrisc/tests/err-macro-unterminated.s:1: unterminated %macro 'FOO': missing %endm

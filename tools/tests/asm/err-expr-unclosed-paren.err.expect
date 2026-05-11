@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-expr-unclosed-paren.s:1: in '(1+2': expected ')'

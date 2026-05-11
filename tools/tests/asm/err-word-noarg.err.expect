@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-word-noarg.s:1: .word requires a value

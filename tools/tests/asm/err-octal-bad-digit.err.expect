@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-octal-bad-digit.s:1: in '089': invalid number '089'

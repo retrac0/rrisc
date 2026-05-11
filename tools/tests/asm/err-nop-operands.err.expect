@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-nop-operands.s:1: 'nop' expects 0 operand(s), got 1

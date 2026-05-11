@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-float-noarg.s:1: .float requires a value

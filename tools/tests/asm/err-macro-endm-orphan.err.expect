@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-macro-endm-orphan.s:1: unexpected %endm without matching %macro

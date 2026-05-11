@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-bad-register.s:1: invalid register 'r8'

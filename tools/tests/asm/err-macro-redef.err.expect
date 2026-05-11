@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-macro-redef.s:4: redefinition of macro 'FOO'

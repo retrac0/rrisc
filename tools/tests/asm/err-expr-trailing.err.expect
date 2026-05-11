@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-expr-trailing.s:1: in '5 garbage': unexpected 'garbage'

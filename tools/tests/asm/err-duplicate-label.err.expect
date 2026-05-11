@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-duplicate-label.s:2: duplicate label 'start'

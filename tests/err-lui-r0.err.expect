@@ -1,1 +1,0 @@
-/home/joel/rrisc/tests/err-lui-r0.s:1: lui cannot target r0 (use bf for branches)

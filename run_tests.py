@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Unified RRISC test runner: RCC compiler tests, flat-assembler tests, examples,
-optional toolchain (obj round-trip / rld) checks on tests/toolchain/*.s,
-and optional lib/librcc.s direct harness (tests/librcc/run_librcc_tests.py).
+optional toolchain (obj round-trip / rld) checks on tools/tests/toolchain/*.s,
+and optional lib/librcc.s direct harness (tools/tests/librcc/run_librcc_tests.py).
 
 Replaces compiler/run_tests.sh and runtests.sh with one subprocess-based harness:
   - Correct argv handling (no shell splitting bugs)
@@ -460,7 +460,12 @@ def link_rcc_asm_with_crt0(
 
 # --- code size regression (linked .bin words) -------------------------------
 
-SIZE_BASELINE = Path("tests") / "size_baseline.txt"
+SIZE_BASELINE = Path("compiler") / "tests" / "size_baseline.txt"
+
+
+def tools_tests_asm(root: Path) -> Path:
+    """Flat assembler corpus (numbered + err-*.s) and sidecars."""
+    return root / "tools" / "tests" / "asm"
 
 # Keep this corpus stable and representative. These are compiler/tests/*.c stems.
 SIZE_CORPUS: tuple[str, ...] = (
@@ -1304,11 +1309,11 @@ def bless_rcc_asm(cfg: RunConfig) -> int:
     return 0 if n_fail == 0 else 1
 
 
-# --- Flat assembler tests (tests/*.s) --------------------------------------
+# --- Flat assembler tests (tools/tests/asm/*.s) ---------------------------
 
 def run_asm_error_test(cfg: RunConfig, src: Path) -> TResult:
     base = src.stem
-    expect = cfg.root / "tests" / f"{base}.err.expect"
+    expect = tools_tests_asm(cfg.root) / f"{base}.err.expect"
     if cfg.ras_path:
         with tempfile.TemporaryDirectory(prefix="rrisc-asmerr-") as td:
             out_bin = Path(td) / "out.bin"
@@ -1342,7 +1347,7 @@ def run_asm_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
     base = src.stem
     name = f"asm:{base}"
     results: list[TResult] = []
-    test_dir = cfg.root / "tests"
+    test_dir = tools_tests_asm(cfg.root)
     bin_expect = test_dir / f"{base}.bin.expect"
     out_expect = test_dir / f"{base}.output.expect"
     flags = parse_flags_file(test_dir / f"{base}.flags")
@@ -1587,7 +1592,7 @@ def collect_rcc_tests(cfg: RunConfig) -> tuple[list[Path], list[Path]]:
 
 
 def collect_asm_tests(cfg: RunConfig) -> tuple[list[Path], list[Path]]:
-    tdir = cfg.root / "tests"
+    tdir = tools_tests_asm(cfg.root)
     err_tests = sorted(tdir.glob("err-*.s"))
     ok_tests = sorted(tdir.glob("[0-9]*.s"))
     if cfg.filter_re:
@@ -1607,7 +1612,7 @@ def collect_examples(cfg: RunConfig) -> list[Path]:
 
 
 def run_toolchain_suite(cfg: RunConfig, tmp_root: Path) -> list[TResult]:
-    """Obj round-trip + rld single-object equivalence for ``tests/toolchain/*.s``."""
+    """Obj round-trip + rld single-object equivalence for ``tools/tests/toolchain/*.s``."""
     if not cfg.ras_path or not cfg.rld_path:
         msg = "ras+rld required (cabal build exe:ras exe:rld in tools/)"
         if cfg.skip_unavailable:
@@ -1661,12 +1666,12 @@ def run_toolchain_suite(cfg: RunConfig, tmp_root: Path) -> list[TResult]:
 
 
 def run_librcc_suite(cfg: RunConfig) -> list[TResult]:
-    """Drive tests/librcc/run_librcc_tests.py (crt0 + librcc + stub main per case).
+    """Drive tools/tests/librcc/run_librcc_tests.py (crt0 + librcc + stub main per case).
 
     With ``cfg.verbose``, split driver stdout into one ``TResult`` per ``PASS`` line
     plus a final summary row so ``emit_verbose`` prints every case (not only ``Results: 1``).
     """
-    driver = cfg.root / "tests" / "librcc" / "run_librcc_tests.py"
+    driver = cfg.root / "tools" / "tests" / "librcc" / "run_librcc_tests.py"
     if not driver.is_file():
         return [TResult(False, "librcc", f"missing driver {driver}")]
     if not cfg.ras_path or not cfg.rld_path:
@@ -1713,14 +1718,14 @@ def run_librcc_suite(cfg: RunConfig) -> list[TResult]:
 
 
 def run_float_suite(cfg: RunConfig) -> list[TResult]:
-    """Drive tests/float/run_float_tests.py as one suite-level check.
+    """Drive tools/tests/float/run_float_tests.py as one suite-level check.
 
     The float harness has its own per-case parallelism and golden-from-Python
     comparison; we just invoke it and surface a single summary check, plus
     one TResult per failing case so they show up in the unified report.
     """
     name = "float"
-    driver = cfg.root / "tests" / "float" / "run_float_tests.py"
+    driver = cfg.root / "tools" / "tests" / "float" / "run_float_tests.py"
     if not driver.is_file():
         return [TResult(False, name, f"missing driver {driver}")]
     argv = [python_exe(), str(driver)]
@@ -1751,9 +1756,9 @@ def run_float_suite(cfg: RunConfig) -> list[TResult]:
 
 
 def run_float_fuzz_suite(cfg: RunConfig) -> list[TResult]:
-    """Drive tests/float/fuzz_float_routines.py (random asm+sim checks, fixed seed)."""
+    """Drive tools/tests/float/fuzz_float_routines.py (random asm+sim checks, fixed seed)."""
     name = "float-fuzz"
-    driver = cfg.root / "tests" / "float" / "fuzz_float_routines.py"
+    driver = cfg.root / "tools" / "tests" / "float" / "fuzz_float_routines.py"
     if not driver.is_file():
         return [TResult(False, name, f"missing driver {driver}")]
     argv = [python_exe(), str(driver), "-n", "100", "--seed", "42"]
@@ -1790,7 +1795,11 @@ def main() -> int:
         action="store_true",
         help="rewrite compiler/tests/*.s.expect.{O0,Os,O1} from rcc (drops legacy .s.expect)",
     )
-    ap.add_argument("--bless-size", action="store_true", help="rewrite tests/size_baseline.txt")
+    ap.add_argument(
+        "--bless-size",
+        action="store_true",
+        help="rewrite compiler/tests/size_baseline.txt",
+    )
     ap.add_argument(
         "--bless-output",
         action="store_true",

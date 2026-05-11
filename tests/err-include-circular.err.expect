@@ -1,1 +1,0 @@
-/home/joel/rrisc/tests/err-include-circular.s:1: circular %include of 'err-include-circular.s'

@@ -65,9 +65,9 @@ Stable automation for tests and scripts lives in [`rrisc_toolchain.py`](../rrisc
 
   That tier is the **required** gate: Haskell assembler, Python simulator only (no `rsim`/`sim2` requirement in CI).
 
-- The **`librcc`** suite runs [`tests/librcc/run_librcc_tests.py`](../tests/librcc/run_librcc_tests.py): small linked programs call **`__mul`** / **`__udiv`** / **`__umod`** / **`__div`** / **`__mod`** from [`lib/librcc.s`](../lib/librcc.s) and assert **r2** at halt (no `rcc` required).
+- The **`librcc`** suite runs [`tools/tests/librcc/run_librcc_tests.py`](../tools/tests/librcc/run_librcc_tests.py): small linked programs call **`__mul`** / **`__udiv`** / **`__umod`** / **`__div`** / **`__mod`** from [`lib/librcc.s`](../lib/librcc.s) and assert **r2** at halt (no `rcc` required).
 
-- The **`toolchain`** suite exercises [`toolchain_checks.py`](../toolchain_checks.py) on [`tests/toolchain/*.s`](../tests/toolchain/) only. Those files intentionally omit ``.org`` so the flat ``ras --format bin`` image matches a single-input ``rld`` link (text placed at address 0). Programs that set ``.org 0o1000`` (most examples) produce a padded flat ``.bin`` that is **not** byte-identical to the packed link of the same ``.o``.
+- The **`toolchain`** suite exercises [`toolchain_checks.py`](../toolchain_checks.py) on [`tools/tests/toolchain/*.s`](../tools/tests/toolchain/) only. Those files intentionally omit ``.org`` so the flat ``ras --format bin`` image matches a single-input ``rld`` link (text placed at address 0). Programs that set ``.org 0o1000`` (most examples) produce a padded flat ``.bin`` that is **not** byte-identical to the packed link of the same ``.o``.
 
 - **Local** runs may use `--simulators py,c,hs` and `--assemblers hs,py` for broader coverage; use `--skip-unavailable` when a binary is not built.
 

@@ -48,7 +48,7 @@ routineFileDeps = Map.fromList
       ])
   ]
 
--- | Include order: dependencies before dependents (matches @tests/float/run_float_tests.py@).
+-- | Include order: dependencies before dependents (matches @tools/tests/float/run_float_tests.py@).
 masterFloatFileOrder :: [Text]
 masterFloatFileOrder =
   [ "float/_float_store_helpers.s"

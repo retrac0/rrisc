@@ -10,7 +10,7 @@ supporting `.s` files; **relocatable** builds use **`ras`** (default `.o` output
 ```
 lib/
   crt0.s              # auto-included by rcc; sets r6, calls main, halts
-  librcc.s            # compiler integer runtime: __mul, __udiv, __umod, __div, __mod (jalr); link .o after crt0; see tests/librcc/
+  librcc.s            # compiler integer runtime: __mul, __udiv, __umod, __div, __mod (jalr); link .o after crt0; see tools/tests/librcc/
   itoa.s              # signed 12-bit itoa (asm-callable; used by rlibc.h
                       # and by lib/float/__ftoa.s)
   rlibc.h             # general-purpose C runtime (I/O, mem*, str*, atoi/itoa/
@@ -40,7 +40,7 @@ lib/
 `lib/float/__*.s` is the soft-float runtime that the compiler emits calls into
 when a program uses `float`. Each routine takes pointer arguments to 4-word
 float48 cells. See [`float48.py`](../float48.py) for the bit-level reference
-and [`tests/float/run_float_tests.py`](../tests/float/run_float_tests.py) for
+and [`tools/tests/float/run_float_tests.py`](../tools/tests/float/run_float_tests.py) for
 the regression harness.
 
 Precision contract for the multiply/divide implementations is documented in

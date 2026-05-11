@@ -1,1 +1,0 @@
-/home/joel/rrisc/tests/err-fill-negative.s:1: .fill count -1 must be non-negative

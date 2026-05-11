@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-lui-r7.s:1: lui cannot target r7 (use bf for branches)

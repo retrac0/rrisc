@@ -12,12 +12,12 @@ from typing import Sequence
 def collect_toolchain_asm_sources(root: Path) -> list[tuple[Path, list[Path]]]:
     """Assembly inputs for obj round-trip / rld equivalence.
 
-    Only includes ``tests/toolchain/*.s``: programs with ``.org`` emit a sparse flat
+    Only includes ``tools/tests/toolchain/*.s``: programs with ``.org`` emit a sparse flat
     ``.bin`` (zeros before the org) while ``rld`` packs the ``text`` section from
     base 0, so byte-identical single-object link checks do not apply repo-wide.
     """
     lib = root / "lib"
-    tc = root / "tests" / "toolchain"
+    tc = root / "tools" / "tests" / "toolchain"
     if not tc.is_dir():
         return []
     return [(s, [lib]) for s in sorted(tc.glob("*.s")) if s.is_file()]

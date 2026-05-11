@@ -1,1 +1,0 @@
-/home/joel/rrisc/tests/err-ifeq-badoperands.s:1: %ifeq requires exactly 2 operands, got 3

@@ -1,1 +1,0 @@
-/home/joel/rrisc/tests/err-endif-orphan.s:2: %endif without matching %ifdef/%ifeq/%ifneq

@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-org-noarg.s:1: .org requires an address

@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-imm6-range.s:1: immediate 100 out of 6-bit unsigned range (0..63)

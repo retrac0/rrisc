@@ -1,0 +1,1 @@
+/home/joel/rrisc/tools/tests/asm/err-fill-noarg.s:1: .fill requires a count
