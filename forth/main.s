@@ -1,4 +1,4 @@
-; forth/forth.s — minimal indirect-threaded Forth for RRISC
+; forth entry — minimal indirect-threaded Forth for RRISC
 ;
 ; Structure follows Richard Jones's jonesforth (see references/jonesforth-riscv/)
 ; and jjyr's RISC-V port: NEXT / DOCOL / EXIT, dictionary headers, outer interpreter.
@@ -18,7 +18,7 @@
 ;       Example: push the address of a .word string then PUTS (see HELLO / str_boot in this file).
 ;
 ;   BYE
-;       Halt the machine — good for scripted runs: demos/test_forth.sh smoke (UART preload).
+;       Halt the machine — good for scripted runs: forth/test_forth.sh smoke (UART preload).
 ;
 ;   HELLO
 ;       Execute the threaded HELLO definition (DOCOL … EXIT); prints the same banner as boot.
@@ -38,8 +38,8 @@
 ;   1 2 SWAP - .
 ;       SWAP then subtract (2 - 1); prints "1 ".
 ;
-; Build & smoke test:  make -C demos forth.bin && ./demos/test_forth.sh smoke
-; Interactive UART:    make -C demos run-forth   (type lines; end with BYE to halt)
+; Build & smoke test:  make -C forth all && ./forth/test_forth.sh smoke
+; Interactive UART:    make -C forth run   (type lines; end with BYE to halt)
 ;
 ; Sources: io.s (UART / puts / refill), core.s (NEXT / FIND / parse), primitives.s (code words).
 
@@ -81,6 +81,7 @@ main:
     li      r1, var_saved_ip
     lwr     r1, r1
 
+; One UART line per refill; parse all words from the TIB before next refill.
 quit_loop:
     li      r3, var_saved_ip
     swr     r1, r3
@@ -90,16 +91,18 @@ quit_loop:
     li      r1, var_saved_ip
     lwr     r1, r1
 
-read_line:
     li      r3, refill_tib
     jalr    r5, r3
+
+    .global word_loop
+word_loop:
     li      r3, parse_word
     jalr    r5, r3
 
     li      r1, var_word_len
     lwr     r2, r1
     sub     r0, r0, r2
-    bf      read_line
+    bf      quit_loop
 
     li      r3, find_word
     jalr    r5, r3
@@ -108,12 +111,10 @@ read_line:
 
     li      r3, execute_xt
     jalr    r5, r3
-    li      r3, quit_loop
-    jalr    r0, r3
 q_try_num:
     li      r3, parse_number
     jalr    r5, r3
-    bt      quit_loop
+    bt      word_loop
 
     li      r3, var_saved_ip
     swr     r1, r3
@@ -122,7 +123,7 @@ q_try_num:
     jalr    r5, r3
     li      r1, var_saved_ip
     lwr     r1, r1
-    li      r3, quit_loop
+    li      r3, word_loop
     jalr    r0, r3
 
     .section data
@@ -135,6 +136,15 @@ var_latest:     .word 0
 var_word_len:   .word 0
 var_tib_idx:    .word 0
 var_parse_idx:  .word 0
+var_puts0_lr:   .word 0
+var_print_oct_lr: .word 0
+var_primitive_lr: .word 0
+
+; Synthetic IP for outer → docol: one token whose "header" points at code_outer_resume.
+outer_fake_xt:
+    .word   code_outer_resume
+outer_resume_thread:
+    .word   outer_fake_xt
 
 tib:            .fill 41
 word_buf:       .fill 24

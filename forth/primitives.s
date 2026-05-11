@@ -5,14 +5,14 @@
 code_drop:
     lwr     r2, r6
     addi    r6, 1
-    li      r3, next
+    li      r3, prim_tail
     jalr    r0, r3
 
 code_dup:
     lwr     r2, r6
     subi    r6, 1
     swr     r2, r6
-    li      r3, next
+    li      r3, prim_tail
     jalr    r0, r3
 
 code_swap:
@@ -24,7 +24,7 @@ code_swap:
     swr     r2, r6
     subi    r6, 1
     swr     r3, r6
-    li      r3, next
+    li      r3, prim_tail
     jalr    r0, r3
 
 code_plus:
@@ -35,7 +35,7 @@ code_plus:
     add     r2, r2, r3
     subi    r6, 1
     swr     r2, r6
-    li      r3, next
+    li      r3, prim_tail
     jalr    r0, r3
 
 code_minus:
@@ -46,7 +46,7 @@ code_minus:
     sub     r2, r2, r3
     subi    r6, 1
     swr     r2, r6
-    li      r3, next
+    li      r3, prim_tail
     jalr    r0, r3
 
 code_lit:
@@ -54,7 +54,7 @@ code_lit:
     addi    r1, 1
     subi    r6, 1
     swr     r2, r6
-    li      r3, next
+    li      r3, prim_tail
     jalr    r0, r3
 
 code_emit:
@@ -66,7 +66,7 @@ code_emit:
     jalr    r5, r3
     li      r1, var_saved_ip
     lwr     r1, r1
-    li      r3, next
+    li      r3, prim_tail
     jalr    r0, r3
 
 code_key:
@@ -78,7 +78,7 @@ code_key:
     lwr     r1, r1
     subi    r6, 1
     swr     r2, r6
-    li      r3, next
+    li      r3, prim_tail
     jalr    r0, r3
 
 code_udot:
@@ -93,7 +93,7 @@ code_udot:
     jalr    r5, r3
     li      r1, var_saved_ip
     lwr     r1, r1
-    li      r3, next
+    li      r3, prim_tail
     jalr    r0, r3
 
 code_cr:
@@ -104,7 +104,7 @@ code_cr:
     jalr    r5, r3
     li      r1, var_saved_ip
     lwr     r1, r1
-    li      r3, next
+    li      r3, prim_tail
     jalr    r0, r3
 
 code_puts:
@@ -112,7 +112,7 @@ code_puts:
     addi    r6, 1
     li      r3, puts0_r4
     jalr    r5, r3
-    li      r3, next
+    li      r3, prim_tail
     jalr    r0, r3
 
 code_bye:
@@ -120,11 +120,15 @@ code_bye:
 
 ; Push octal digits least-significant first, then pop and print (unsigned)
 print_oct_r2:
+    li      r3, var_print_oct_lr
+    swr     r5, r3
     sub     r0, r0, r2
-    bf      pu_nz
+    bt      pu_nz
     li      r2, 48
     li      r3, forth_uart_tx_r2
     jalr    r5, r3
+    li      r3, var_print_oct_lr
+    lwr     r5, r3
     jalr    r0, r5
 pu_nz:
 pu_collect:
@@ -166,4 +170,6 @@ pu_emitloop:
     li      r3, pu_emitloop
     jalr    r0, r3
 pu_done_emit:
+    li      r3, var_print_oct_lr
+    lwr     r5, r3
     jalr    r0, r5

@@ -24,7 +24,10 @@ forth_uart_rx_r2:
 
 ; r4 = pointer to zero-terminated string (one ASCII word per cell); r5 = return.
 ; Clobbers r2, r3, r4.  Used by code_puts, main, and quit_loop.
+; Inner jalr r5, forth_uart_tx_r2 overwrites r5; save the outer return in var_puts0_lr.
 puts0_r4:
+    li      r3, var_puts0_lr
+    swr     r5, r3
 puts0_loop:
     lwr     r3, r4
     sub     r0, r0, r3
@@ -36,6 +39,8 @@ puts0_loop:
     li      r3, puts0_loop
     jalr    r0, r3
 puts0_done:
+    li      r3, var_puts0_lr
+    lwr     r5, r3
     jalr    r0, r5
 
 refill_tib:

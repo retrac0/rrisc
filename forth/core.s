@@ -209,8 +209,8 @@ pnum_loop:
     add     r5, r5, r5
     add     r3, r5, r1
     addi    r4, 1
-    li      r3, pnum_loop
-    jalr    r0, r3
+    li      r1, pnum_loop
+    jalr    r0, r1
 pnum_ok:
     subi    r6, 1
     swr     r3, r6
@@ -224,8 +224,48 @@ pnum_fail:
     lwr     r5, r1
     jalr    r0, r5
 
-; r2 = codeword field address
+; r2 = address of xt field (see find_word fw_found).
+; Outer interpreter calls primitives without a valid IP in r1 — tailing `next`
+; would jump through garbage; docol must save a synthetic return IP.
 execute_xt:
     add     r3, r2, r0
-    lwr     r2, r3
-    jalr    r0, r2
+    lwr     r4, r3
+    li      r2, docol
+    sub     r0, r4, r2
+    bt      exec_xt_primitive
+    sub     r0, r2, r4
+    bt      exec_xt_primitive
+    li      r1, outer_resume_thread
+    li      r2, 0
+    li      r5, var_primitive_lr
+    swr     r2, r5
+    jalr    r0, r4
+
+exec_xt_primitive:
+    li      r2, execute_xt_resume
+    li      r5, var_primitive_lr
+    swr     r2, r5
+    jalr    r0, r4
+
+execute_xt_resume:
+    li      r3, word_loop
+    jalr    r0, r3
+
+; Shared return for primitives: outer path jumps to execute_xt_resume; inner uses next.
+    .global prim_tail
+prim_tail:
+    li      r3, var_primitive_lr
+    lwr     r5, r3
+    sub     r0, r0, r5
+    bf      prim_tail_inner
+    li      r2, 0
+    swr     r2, r3
+    jalr    r0, r5
+prim_tail_inner:
+    li      r3, next
+    jalr    r0, r3
+
+    .global code_outer_resume
+code_outer_resume:
+    li      r3, word_loop
+    jalr    r0, r3
