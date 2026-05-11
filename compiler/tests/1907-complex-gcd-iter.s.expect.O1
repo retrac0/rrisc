@@ -10,81 +10,39 @@ gcd:
     subi r6, 1
     swr r5, r6
     subi r6, 6
-    and r1, r6, r7
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 1
-    swr r3, r1
-_B_gcd_0:
-    clrt
-    bf _B_gcd_6
 _B_gcd_1:
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 2
+    lwr r3, r1
+    and r1, r6, r7
+    addi r1, 2
+    lwr r2, r1
+    li r1, __mod
+    jalr r5, r1
+    and r1, r6, r7
+    addi r1, 2
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 2
     lwr r3, r1
     and r2, r0, r0
     sub r1, r3, r2
     sub r0, r0, r1
     rol r2, r0
     and r1, r6, r7
-    addi r1, 2
+    addi r1, 5
     swr r2, r1
     and r1, r6, r7
-    addi r1, 2
+    addi r1, 5
     lwr r2, r1
     sub r0, r0, r2
     bt _B_gcd_1
-    clrt
-    bf _B_gcd_4
-_B_gcd_2:
-    and r1, r6, r7
-    addi r1, 5
-    lwr r3, r1
-    and r1, r6, r7
-    addi r1, 3
-    lwr r2, r1
-    li r1, __mod
-    jalr r5, r1
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
-    clrt
-    bf _B_gcd_5
 _B_gcd_4:
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 2
     lwr r2, r1
     clrt
     bf _epi_gcd
-_B_gcd_5:
-    and r1, r6, r7
-    addi r1, 4
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 3
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 5
-    swr r2, r1
-    clrt
-    bf _B_gcd_1
-_B_gcd_6:
-    and r1, r6, r7
-    addi r1, 1
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
-    and r1, r6, r7
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 5
-    swr r2, r1
-    clrt
-    bf _B_gcd_1
 _epi_gcd:
     addi r6, 6
     lwr r5, r6

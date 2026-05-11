@@ -12,12 +12,6 @@ flag:
     .global main
 main:
     subi r6, 1
-_B_main_0:
-    clrt
-    bf _B_main_4
-_B_main_4:
-    clrt
-    bf _B_main_5
 _B_main_5:
     li r1, flag
     lwr r2, r1

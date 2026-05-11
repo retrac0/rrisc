@@ -35,10 +35,10 @@ _B_main_1:
     addi r1, 2
     lwr r2, r1
     sub r0, r0, r2
-    bt _B_main_2
+    bt _B_main_3
     clrt
     bf _B_main_5
-_B_main_2:
+_B_main_3:
     and r1, r6, r7
     addi r1, 5
     lwr r3, r1
@@ -57,9 +57,6 @@ _L_main_shift_end_39:
     and r1, r6, r7
     addi r1, 4
     swr r2, r1
-    clrt
-    bf _B_main_3
-_B_main_3:
     and r1, r6, r7
     addi r1, 3
     lwr r3, r1

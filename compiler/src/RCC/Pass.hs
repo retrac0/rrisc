@@ -5,6 +5,8 @@ module RCC.Pass
   , PassResult(..)
   , PassSet(..)
   , runPasses
+  , runPassesSweep
+  , runPassesUntilStable
   , parsePassToggles
   ) where
 
@@ -41,6 +43,36 @@ runPasses enabled passes0 x0 = foldl' step x0 passes0
       case Map.lookup (passId p) enabled of
         Just True -> prOut (passRun p x)
         _         -> x
+
+-- | One full sweep over @passes@ in order; aggregate whether any enabled pass reported @prChanged@.
+runPassesSweep :: Map PassId Bool -> [Pass a] -> a -> (a, Bool)
+runPassesSweep enabled passes0 x0 = foldl' step (x0, False) passes0
+  where
+    step (x, anyCh) p =
+      case Map.lookup (passId p) enabled of
+        Just True ->
+          let PassResult x' ch = passRun p x
+           in (x', anyCh || ch)
+        _ -> (x, anyCh)
+
+-- | Repeat full sweeps until a sweep makes no change or @maxRounds@ sweeps have run.
+-- Returns @(program, roundsExecuted, hitRoundCapWhileChanging)@ — the third flag is true iff the
+-- last sweep still reported changes but no budget remained (possible oscillation or need more rounds).
+runPassesUntilStable :: Map PassId Bool -> Int -> [Pass a] -> a -> (a, Int, Bool)
+runPassesUntilStable _ maxRounds _ x0 | maxRounds <= 0 = (x0, 0, False)
+runPassesUntilStable enabled maxRounds passes x0 = go x0 maxRounds 0
+  where
+    go x k !n
+      | k <= 0 = (x, n, False)
+      | otherwise =
+          let (x', ch) = runPassesSweep enabled passes x
+              n' = n + 1
+           in if not ch
+                then (x', n', False)
+                else
+                  if k > 1
+                    then go x' (k - 1) n'
+                    else (x', n', True)
 
 -- | Parse a comma-separated list like \"+gvn,-dce\" into explicit enable/disable map.
 -- Unknown pass IDs are left to the caller to validate (we still parse the shape).

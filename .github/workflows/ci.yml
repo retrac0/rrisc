@@ -39,6 +39,7 @@ jobs:
         run: |
           python3 run_tests.py \
             --only rcc,asm,toolchain,librcc \
+            --toolchains hs,py \
             --assemblers hs \
             --simulators py \
             --jobs 4

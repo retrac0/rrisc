@@ -7,13 +7,11 @@
 
     .global main
 main:
-    subi r6, 40
+    subi r6, 38
 _B_main_0:
     and r1, r6, r7
     addi r1, 1
-    and r3, r1, r7
-    and r2, r0, r0
-    add r2, r3, r2
+    and r2, r1, r7
     and r1, r6, r7
     swr r2, r1
     li r2, 1
@@ -141,19 +139,11 @@ _B_main_0:
     and r1, r6, r7
     addi r1, 20
     swr r2, r1
-    li r2, 1
-    and r1, r6, r7
-    addi r1, 21
-    swr r2, r1
-    li r2, 1
-    and r1, r6, r7
-    addi r1, 22
-    swr r2, r1
     clrt
     bf _B_main_13
 _B_main_1:
     and r1, r6, r7
-    addi r1, 24
+    addi r1, 22
     lwr r3, r1
     li r2, 10
     li r1, 0o4000
@@ -162,10 +152,10 @@ _B_main_1:
     sub r1, r3, r2
     rol r2, r0
     and r1, r6, r7
-    addi r1, 23
+    addi r1, 21
     swr r2, r1
     and r1, r6, r7
-    addi r1, 23
+    addi r1, 21
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_2
@@ -176,61 +166,61 @@ _B_main_2:
     addi r1, 1
     and r3, r1, r7
     and r1, r6, r7
-    addi r1, 24
+    addi r1, 22
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 25
+    addi r1, 23
     swr r2, r1
     and r1, r6, r7
-    addi r1, 25
+    addi r1, 23
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 26
+    addi r1, 24
     swr r2, r1
     and r1, r6, r7
-    addi r1, 24
+    addi r1, 22
     lwr r3, r1
     li r2, 1
     sub r2, r3, r2
     and r1, r6, r7
-    addi r1, 27
+    addi r1, 25
     swr r2, r1
     and r1, r6, r7
     addi r1, 1
     and r3, r1, r7
     and r1, r6, r7
-    addi r1, 27
+    addi r1, 25
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 28
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 28
-    lwr r1, r1
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 29
+    addi r1, 26
     swr r2, r1
     and r1, r6, r7
     addi r1, 26
+    lwr r1, r1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 27
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 24
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 29
+    addi r1, 27
     lwr r2, r1
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_main_ne_218
+    bf _L_main_ne_208
     li r2, 0
-_L_main_ne_218:
+_L_main_ne_208:
     and r1, r6, r7
-    addi r1, 30
+    addi r1, 28
     swr r2, r1
     and r1, r6, r7
-    addi r1, 30
+    addi r1, 28
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_3
@@ -238,18 +228,18 @@ _L_main_ne_218:
     bf _B_main_7
 _B_main_3:
     and r1, r6, r7
-    addi r1, 32
+    addi r1, 30
     lwr r3, r1
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 31
+    addi r1, 29
     swr r2, r1
     and r1, r6, r7
-    addi r1, 31
+    addi r1, 29
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 34
+    addi r1, 32
     lwr r2, r1
     li r1, 0o4000
     add r3, r3, r1
@@ -257,138 +247,121 @@ _B_main_3:
     sub r1, r2, r3
     rol r2, r0
     and r1, r6, r7
-    addi r1, 33
+    addi r1, 31
     swr r2, r1
     and r1, r6, r7
-    addi r1, 33
+    addi r1, 31
     lwr r2, r1
     sub r0, r0, r2
-    bt _B_main_4
-    clrt
-    bf _B_main_15
-_B_main_4:
-    clrt
-    bf _B_main_14
+    bt _B_main_14
 _B_main_5:
     clrt
-    bf _B_main_17
+    bf _B_main_16
 _B_main_7:
     li r2, 1
     and r1, r6, r7
-    addi r1, 35
+    addi r1, 33
     swr r2, r1
     clrt
-    bf _B_main_16
-_B_main_8:
-    clrt
-    bf _B_main_9
+    bf _B_main_15
 _B_main_9:
     and r1, r6, r7
-    addi r1, 24
+    addi r1, 22
     lwr r3, r1
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 36
+    addi r1, 34
     swr r2, r1
     clrt
     bf _B_main_12
 _B_main_11:
     and r1, r6, r7
-    addi r1, 34
+    addi r1, 32
     lwr r2, r1
     clrt
     bf _epi_main
 _B_main_12:
     and r1, r6, r7
+    addi r1, 34
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 22
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 35
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 30
+    swr r2, r1
+    and r1, r6, r7
     addi r1, 36
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 24
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 37
-    lwr r2, r1
-    and r1, r6, r7
     addi r1, 32
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 38
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 34
     swr r2, r1
     clrt
     bf _B_main_1
 _B_main_13:
     and r1, r6, r7
+    addi r1, 20
+    lwr r2, r1
+    and r1, r6, r7
     addi r1, 22
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 24
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 21
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 32
     swr r2, r1
     and r1, r6, r7
     addi r1, 20
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 34
+    addi r1, 30
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 20
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 32
     swr r2, r1
     clrt
     bf _B_main_1
 _B_main_14:
     and r1, r6, r7
-    addi r1, 31
+    addi r1, 29
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 39
+    addi r1, 37
     swr r2, r1
     clrt
     bf _B_main_5
 _B_main_15:
     and r1, r6, r7
-    addi r1, 34
+    addi r1, 33
     lwr r2, r1
-    and r1, r6, r7
-    addi r1, 39
-    swr r2, r1
-    clrt
-    bf _B_main_5
-_B_main_16:
     and r1, r6, r7
     addi r1, 35
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 37
     swr r2, r1
     and r1, r6, r7
-    addi r1, 34
+    addi r1, 32
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 38
+    addi r1, 36
     swr r2, r1
     clrt
-    bf _B_main_8
-_B_main_17:
+    bf _B_main_9
+_B_main_16:
     and r1, r6, r7
-    addi r1, 31
+    addi r1, 29
     lwr r2, r1
+    and r1, r6, r7
+    addi r1, 35
+    swr r2, r1
     and r1, r6, r7
     addi r1, 37
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 39
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 38
+    addi r1, 36
     swr r2, r1
     clrt
-    bf _B_main_8
+    bf _B_main_9
 _epi_main:
-    addi r6, 40
+    addi r6, 38
     jalr r0, r5

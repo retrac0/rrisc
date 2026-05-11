@@ -7,7 +7,7 @@
 
     .global fib
 fib:
-    subi r6, 10
+    subi r6, 9
     and r1, r6, r7
     swr r2, r1
 _B_fib_0:
@@ -19,15 +19,11 @@ _B_fib_0:
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
-    and r2, r0, r0
-    and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
     clrt
     bf _B_fib_7
 _B_fib_1:
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 4
     lwr r3, r1
     and r1, r6, r7
     lwr r2, r1
@@ -37,89 +33,86 @@ _B_fib_1:
     sub r1, r3, r2
     rol r2, r0
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 3
     swr r2, r1
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 3
     lwr r2, r1
     sub r0, r0, r2
-    bt _B_fib_2
+    bt _B_fib_3
     clrt
     bf _B_fib_5
-_B_fib_2:
+_B_fib_3:
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 6
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 7
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 6
-    swr r2, r1
-    clrt
-    bf _B_fib_3
-_B_fib_3:
-    and r1, r6, r7
     addi r1, 5
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 4
     lwr r3, r1
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 8
     swr r2, r1
     clrt
     bf _B_fib_6
 _B_fib_5:
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 6
     lwr r2, r1
     clrt
     bf _epi_fib
 _B_fib_6:
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 8
     lwr r2, r1
+    and r1, r6, r7
+    addi r1, 4
+    swr r2, r1
     and r1, r6, r7
     addi r1, 5
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 6
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 8
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 8
     lwr r2, r1
     and r1, r6, r7
     addi r1, 7
+    swr r2, r1
+    and r1, r6, r7
+    addi r1, 7
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 6
     swr r2, r1
     clrt
     bf _B_fib_1
 _B_fib_7:
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 4
     swr r2, r1
     and r1, r6, r7
     addi r1, 2
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 7
     swr r2, r1
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 6
     swr r2, r1
     clrt
     bf _B_fib_1
 _epi_fib:
-    addi r6, 10
+    addi r6, 9
     jalr r0, r5
 
     .global main

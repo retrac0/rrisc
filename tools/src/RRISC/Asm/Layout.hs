@@ -100,9 +100,12 @@ delta mnem ops labels fp ln =
     ".sixbit" -> do
       s <- parseStringLiteral ops fp ln
       Right $ length s
-    ".unicode" -> do
+    ".str" -> do
       s <- parseStringLiteral ops fp ln
       Right $ length (stringToUtf8' s)
+    ".strz" -> do
+      s <- parseStringLiteral ops fp ln
+      Right $ 1 + length (stringToUtf8' s)
     ".fill" ->
       let countStr = T.strip $ fst $ T.break (== ',') ops
        in if T.null countStr
@@ -113,8 +116,6 @@ delta mnem ops labels fp ln =
                 then Left $ AsmError fp ln $ ".fill count " <> T.pack (show c) <> " must be non-negative"
                 else Right c
     ".base" -> Left $ AsmError fp ln "'.base' is not supported by this assembler"
-    "jmp" -> Right 3
-    "call" -> Right 3
     "or" -> Right 3
     "xor" -> Right 4
     _ -> Right 1
@@ -222,10 +223,14 @@ stmtSize stmt =
           case parseStringLiteral ops f n of
             Left _ -> 0
             Right s -> length s
-        ".unicode" ->
+        ".str" ->
           case parseStringLiteral ops f n of
             Left _ -> 0
             Right s -> length (stringToUtf8' s)
+        ".strz" ->
+          case parseStringLiteral ops f n of
+            Left _ -> 0
+            Right s -> 1 + length (stringToUtf8' s)
         ".fill" ->
           let countStr = T.strip $ fst $ T.break (== ',') ops
            in if T.null countStr
@@ -233,8 +238,6 @@ stmtSize stmt =
                 else case evalExpr countStr M.empty f n of
                   Left _ -> 0
                   Right c -> max 0 c
-        "jmp" -> 3
-        "call" -> 3
         "or" -> 3
         "xor" -> 4
         _ -> 1

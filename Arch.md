@@ -216,8 +216,6 @@ T is preserved.
 | `clrt` | `addc r0, r0, r0` | clear T flag |
 | `halt` | `0o7777` | stop execution |
 | `li rd, imm` | `lui rd, upper; addi rd, lower` | load 12-bit constant (2 words) |
-| `jmp label` | `li r1, label; jalr r0, r1` | unconditional jump (3 words); **r1** holds target so **r2–r4** stay free for data |
-| `call label` | `li r1, label; jalr r5, r1` | call; return address in **r5** (3 words); same **r1** convention as `jmp` |
 
 **li** encoding: `lower = imm & 0o77`, `upper = (imm >> 6) & 0o77`. Because `addi` is
 unsigned (0..63), no sign-extension compensation is needed.
@@ -311,9 +309,9 @@ and **r6** (stack) are reserved. The ABI fixes roles so calls stay uniform.
 | Register | Role |
 |----------|------|
 | r0 | Zero (hardwired) |
-| r1 | **Scratch only** — not used for argument passing. Holds `li` targets for `jmp`/`call`,
-     addresses for `lwr`/`swr` setup, and short compiler sequences. **Caller-saved** (clobbered
-     by any callee). |
+| r1 | **Scratch only** — not used for argument passing. Holds target addresses for
+     `li`/`jalr` call sequences (see `macros/subr.inc`), `lwr`/`swr` setup, and short compiler
+     sequences. **Caller-saved** (clobbered by any callee). |
 | r2 | **Argument 1** / **return value** (same slot; overlaps like typical RISC ABIs) |
 | r3 | **Argument 2** |
 | r4 | **Argument 3** |

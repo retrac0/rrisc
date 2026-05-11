@@ -140,14 +140,14 @@ A few RRISC-isms that bite C programmers:
                           myprog.bin  (12-bit words, 2 bytes each)
                               │
                               ▼
-                  rsim (Haskell)  or  sim.py (Python)  or  sim2 (C)
+                  rsim (Haskell)  or  pytools.sim (Python)  or  sim2 (C)
 ```
 
 The usual **flat** path is `rcc` → **`ras --format bin`** → `.bin` → simulator. The
 **relocatable** path (**`ras`** → **`.o`** → **`rld`**) is how you combine hand-written
 assembly objects with generated code or split asm across files; see
 [`docs/toolchain.md`](../docs/toolchain.md). The three simulator implementations and
-the two assembler implementations (`ras` vs deprecated `asm.py`) are
+the two assembler implementations (`ras` vs deprecated `pytools.asm`) are
 **behaviourally identical** for our purposes. This manual uses `rcc` / `ras` / `rsim`
 by default.
 
@@ -453,8 +453,8 @@ rcc [options] <input.c>
 | `--stack-top <n>`       | `0o7770`    | Initial value of r6 (stack grows down from here) |
 | `--preprocessor "<cmd>"` | none       | Run `<cmd> <input>` over the source first; line markers stripped |
 | `-O0`                   | —           | No Cytron SSA (plain CFG); no SSA opt pipeline; minimal TAC passes |
-| `-Os`                   | **default** | Optimize for size (SSA + TAC defaults) |
-| `-O1`                   | —           | Optimize for speed (e.g. branch threading on top of `-Os`) |
+| `-Os`                   | **default** | Optimize for size (SSA + TAC defaults; includes CFG branch threading) |
+| `-O1`                   | —           | Same SSA/TAC defaults as `-Os` today (reserved for future speed-oriented passes) |
 | `-O2`                   | —           | Same as `-O1` (compat alias) |
 | `--pass +id,-id,…`      | none        | Enable/disable individual SSA/TAC passes (unioned with the `-O` defaults) |
 | `--optimize`            | —           | Compatibility: same as `-Os` |
@@ -469,17 +469,20 @@ octal, `0xFF` for hex, decimal otherwise. `rcc` itself does not implement `#incl
 or `#define`; pipe through `cpp -P` (or any other preprocessor that emits plain C
 without linemarkers).
 
-### 14. CLI: `ras` and deprecated `asm.py`
+### 14. CLI: `ras`, `pyras`, `pyld`, and deprecated `pytools.asm`
 
-The supported assembler is the Haskell tool **`ras`**. The Python `asm.py` driver is **deprecated** (it prints a warning) and remains only for backward compatibility.
+The canonical assembler implementation in this repository is the Haskell tool **`ras`**. **`pyras`** (**`python3 -m pytools.pyras`**, [`pytools/pyras.py`](../pytools/pyras.py)) exposes the same CLI: **relocatable `.o`** output (default) is produced by the **Python** assembler ([`pytools/asm.py`](../pytools/asm.py) plus [`pytools/asm_obj_emit.py`](../pytools/asm_obj_emit.py)), emitting the same textual object format as **`ras`**. Pass **`--format bin`** or **`--format readmemb`** for a **flat** image with the same encoder (same behaviour as deprecated **`pytools.asm`**). **`pyld`** (**`python3 -m pytools.pyld`**) is the Python linker and matches **`rld`** on textual `.o` files from **either** assembler.
 
-**`ras`** (default): emits a relocatable **`.o`** (`-o` optional; otherwise `<source>.o`). For a **flat** image, pass **`--format bin`** or **`--format readmemb`**; then `-o` names the `.bin` or `.mem` file.
+The legacy Python flat assembler (**`python3 -m pytools.asm`**, [`pytools/asm.py`](../pytools/asm.py)) is **deprecated** (it prints a warning) and remains only for backward compatibility.
 
-`asm.py` keeps a legacy interface (flat output by default):
+**`ras`** / **`pyras`** (default): emits a relocatable **`.o`** (`-o` optional; otherwise `<source>.o`). For a **flat** image, pass **`--format bin`** or **`--format readmemb`**; then `-o` names the `.bin` or `.mem` file.
+
+`pytools.asm` keeps a legacy interface (flat output by default):
 
 ```
 ras  source.s  [-o file.o]  [-I dir]…  [--format bin|readmemb]  [--list]  [--dump-syms file.o]
-asm.py  source.s  [-o output.bin]  [-I dir]…  [--format bin|readmemb]  [--list]
+python3 -m pytools.pyras  source.s  [-o file.o]  [-I dir]…   # Python .o / flat with --format
+python3 -m pytools.asm  source.s  [-o output.bin]  [-I dir]…  [--format bin|readmemb]  [--list]
 ```
 
 | Flag | `ras` default | Effect |
@@ -497,12 +500,15 @@ Branch relaxation is automatic: `bt`/`bf` past the ±63-word direct range are
 rewritten into a three-instruction sequence by both implementations. You do not
 need to think about branch distance in source.
 
-### 15. CLI: `sim.py`, `rsim`, `sim2`
+### 15. CLI: `pyrsim`, `pytools.sim`, `rsim`, `sim2`
+
+Use **`python3 -m pytools.pyrsim`** as the canonical Python simulator entry point (same implementation as **`python3 -m pytools.sim`**).
 
 All three accept the same flags:
 
 ```
-sim <binary.bin>  [--start ADDR]  [--terminal]  [--uart-preload STR]
+python3 -m pytools.pyrsim <binary.bin>  [--start ADDR]  [--terminal]  [--uart-preload STR]
+python3 -m pytools.sim <binary.bin>  [--start ADDR]  [--terminal]  [--uart-preload STR]
                   [--trace]  [--bustrace]  [--summary]  [--randomize]
                   [--maxcycle N]  [--mem TYPE:BASE:SIZE]…  [--translate]
 ```
@@ -527,7 +533,7 @@ exceeded.
 
 ### 16. Assembler directives
 
-The Haskell assembler (`ras`) is canonical; deprecated `asm.py` agrees on these forms:
+The Haskell assembler (`ras`) is canonical; deprecated `pytools.asm` agrees on these forms:
 
 | Directive | Form | Meaning |
 |-----------|------|---------|
@@ -542,7 +548,8 @@ The Haskell assembler (`ras`) is canonical; deprecated `asm.py` agrees on these 
 | `.fill` | `.fill count [, value]` | `count` words of `value` (default 0) |
 | `.align` | `.align N` | Advance the location counter to the next multiple of `N` |
 | `.org` | `.org address` | Set the absolute address counter (no code emitted) |
-| `.unicode` | `.unicode "string"` | Emit one word per UTF-8 byte |
+| `.str` | `.str "string"` | Emit one word per UTF-8 byte |
+| `.strz` | `.strz "string"` | Same as `.str` plus a trailing 0 word (NUL terminator) |
 | `.sixbit` | `.sixbit "string"` | Emit one word per SIXBIT-encoded character |
 | `.base` | `.base rN, value` | Declare a base register's compile-time value (for register-relative addressing) |
 

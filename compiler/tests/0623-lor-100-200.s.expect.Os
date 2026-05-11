@@ -20,16 +20,12 @@ _B_main_0:
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_4
-    clrt
-    bf _B_main_1
 _B_main_1:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_4
-    clrt
-    bf _B_main_2
 _B_main_2:
     and r2, r0, r0
     and r1, r6, r7

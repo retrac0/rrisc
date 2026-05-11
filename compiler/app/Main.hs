@@ -1,13 +1,13 @@
 module Main where
 
 import Control.Monad (when)
-import Data.Char (isDigit)
+import Data.Char (isDigit, toLower)
 import Data.List (intercalate)
 import qualified Data.Map.Strict as Map
 import Data.Version (showVersion)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import System.Environment (getArgs, getProgName)
+import System.Environment (getArgs, getProgName, lookupEnv)
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (hPutStrLn, stderr)
 import System.Process (readProcess)
@@ -24,6 +24,7 @@ import qualified RCC.OptFrameworkSSA as OFSSA
 import qualified RCC.Pass as Pass
 import qualified RCC.Pipeline as Pipe
 import qualified RCC.SSA.Prog as SSA
+import qualified RCC.SSA.Verify as SSAVerify
 import qualified RCC.SSA.ToTACProg as ToTACProg
 import qualified RCC.TAC as TAC
 import RCC.Error (Diagnostic, formatDiagnostic)
@@ -43,6 +44,8 @@ data Options = Options
   , optDumpAst      :: Bool
   , optDumpTac      :: Bool
   , optDumpSsa      :: Bool
+  , optVerifySsa    :: Bool
+  , optSsaFixpointMax :: Int
   } deriving (Show)
 
 defaultOptions :: Options
@@ -58,6 +61,8 @@ defaultOptions = Options
   , optDumpAst      = False
   , optDumpTac      = False
   , optDumpSsa      = False
+  , optVerifySsa    = False
+  , optSsaFixpointMax = 1
   }
 
 parseArgs :: [String] -> Either String Options
@@ -78,6 +83,9 @@ parseArgs = go defaultOptions
     go opts ("--dump-ast" : rest) = go opts{ optDumpAst = True } rest
     go opts ("--dump-tac" : rest) = go opts{ optDumpTac = True } rest
     go opts ("--dump-ssa" : rest) = go opts{ optDumpSsa = True } rest
+    go opts ("--verify-ssa" : rest) = go opts{ optVerifySsa = True } rest
+    go opts ("--ssa-fixpoint-max" : a : rest) =
+      either (\e -> Left ("--ssa-fixpoint-max: " <> e)) (\n -> go opts{ optSsaFixpointMax = clampSsaFixpoint n } rest) (parseIntArg a)
     -- Compatibility flags (map onto -Os / -O0)
     go opts ("--no-optimize" : rest) = go opts{ optOptLevel = Pipe.O0 } rest
     go opts ("--optimize" : rest) = go opts{ optOptLevel = Pipe.Os } rest
@@ -112,6 +120,8 @@ usage prog =
     , "  --dump-ast            print lexical AST and exit"
     , "  --dump-tac            print TAC and exit"
     , "  --dump-ssa            print SSA (debug) and exit"
+    , "  --verify-ssa          assert SSA invariants after optimization (debug)"
+    , "  --ssa-fixpoint-max N  SSA pipeline sweeps until stable (max N, default 1; max 32)"
     , "  -V, --version         print version and exit"
     ]
 
@@ -143,9 +153,11 @@ main = do
   when (args == ["--version"] || args == ["-V"]) $ do
     putStrLn ("rcc " <> showVersion version)
     exitSuccess
-  opts <- case parseArgs args of
+  opts0 <- case parseArgs args of
     Left err -> die (err <> "\n" <> usage prog)
     Right o  -> return o
+  envVerify <- lookupEnvTruthy "RCC_VERIFY_SSA"
+  let opts = opts0 { optVerifySsa = optVerifySsa opts0 || envVerify }
 
   src <- case optPreprocessor opts of
     Nothing  -> TIO.readFile (optInput opts)
@@ -181,7 +193,24 @@ main = do
           case Pass.parsePassToggles s of
             Left e -> die ("--pass: " <> e)
             Right m -> pure (m `Map.union` ssaBaseEnabled)
-      pure (OFSSA.optimizeSSAWith ssaEnabled (Pipe.plPasses ssaPipe) ssa)
+      let passes = Pipe.plPasses ssaPipe
+          mx = clampSsaFixpoint (optSsaFixpointMax opts)
+          (out, _rounds, capped) = OFSSA.optimizeSSAWithUntilStable ssaEnabled mx passes ssa
+      cappedWarn <- lookupEnvTruthy "RCC_SSA_FIXPOINT_WARN"
+      when (capped && cappedWarn) $
+        hPutStrLn
+          stderr
+          ( "rcc: warning: SSA fixpoint stopped after "
+              <> show mx
+              <> " sweep(s) while passes still reported progress (try a larger --ssa-fixpoint-max)"
+          )
+      pure out
+
+  when (optVerifySsa opts) $
+    case SSAVerify.verifySSAProg ssa' of
+      Left err ->
+        die ("SSA verification failed: " <> T.unpack err <> " (try --dump-ssa)")
+      Right () -> pure ()
 
   let tac :: TAC.TACProg
       tac = ToTACProg.toTACProg ssa'
@@ -217,3 +246,24 @@ die msg = hPutStrLn stderr msg >> exitFailure
 
 dieDiag :: Diagnostic -> IO a
 dieDiag d = TIO.hPutStrLn stderr (formatDiagnostic d) >> exitFailure
+
+-- | True when the variable is set to any non-empty value other than @0@, @false@, @no@.
+lookupEnvTruthy :: String -> IO Bool
+lookupEnvTruthy var = do
+  mv <- lookupEnv var
+  pure $ case fmap (trim . map toLower) mv of
+    Nothing -> False
+    Just "" -> False
+    Just "0" -> False
+    Just "false" -> False
+    Just "no" -> False
+    Just _ -> True
+  where
+    trim = reverse . dropWhile (== ' ') . reverse . dropWhile (== ' ')
+
+-- | Clamp SSA fixpoint sweep count to @1 .. 32@.
+clampSsaFixpoint :: Int -> Int
+clampSsaFixpoint n
+  | n < 1 = 1
+  | n > 32 = 32
+  | otherwise = n

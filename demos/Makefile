@@ -21,9 +21,21 @@ SIM := env PYTHONPATH=$(ROOT) python3 -m pytools.sim --terminal $(SIM_MEM) $(SIM
 
 RCC_FLAGS := --code-base $(CODE_BASE) --data-base $(DATA_BASE) --stack-top $(STACK_TOP)
 
-.PHONY: all run rpn_float clean
+.PHONY: all run rpn_float clean forth run-forth
 
 all: rpn.bin
+
+# Standalone Forth-style demo: forth/ at repo root (hand-written asm, no rcc)
+FORTH_SRCS := $(wildcard $(ROOT)/forth/*.s)
+forth.bin: $(FORTH_SRCS)
+	$(RAS_RUN) lib/crt0.s -o demos/forth.crt0.o \
+	    -D RCC_STACK_TOP=$(STACK_TOP)
+	$(RAS_RUN) forth/forth.s -I forth -I lib -o demos/forth.user.o
+	$(RLD_RUN) demos/forth.crt0.o demos/forth.user.o -o demos/forth.bin \
+	    --code-base $(CODE_BASE) --data-base $(DATA_BASE)
+
+run-forth: forth.bin
+	$(SIM) demos/forth.bin
 
 # Soft-float RPN: -O0 keeps this demo under 4k words with lib/itoa.s (not C itoa).
 RPN_FLOAT_RCC_FLAGS := $(RCC_FLAGS) -O0
@@ -62,4 +74,5 @@ run: rpn.bin
 clean:
 	rm -f rpn.s rpn.bin rpn_float.s rpn_float.bin \
 	    demos/rpn.crt0.o demos/rpn.user.o $(ROOT)/lib/rpn_err.o \
-	    demos/rpn_float.crt0.o demos/rpn_float.user.o
+	    demos/rpn_float.crt0.o demos/rpn_float.user.o \
+	    demos/forth.bin demos/forth.crt0.o demos/forth.user.o

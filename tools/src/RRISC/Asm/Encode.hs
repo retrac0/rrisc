@@ -67,7 +67,8 @@ encMnem mnem ops opsStr fp ln addr labels =
     "halt" -> op0 0o7777
     ".word" -> encWord fp ln ops labels
     ".sixbit" -> encSixbit fp ln opsStr
-    ".unicode" -> encUnicode fp ln opsStr
+    ".str" -> encStr fp ln opsStr
+    ".strz" -> encStrz fp ln opsStr
     ".float" -> encFloat fp ln ops
     ".fill" -> encFill fp ln ops labels
     ".align" -> encAlign addr fp ln ops labels
@@ -120,8 +121,6 @@ encMnem mnem ops opsStr fp ln addr labels =
     "set" -> do
       expectCount fp ln mnem ops 0
       Right [encodeR3 subOp 0 0 7]
-    "jmp" -> encJmp fp ln ops labels
-    "call" -> encCall fp ln ops labels
     "or" -> encOr fp ln ops
     "xor" -> encXor fp ln ops
     ".global" -> Right []
@@ -185,11 +184,14 @@ encSixbit fp ln opsStr = do
     )
     s
 
-encUnicode :: FilePath -> Int -> Text -> Either AsmError [Int]
-encUnicode fp ln opsStr = do
+encStr :: FilePath -> Int -> Text -> Either AsmError [Int]
+encStr fp ln opsStr = do
   s <- parseStringLiteral (T.strip opsStr) fp ln
   let bs = BS.unpack (TE.encodeUtf8 (T.pack s))
   Right (map fromIntegral bs)
+
+encStrz :: FilePath -> Int -> Text -> Either AsmError [Int]
+encStrz fp ln opsStr = (++ [0]) <$> encStr fp ln opsStr
 
 encFloat :: FilePath -> Int -> [Text] -> Either AsmError [Int]
 encFloat fp ln ops = do
@@ -291,30 +293,6 @@ encLi fp ln ops labels = do
           lower = val .&. imm6Mask
           upper = (val `shiftR` 6) .&. imm6Mask
        in Right [encodeRI luiOp rd upper, encodeRI addiOp rd lower]
-
-encJmp :: FilePath -> Int -> [Text] -> M.Map Text Int -> Either AsmError [Int]
-encJmp fp ln ops labels = do
-  expectCount fp ln "jmp" ops 1
-  val <- (.&. wordMask) <$> evalExpr (head ops) labels fp ln
-  let lower = val .&. imm6Mask
-      upper = (val `shiftR` 6) .&. imm6Mask
-  Right
-    [ encodeRI luiOp 4 upper,
-      encodeRI addiOp 4 lower,
-      encodeR3 specOp 0 4 jalrRb
-    ]
-
-encCall :: FilePath -> Int -> [Text] -> M.Map Text Int -> Either AsmError [Int]
-encCall fp ln ops labels = do
-  expectCount fp ln "call" ops 1
-  val <- (.&. wordMask) <$> evalExpr (head ops) labels fp ln
-  let lower = val .&. imm6Mask
-      upper = (val `shiftR` 6) .&. imm6Mask
-  Right
-    [ encodeRI luiOp 4 upper,
-      encodeRI addiOp 4 lower,
-      encodeR3 specOp 5 4 jalrRb
-    ]
 
 encOr :: FilePath -> Int -> [Text] -> Either AsmError [Int]
 encOr fp ln ops = do

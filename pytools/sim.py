@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# pytools.sim — Python RRISC simulator
+# pytools.sim — Python RRISC simulator (canonical CLI: ``python -m pytools.pyrsim``).
 
 # 12-bit word RISC-like architecture with 8 general-purpose registers
 
@@ -260,9 +260,12 @@ class CPU:
             val = self.rdreg(ra) & self.rdreg(rb)
             self.wrreg(rd, val)
         elif op == OP_SUB:
-            val = self.rdreg(ra) - self.rdreg(rb)
+            ra_val = self.rdreg(ra)
+            rb_val = self.rdreg(rb)
+            val = (ra_val - rb_val) & WORD_MASK
             self.wrreg(rd, val)
-            self.T = 1 if (val & 0o10000) else 0
+            # Arch.md: T = 1 on unsigned borrow (ra < rb), not sign of wrapped diff.
+            self.T = 1 if ra_val < rb_val else 0
             note = f"T={self.T}"
         elif op == OP_ADD:
             val = self.rdreg(ra) + self.rdreg(rb)
@@ -292,9 +295,11 @@ class CPU:
             val = self.rdreg(rd) + imm   # unsigned 0..63
             self.wrreg(rd, val)
         elif op == OP_SUBI:
-            val = self.rdreg(rd) - imm   # unsigned 0..63
+            ra_val = self.rdreg(rd)
+            val = (ra_val - imm) & WORD_MASK
             self.wrreg(rd, val)
-            self.T = 1 if (val & 0o10000) else 0
+            # Arch.md: T = 1 if borrow (rd < imm before subtraction).
+            self.T = 1 if ra_val < imm else 0
             note = f"T={self.T}"
         elif op == OP_SPEC and rb == RB_JALR:
             target = self.rdreg(ra)

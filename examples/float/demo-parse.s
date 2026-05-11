@@ -80,14 +80,10 @@ _start:
         jalr   r5, r1
         halt
 
-hdr_hex: .unicode "atof 12.5 cells   = "
-         .word 0
-hdr_dec: .unicode "atof 12.5 decimal = "
-         .word 0
-spc:    .unicode " "
-        .word 0
-nl:     .unicode "\n"
-        .word 0
+hdr_hex: .strz "atof 12.5 cells   = "
+hdr_dec: .strz "atof 12.5 decimal = "
+spc:    .strz " "
+nl:     .strz "\n"
 
 %include "io/putchar.s"
 %include "io/putstr.s"

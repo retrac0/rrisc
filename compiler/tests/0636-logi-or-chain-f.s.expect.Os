@@ -7,76 +7,53 @@
 
     .global main
 main:
-    subi r6, 5
-_B_main_0:
-    clrt
-    bf _B_main_1
-_B_main_1:
-    clrt
-    bf _B_main_2
-_B_main_2:
+    subi r6, 4
+_B_main_5:
     and r2, r0, r0
     and r1, r6, r7
     swr r2, r1
-    clrt
-    bf _B_main_11
-_B_main_5:
     and r1, r6, r7
-    addi r1, 1
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_9
-    clrt
-    bf _B_main_6
-_B_main_6:
-    clrt
-    bf _B_main_7
 _B_main_7:
     and r2, r0, r0
+    and r1, r6, r7
+    addi r1, 1
+    swr r2, r1
+    clrt
+    bf _B_main_12
+_B_main_9:
+    li r2, 1
     and r1, r6, r7
     addi r1, 2
     swr r2, r1
     clrt
-    bf _B_main_13
-_B_main_9:
-    li r2, 1
-    and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
-    clrt
-    bf _B_main_12
+    bf _B_main_11
 _B_main_10:
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 3
     lwr r2, r1
     clrt
     bf _epi_main
 _B_main_11:
     and r1, r6, r7
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 1
-    swr r2, r1
-    clrt
-    bf _B_main_5
-_B_main_12:
-    and r1, r6, r7
-    addi r1, 3
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
-    clrt
-    bf _B_main_10
-_B_main_13:
-    and r1, r6, r7
     addi r1, 2
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 3
+    swr r2, r1
+    clrt
+    bf _B_main_10
+_B_main_12:
+    and r1, r6, r7
+    addi r1, 1
+    lwr r2, r1
+    and r1, r6, r7
+    addi r1, 3
     swr r2, r1
     clrt
     bf _B_main_10
 _epi_main:
-    addi r6, 5
+    addi r6, 4
     jalr r0, r5

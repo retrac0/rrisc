@@ -54,10 +54,8 @@ _start:
         jalr   r5, r1
         halt
 
-hdr:    .unicode "12.0 / 4.0 = "
-        .word 0
-nl:     .unicode "\n"
-        .word 0
+hdr:    .strz "12.0 / 4.0 = "
+nl:     .strz "\n"
 
 %include "io/putchar.s"
 %include "io/putstr.s"

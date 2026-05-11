@@ -11,9 +11,7 @@ main:
 _B_main_0:
     and r1, r6, r7
     addi r1, 1
-    and r3, r1, r7
-    and r2, r0, r0
-    add r2, r3, r2
+    and r2, r1, r7
     and r1, r6, r7
     swr r2, r1
     li r2, 10

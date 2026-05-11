@@ -8,6 +8,8 @@ Replaces compiler/run_tests.sh and runtests.sh with one subprocess-based harness
   - Correct argv handling (no shell splitting bugs)
   - Optional matrix over the Haskell assembler (default) and deprecated Python pytools.asm
     plus Python, C, and Haskell (rsim) simulators by default; use --simulators to trim
+  - ``--toolchains hs,py`` (default) exercises **ras+rld** and **pyras+pyld** for RCC / IO /
+    toolchain / librcc linking; trim with ``--toolchains hs`` when the Haskell tools are absent
   - Parallel execution via ThreadPoolExecutor
 
 Run from the repository root:
@@ -52,7 +54,9 @@ from rrisc_toolchain import (
     py_asm_cmd,
     py_asm_argv,
     py_sim_argv,
+    pyld_cmd,
     python_exe,
+    pyras_emit_obj_cmd,
     ras_cmd,
     ras_emit_obj_cmd,
     repo_root,
@@ -68,6 +72,8 @@ from rrisc_toolchain import (
 from toolchain_checks import (
     collect_toolchain_asm_sources,
     verify_obj_roundtrip,
+    verify_obj_roundtrip_pyras,
+    verify_pyld_equivalence,
     verify_rld_equivalence,
 )
 
@@ -144,7 +150,9 @@ def emit_verbose(cfg: RunConfig, results: Sequence[TResult]) -> None:
         print(f"{tag} {r.name}{sub}", flush=True)
         if not r.ok and r.detail:
             print(r.detail, flush=True)
-        elif r.ok and r.detail and r.name in ("librcc", "librcc-summary"):
+        elif r.ok and r.detail and (
+            r.name == "librcc" or r.name.startswith("librcc-summary")
+        ):
             # librcc: skipped note or harness summary (driver stdout)
             print(r.detail, flush=True)
 
@@ -164,6 +172,7 @@ class RunConfig:
     root: Path
     jobs: int
     filter_re: re.Pattern[str] | None
+    toolchains: tuple[str, ...]  # "hs" (ras+rld), "py" (pyras+pyld)
     assemblers: tuple[str, ...]  # "py", "hs"
     simulators: tuple[str, ...]  # "py", "c", "hs"
     skip_unavailable: bool
@@ -270,6 +279,19 @@ def rcc_asm_expect_paths(compiler_tests: Path, base: str) -> tuple[Path, Path, P
     )
 
 
+def _rcc_toolchain_runnable(cfg: RunConfig, tc: str) -> bool:
+    if tc == "py":
+        return True
+    return bool(cfg.ras_path and cfg.rld_path)
+
+
+def _first_runnable_toolchain(cfg: RunConfig) -> str | None:
+    for tc in cfg.toolchains:
+        if _rcc_toolchain_runnable(cfg, tc):
+            return tc
+    return None
+
+
 def _run_rcc_output_variant_sims(
     cfg: RunConfig,
     *,
@@ -283,7 +305,7 @@ def _run_rcc_output_variant_sims(
     input_path: Path | None,
     has_input: bool,
 ) -> list[TResult]:
-    """Link asm_path, run each configured simulator, optionally compare stdout to out_expect."""
+    """Link asm_path per ``cfg.toolchains``, run each configured simulator, optionally compare stdout."""
     results: list[TResult] = []
     code_fb, data_fb, stack_fb = RCC_LINK_FALLBACK_NUMBERED
     asm_txt = asm_path.read_text()
@@ -291,104 +313,138 @@ def _run_rcc_output_variant_sims(
         asm_txt, code_fb=code_fb, data_fb=data_fb, stack_fb=stack_fb
     )
 
-    bin_path = tmp_root / f"{base}.{variant_label}.bin"
-    crt0_o = tmp_root / f"{base}.{variant_label}.crt0.o"
-    user_o = tmp_root / f"{base}.{variant_label}.rcc.o"
-
-    ok_l, err_l, sub_l = link_rcc_asm_with_crt0(
-        cfg,
-        asm_path,
-        bin_path,
-        crt0_o,
-        user_o,
-        code_base=code_b,
-        data_base=data_opt,
-        stack_top=stack_t,
-    )
-    if not ok_l:
-        return [TResult(False, name, err_l, sub=f"{variant_label}/{sub_l}")]
-
-    for sim_id in cfg.simulators:
-        if sim_id == "c" and not cfg.sim2_path:
+    ran_tc = False
+    for tc in cfg.toolchains:
+        if not _rcc_toolchain_runnable(cfg, tc):
             if cfg.skip_unavailable:
                 continue
             results.append(
-                TResult(False, name, "sim2 not found", sub=f"{variant_label}/link/csim")
+                TResult(
+                    False,
+                    name,
+                    "ras+rld required for --toolchains hs (cabal build exe:ras exe:rld in tools/)",
+                    sub=f"{variant_label}/{tc}/link",
+                )
             )
             continue
-        if sim_id == "hs" and not cfg.rsim_path:
-            if cfg.skip_unavailable:
-                continue
-            results.append(
-                TResult(False, name, "rsim not found", sub=f"{variant_label}/link/rsim")
-            )
-            continue
+        ran_tc = True
 
-        sim_argv: list[str]
-        sim_base = sim_runner_base(cfg, defs)
-        if sim_id == "py":
-            sim_argv = [
-                *py_sim_argv(),
-                *sim_base,
-                *sim_extra,
-            ]
-            if has_input:
-                sim_argv.append("--terminal")
-            sim_argv.append(str(bin_path))
-        elif sim_id == "hs":
-            sim_argv = [
-                str(cfg.rsim_path),
-                *sim_base,
-                *sim_extra,
-            ]
-            if has_input:
-                sim_argv.append("--terminal")
-            sim_argv.append(str(bin_path))
-        else:
-            sim_argv = [
-                str(cfg.sim2_path),
-                *sim_base,
-                *sim_extra,
-            ]
-            if has_input:
-                sim_argv.append("--terminal")
-            sim_argv.append(str(bin_path))
+        bin_path = tmp_root / f"{base}.{variant_label}.{tc}.bin"
+        crt0_o = tmp_root / f"{base}.{variant_label}.{tc}.crt0.o"
+        user_o = tmp_root / f"{base}.{variant_label}.{tc}.rcc.o"
 
-        sr = run_capture(
-            sim_argv,
-            cwd=cfg.root / "compiler",
-            stdin_path=input_path if has_input else None,
+        ok_l, err_l, sub_l = link_rcc_asm_with_crt0(
+            cfg,
+            asm_path,
+            bin_path,
+            crt0_o,
+            user_o,
+            code_base=code_b,
+            data_base=data_opt,
+            stack_top=stack_t,
+            toolchain=tc,
         )
-        sub = f"{variant_label}/link/{sim_id}sim"
-        if sr.returncode != 0:
-            results.append(
-                TResult(
-                    False,
-                    name,
-                    f"simulator ({sim_id}) exit {sr.returncode}:\n"
-                    + (sr.stderr or sr.stdout or ""),
-                    sub=sub,
-                )
-            )
+        if not ok_l:
+            results.append(TResult(False, name, err_l, sub=f"{variant_label}/{tc}/{sub_l}"))
             continue
 
-        if out_expect is None or not out_expect.is_file():
-            results.append(TResult(True, name, "no .output.expect", sub=sub))
-            continue
-
-        actual = sr.stdout or ""
-        expected = out_expect.read_text(encoding="utf-8")
-        if actual != expected:
-            results.append(
-                TResult(
-                    False,
-                    name,
-                    diff_text(expected, actual, str(out_expect), "sim stdout"),
-                    sub=sub,
+        for sim_id in cfg.simulators:
+            if sim_id == "c" and not cfg.sim2_path:
+                if cfg.skip_unavailable:
+                    continue
+                results.append(
+                    TResult(
+                        False,
+                        name,
+                        "sim2 not found",
+                        sub=f"{variant_label}/{tc}/link/csim",
+                    )
                 )
+                continue
+            if sim_id == "hs" and not cfg.rsim_path:
+                if cfg.skip_unavailable:
+                    continue
+                results.append(
+                    TResult(
+                        False,
+                        name,
+                        "rsim not found",
+                        sub=f"{variant_label}/{tc}/link/rsim",
+                    )
+                )
+                continue
+
+            sim_argv: list[str]
+            sim_base = sim_runner_base(cfg, defs)
+            if sim_id == "py":
+                sim_argv = [
+                    *py_sim_argv(),
+                    *sim_base,
+                    *sim_extra,
+                ]
+                if has_input:
+                    sim_argv.append("--terminal")
+                sim_argv.append(str(bin_path))
+            elif sim_id == "hs":
+                sim_argv = [
+                    str(cfg.rsim_path),
+                    *sim_base,
+                    *sim_extra,
+                ]
+                if has_input:
+                    sim_argv.append("--terminal")
+                sim_argv.append(str(bin_path))
+            else:
+                sim_argv = [
+                    str(cfg.sim2_path),
+                    *sim_base,
+                    *sim_extra,
+                ]
+                if has_input:
+                    sim_argv.append("--terminal")
+                sim_argv.append(str(bin_path))
+
+            sr = run_capture(
+                sim_argv,
+                cwd=cfg.root,
+                stdin_path=input_path if has_input else None,
             )
-        else:
-            results.append(TResult(True, name, sub=sub))
+            sub = f"{variant_label}/{tc}/link/{sim_id}sim"
+            if sr.returncode != 0:
+                results.append(
+                    TResult(
+                        False,
+                        name,
+                        f"simulator ({sim_id}) exit {sr.returncode}:\n"
+                        + (sr.stderr or sr.stdout or ""),
+                        sub=sub,
+                    )
+                )
+                continue
+
+            if out_expect is None or not out_expect.is_file():
+                results.append(TResult(True, name, "no .output.expect", sub=sub))
+                continue
+
+            actual = sr.stdout or ""
+            expected = out_expect.read_text(encoding="utf-8")
+            if actual != expected:
+                results.append(
+                    TResult(
+                        False,
+                        name,
+                        diff_text(expected, actual, str(out_expect), "sim stdout"),
+                        sub=sub,
+                    )
+                )
+            else:
+                results.append(TResult(True, name, sub=sub))
+
+    if not ran_tc and not results:
+        msg = "no runnable toolchain in --toolchains (hs needs ras+rld)"
+        if cfg.skip_unavailable:
+            return [TResult(True, name, f"(skipped) {msg}")]
+        return [TResult(False, name, msg)]
 
     return results
 
@@ -408,57 +464,101 @@ def link_rcc_asm_with_crt0(
     code_base: str,
     data_base: str | None,
     stack_top: str,
+    toolchain: str,
 ) -> tuple[bool, str, str]:
-    """Assemble crt0 + one rcc .s and rld-link. On failure, third element is TResult.sub."""
-    if not cfg.ras_path or not cfg.rld_path:
-        return (
-            False,
-            "ras+rld required (cabal build exe:ras exe:rld in tools/)",
-            "",
-        )
+    """Assemble crt0 + one rcc ``.s`` and link with ``rld`` (``hs``) or ``pyld`` (``py``)."""
+    if toolchain == "hs":
+        if not cfg.ras_path or not cfg.rld_path:
+            return (
+                False,
+                "ras+rld required (cabal build exe:ras exe:rld in tools/)",
+                "",
+            )
+    elif toolchain != "py":
+        return False, f"unknown toolchain {toolchain!r}", ""
+
     lib = lib_dir(cfg.root)
     crt0_s = cfg.root / "lib" / "crt0.s"
-    ar0 = run_capture(
-        ras_emit_obj_cmd(
-            cfg.ras_path,
-            crt0_s,
-            crt0_o,
-            cli_defines=[("RCC_STACK_TOP", stack_top)],
-        ),
-        cwd=cfg.root,
-    )
-    if ar0.returncode != 0:
-        return False, "ras (crt0) failed:\n" + (ar0.stderr or ar0.stdout or ""), "crt0.o"
-    aru = run_capture(
-        ras_emit_obj_cmd(cfg.ras_path, asm_out, user_o, include_dirs=[lib]),
-        cwd=cfg.root / "compiler",
-    )
-    if aru.returncode != 0:
-        return False, "ras (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""), "user.o"
+    if toolchain == "hs":
+        ar0 = run_capture(
+            ras_emit_obj_cmd(
+                cfg.ras_path,
+                crt0_s,
+                crt0_o,
+                cli_defines=[("RCC_STACK_TOP", stack_top)],
+            ),
+            cwd=cfg.root,
+        )
+        if ar0.returncode != 0:
+            return False, "ras (crt0) failed:\n" + (ar0.stderr or ar0.stdout or ""), "hs/crt0.o"
+        aru = run_capture(
+            ras_emit_obj_cmd(cfg.ras_path, asm_out, user_o, include_dirs=[lib]),
+            cwd=cfg.root / "compiler",
+        )
+        if aru.returncode != 0:
+            return False, "ras (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""), "hs/user.o"
+    else:
+        ar0 = run_capture(
+            pyras_emit_obj_cmd(
+                crt0_s,
+                crt0_o,
+                cli_defines=[("RCC_STACK_TOP", stack_top)],
+            ),
+            cwd=cfg.root,
+        )
+        if ar0.returncode != 0:
+            return False, "pyras (crt0) failed:\n" + (ar0.stderr or ar0.stdout or ""), "py/crt0.o"
+        aru = run_capture(
+            pyras_emit_obj_cmd(asm_out, user_o, include_dirs=[lib]),
+            cwd=cfg.root,
+        )
+        if aru.returncode != 0:
+            return False, "pyras (rcc .s) failed:\n" + (aru.stderr or aru.stdout or ""), "py/user.o"
+
     link_objs: list[Path] = [crt0_o]
     if not rcc_asm_embeds_librcc(asm_out):
         librcc_s = cfg.root / "lib" / "librcc.s"
         librcc_o = user_o.parent / (user_o.stem + "_librcc.o")
-        arm = run_capture(
-            ras_emit_obj_cmd(cfg.ras_path, librcc_s, librcc_o, include_dirs=[lib]),
-            cwd=cfg.root,
-        )
+        if toolchain == "hs":
+            arm = run_capture(
+                ras_emit_obj_cmd(cfg.ras_path, librcc_s, librcc_o, include_dirs=[lib]),
+                cwd=cfg.root,
+            )
+        else:
+            arm = run_capture(
+                pyras_emit_obj_cmd(librcc_s, librcc_o, include_dirs=[lib]),
+                cwd=cfg.root,
+            )
         if arm.returncode != 0:
-            return False, "ras (librcc.s) failed:\n" + (arm.stderr or arm.stdout or ""), "librcc.o"
+            tag = "ras" if toolchain == "hs" else "pyras"
+            return False, f"{tag} (librcc.s) failed:\n" + (arm.stderr or arm.stdout or ""), f"{toolchain}/librcc.o"
         link_objs.append(librcc_o)
     link_objs.append(user_o)
-    arl = run_capture(
-        rld_cmd(
-            cfg.rld_path,
-            link_objs,
-            bin_path,
-            code_base=code_base,
-            data_base=data_base,
-        ),
-        cwd=cfg.root,
-    )
-    if arl.returncode != 0:
-        return False, "rld failed:\n" + (arl.stderr or arl.stdout or ""), "rld"
+    if toolchain == "hs":
+        arl = run_capture(
+            rld_cmd(
+                cfg.rld_path,
+                link_objs,
+                bin_path,
+                code_base=code_base,
+                data_base=data_base,
+            ),
+            cwd=cfg.root,
+        )
+        if arl.returncode != 0:
+            return False, "rld failed:\n" + (arl.stderr or arl.stdout or ""), "hs/rld"
+    else:
+        arl = run_capture(
+            pyld_cmd(
+                link_objs,
+                bin_path,
+                code_base=code_base,
+                data_base=data_base,
+            ),
+            cwd=cfg.root,
+        )
+        if arl.returncode != 0:
+            return False, "pyld failed:\n" + (arl.stderr or arl.stdout or ""), "py/pyld"
     return True, "", ""
 
 
@@ -542,8 +642,13 @@ def collect_size_tests(cfg: RunConfig) -> list[Path]:
 def build_rcc_linked_bin(cfg: RunConfig, src: Path, tmp_root: Path) -> tuple[bool, Path | None, str]:
     """Build a linked .bin (crt0 + rcc output) and return (ok, bin_path, detail)."""
     base = src.stem
-    if not cfg.ras_path or not cfg.rld_path:
-        return False, None, "ras+rld required (cabal build exe:ras exe:rld in tools/)"
+    tc = _first_runnable_toolchain(cfg)
+    if tc is None:
+        return (
+            False,
+            None,
+            "no runnable toolchain (--toolchains hs needs ras+rld in tools/)",
+        )
 
     compiler_tests = cfg.root / "compiler" / "tests"
     per_test = parse_flags_file(compiler_tests / f"{base}.rccflags")
@@ -558,9 +663,9 @@ def build_rcc_linked_bin(cfg: RunConfig, src: Path, tmp_root: Path) -> tuple[boo
         asm_txt, code_fb=code_fb, data_fb=data_fb, stack_fb=stack_fb
     )
 
-    bin_path = tmp_root / f"{base}.bin"
-    crt0_o = tmp_root / f"{base}.crt0.o"
-    user_o = tmp_root / f"{base}.rcc.o"
+    bin_path = tmp_root / f"{base}.{tc}.bin"
+    crt0_o = tmp_root / f"{base}.{tc}.crt0.o"
+    user_o = tmp_root / f"{base}.{tc}.rcc.o"
 
     ok_link, err_link, _sub = link_rcc_asm_with_crt0(
         cfg,
@@ -571,6 +676,7 @@ def build_rcc_linked_bin(cfg: RunConfig, src: Path, tmp_root: Path) -> tuple[boo
         code_base=code_b,
         data_base=data_opt,
         stack_top=stack_t,
+        toolchain=tc,
     )
     if not ok_link:
         return False, None, err_link
@@ -615,8 +721,11 @@ def bless_size(cfg: RunConfig) -> int:
     if not cfg.rcc_path:
         print("bless-size: rcc not found", file=sys.stderr)
         return 2
-    if not cfg.ras_path or not cfg.rld_path:
-        print("bless-size: ras+rld required", file=sys.stderr)
+    if _first_runnable_toolchain(cfg) is None:
+        print(
+            "bless-size: no runnable toolchain (hs needs ras+rld; try --toolchains py)",
+            file=sys.stderr,
+        )
         return 2
 
     out: dict[str, int] = {}
@@ -787,8 +896,8 @@ def run_rcc_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
     input_path = compiler_tests / f"{base}.input"
     has_input = input_path.is_file()
 
-    if not cfg.ras_path or not cfg.rld_path:
-        msg = "ras+rld required to link crt0 with rcc output (cabal build exe:ras exe:rld in tools/)"
+    if _first_runnable_toolchain(cfg) is None:
+        msg = "no runnable toolchain to link crt0 with rcc output (hs needs ras+rld in tools/)"
         if cfg.skip_unavailable:
             return [TResult(True, name, f"(skipped) {msg}")]
         return [TResult(False, name, msg)]
@@ -890,8 +999,8 @@ def run_io_terminal_test(cfg: RunConfig, src: Path, tmp_root: Path, gcc_path: Pa
     if not ok_c:
         return [TResult(False, name, err_c)]
 
-    if not cfg.ras_path or not cfg.rld_path:
-        msg = "ras+rld required (cabal build exe:ras exe:rld in tools/)"
+    if _first_runnable_toolchain(cfg) is None:
+        msg = "no runnable toolchain (hs needs ras+rld in tools/)"
         if cfg.skip_unavailable:
             return [TResult(True, name, f"(skipped) {msg}")]
         return [TResult(False, name, msg)]
@@ -902,90 +1011,119 @@ def run_io_terminal_test(cfg: RunConfig, src: Path, tmp_root: Path, gcc_path: Pa
         asm_txt, code_fb=code_fb, data_fb=data_fb, stack_fb=stack_fb
     )
 
-    bin_path = tmp_root / f"io-{base}.bin"
-    crt0_o = tmp_root / f"io-{base}.crt0.o"
-    user_o = tmp_root / f"io-{base}.rcc.o"
-
-    ok_l, err_l, sub_l = link_rcc_asm_with_crt0(
-        cfg,
-        asm_out,
-        bin_path,
-        crt0_o,
-        user_o,
-        code_base=code_b,
-        data_base=data_opt,
-        stack_top=stack_t,
-    )
-    if not ok_l:
-        return [TResult(False, name, err_l, sub=sub_l)]
-
     start_addr = defs.get("RCC_CODE_BASE", code_fb)
     io_sim_base = replace_argv_flag(list(IO_SIM_EXTRA_DEFAULT), "--start", start_addr)
 
-    for sim_id in cfg.simulators:
-        if sim_id == "c" and not cfg.sim2_path:
+    ran_tc = False
+    for tc in cfg.toolchains:
+        if not _rcc_toolchain_runnable(cfg, tc):
             if cfg.skip_unavailable:
                 continue
-            results.append(TResult(False, name, "sim2 not found", sub="link/csim"))
+            results.append(
+                TResult(
+                    False,
+                    name,
+                    "ras+rld required for --toolchains hs (cabal build exe:ras exe:rld in tools/)",
+                    sub=f"{tc}/link",
+                )
+            )
             continue
-        if sim_id == "hs" and not cfg.rsim_path:
-            if cfg.skip_unavailable:
-                continue
-            results.append(TResult(False, name, "rsim not found", sub="link/rsim"))
-            continue
+        ran_tc = True
 
-        sim_argv: list[str]
-        if sim_id == "py":
-            sim_argv = [
-                *py_sim_argv(),
-                *io_sim_base,
-                *per_sim,
-                str(bin_path),
-            ]
-        elif sim_id == "hs":
-            sim_argv = [
-                str(cfg.rsim_path),
-                *io_sim_base,
-                *per_sim,
-                str(bin_path),
-            ]
-        else:
-            sim_argv = [
-                str(cfg.sim2_path),
-                *io_sim_base,
-                *per_sim,
-                str(bin_path),
-            ]
+        bin_path = tmp_root / f"io-{base}.{tc}.bin"
+        crt0_o = tmp_root / f"io-{base}.{tc}.crt0.o"
+        user_o = tmp_root / f"io-{base}.{tc}.rcc.o"
 
-        sr = run_capture(
-            sim_argv,
-            cwd=cfg.root / "compiler",
-            stdin_path=input_path if has_input else None,
+        ok_l, err_l, sub_l = link_rcc_asm_with_crt0(
+            cfg,
+            asm_out,
+            bin_path,
+            crt0_o,
+            user_o,
+            code_base=code_b,
+            data_base=data_opt,
+            stack_top=stack_t,
+            toolchain=tc,
         )
-        if sr.returncode != 0:
-            results.append(
-                TResult(
-                    False,
-                    name,
-                    f"simulator ({sim_id}) exit {sr.returncode}:\n"
-                    + (sr.stderr or sr.stdout or ""),
-                    sub=f"link/{sim_id}sim",
-                )
-            )
+        if not ok_l:
+            results.append(TResult(False, name, err_l, sub=f"{tc}/{sub_l}"))
             continue
 
-        actual = sr.stdout or ""
-        if actual != expected_txt:
-            results.append(
-                TResult(
-                    False,
-                    name,
-                    diff_text(expected_txt, actual, str(exp_path), "sim uart stdout"),
-                    sub=f"link/{sim_id}sim",
+        for sim_id in cfg.simulators:
+            if sim_id == "c" and not cfg.sim2_path:
+                if cfg.skip_unavailable:
+                    continue
+                results.append(
+                    TResult(False, name, "sim2 not found", sub=f"{tc}/link/csim")
                 )
+                continue
+            if sim_id == "hs" and not cfg.rsim_path:
+                if cfg.skip_unavailable:
+                    continue
+                results.append(
+                    TResult(False, name, "rsim not found", sub=f"{tc}/link/rsim")
+                )
+                continue
+
+            sim_argv: list[str]
+            if sim_id == "py":
+                sim_argv = [
+                    *py_sim_argv(),
+                    *io_sim_base,
+                    *per_sim,
+                    str(bin_path),
+                ]
+            elif sim_id == "hs":
+                sim_argv = [
+                    str(cfg.rsim_path),
+                    *io_sim_base,
+                    *per_sim,
+                    str(bin_path),
+                ]
+            else:
+                sim_argv = [
+                    str(cfg.sim2_path),
+                    *io_sim_base,
+                    *per_sim,
+                    str(bin_path),
+                ]
+
+            sr = run_capture(
+                sim_argv,
+                cwd=cfg.root,
+                stdin_path=input_path if has_input else None,
             )
+            if sr.returncode != 0:
+                results.append(
+                    TResult(
+                        False,
+                        name,
+                        f"simulator ({sim_id}) exit {sr.returncode}:\n"
+                        + (sr.stderr or sr.stdout or ""),
+                        sub=f"{tc}/link/{sim_id}sim",
+                    )
+                )
+                continue
+
+            actual = sr.stdout or ""
+            if actual != expected_txt:
+                results.append(
+                    TResult(
+                        False,
+                        name,
+                        diff_text(expected_txt, actual, str(exp_path), "sim uart stdout"),
+                        sub=f"{tc}/link/{sim_id}sim",
+                    )
+                )
+            else:
+                results.append(TResult(True, name, sub=f"{tc}/link/{sim_id}sim"))
+
+    if not ran_tc and not results:
+        msg = "no runnable toolchain in --toolchains (hs needs ras+rld)"
+        if cfg.skip_unavailable:
+            results.append(TResult(True, name, f"(skipped) {msg}"))
         else:
-            results.append(TResult(True, name, sub=f"link/{sim_id}sim"))
+            results.append(TResult(False, name, msg))
 
     # Host gcc: same source, same expected UART bytes (stay in 12-bit range).
     if gcc_path is None:
@@ -1123,9 +1261,10 @@ def bless_rcc_output(cfg: RunConfig) -> int:
                 code_b, data_opt, stack_t, defs = rcc_asm_bases(
                     asm_txt, code_fb=code_fb, data_fb=data_fb, stack_fb=stack_fb
                 )
-                if cfg.ras_path and cfg.rld_path:
-                    crt0_o = tdir / f"{base}.{label}.crt0.o"
-                    user_o = tdir / f"{base}.{label}.rcc.o"
+                link_tc = _first_runnable_toolchain(cfg)
+                if link_tc is not None:
+                    crt0_o = tdir / f"{base}.{label}.{link_tc}.crt0.o"
+                    user_o = tdir / f"{base}.{label}.{link_tc}.rcc.o"
                     ok_l, err_l, _ = link_rcc_asm_with_crt0(
                         cfg,
                         asm_out,
@@ -1135,6 +1274,7 @@ def bless_rcc_output(cfg: RunConfig) -> int:
                         code_base=code_b,
                         data_base=data_opt,
                         stack_top=stack_t,
+                        toolchain=link_tc,
                     )
                     if not ok_l:
                         print(
@@ -1182,7 +1322,7 @@ def bless_rcc_output(cfg: RunConfig) -> int:
                 sim_argv.append(str(bin_out))
                 sr = run_capture(
                     sim_argv,
-                    cwd=cfg.root / "compiler",
+                    cwd=cfg.root,
                     stdin_path=input_path if has_input else None,
                 )
                 if sr.returncode != 0:
@@ -1613,12 +1753,19 @@ def collect_examples(cfg: RunConfig) -> list[Path]:
 
 
 def run_toolchain_suite(cfg: RunConfig, tmp_root: Path) -> list[TResult]:
-    """Obj round-trip + rld single-object equivalence for ``tools/tests/toolchain/*.s``."""
-    if not cfg.ras_path or not cfg.rld_path:
-        msg = "ras+rld required (cabal build exe:ras exe:rld in tools/)"
-        if cfg.skip_unavailable:
-            return [TResult(True, "toolchain", f"(skipped) {msg}")]
-        return [TResult(False, "toolchain", msg)]
+    """Obj round-trip + single-object link checks for ``tools/tests/toolchain/*.s`` (per ``--toolchains``)."""
+    want_hs = "hs" in cfg.toolchains
+    want_py = "py" in cfg.toolchains
+    hs_ok = bool(cfg.ras_path and cfg.rld_path)
+
+    if want_hs and not hs_ok:
+        msg = "ras+rld required for --toolchains hs (cabal build exe:ras exe:rld in tools/)"
+        if not want_py:
+            if cfg.skip_unavailable:
+                return [TResult(True, "toolchain", f"(skipped) {msg}")]
+            return [TResult(False, "toolchain", msg)]
+        if not cfg.skip_unavailable:
+            return [TResult(False, "toolchain", msg)]
 
     sources = collect_toolchain_asm_sources(cfg.root)
     if cfg.filter_re:
@@ -1635,24 +1782,44 @@ def run_toolchain_suite(cfg: RunConfig, tmp_root: Path) -> list[TResult]:
         rel = str(src.relative_to(cfg.root))
         name_base = f"toolchain:{rel}"
         r1: list[TResult] = []
-        ok, det = verify_obj_roundtrip(cfg.ras_path, src, t, incs)
-        r1.append(
-            TResult(
-                ok,
-                f"{name_base}:obj-roundtrip",
-                det,
-                sub="obj-roundtrip",
+        if want_hs and hs_ok:
+            ok, det = verify_obj_roundtrip(cfg.ras_path, src, t, incs)
+            r1.append(
+                TResult(
+                    ok,
+                    f"{name_base}:obj-roundtrip",
+                    det,
+                    sub="hs/obj-roundtrip",
+                )
             )
-        )
-        ok2, det2 = verify_rld_equivalence(cfg.ras_path, cfg.rld_path, src, t, incs)
-        r1.append(
-            TResult(
-                ok2,
-                f"{name_base}:rld",
-                det2,
-                sub="rld-eq",
+            ok2, det2 = verify_rld_equivalence(cfg.ras_path, cfg.rld_path, src, t, incs)
+            r1.append(
+                TResult(
+                    ok2,
+                    f"{name_base}:rld",
+                    det2,
+                    sub="hs/rld-eq",
+                )
             )
-        )
+        if want_py:
+            okp, detp = verify_obj_roundtrip_pyras(src, t, incs)
+            r1.append(
+                TResult(
+                    okp,
+                    f"{name_base}:obj-roundtrip-pyras",
+                    detp,
+                    sub="py/obj-roundtrip",
+                )
+            )
+            okp2, detp2 = verify_pyld_equivalence(src, t, incs)
+            r1.append(
+                TResult(
+                    okp2,
+                    f"{name_base}:pyld",
+                    detp2,
+                    sub="py/pyld-eq",
+                )
+            )
         return r1
 
     out: list[TResult] = []
@@ -1669,53 +1836,70 @@ def run_toolchain_suite(cfg: RunConfig, tmp_root: Path) -> list[TResult]:
 def run_librcc_suite(cfg: RunConfig) -> list[TResult]:
     """Drive tools/tests/librcc/run_librcc_tests.py (crt0 + librcc + stub main per case).
 
+    Runs once per entry in ``cfg.toolchains`` (``hs``: ras+rld, ``py``: pyras+pyld).
+
     With ``cfg.verbose``, split driver stdout into one ``TResult`` per ``PASS`` line
     plus a final summary row so ``emit_verbose`` prints every case (not only ``Results: 1``).
     """
     driver = cfg.root / "tools" / "tests" / "librcc" / "run_librcc_tests.py"
     if not driver.is_file():
         return [TResult(False, "librcc", f"missing driver {driver}")]
-    if not cfg.ras_path or not cfg.rld_path:
-        msg = "ras+rld required (librcc suite)"
-        if cfg.skip_unavailable:
-            return [TResult(True, "librcc", f"(skipped) {msg}")]
-        return [TResult(False, "librcc", msg)]
 
-    argv = [
-        python_exe(),
-        str(driver),
-        "--ras",
-        str(cfg.ras_path),
-        "--rld",
-        str(cfg.rld_path),
-    ]
-    if cfg.filter_re:
-        argv.extend(["--filter", cfg.filter_re.pattern])
-    if cfg.verbose:
-        argv.append("--verbose")
+    ran = False
+    failures: list[TResult] = []
+    verbose_rows: list[TResult] = []
 
-    r = run_capture(argv, cwd=cfg.root)
-    out = r.stdout or ""
-    if r.returncode == 0:
+    for tc in cfg.toolchains:
+        if tc == "hs" and (not cfg.ras_path or not cfg.rld_path):
+            if cfg.skip_unavailable:
+                continue
+            failures.append(
+                TResult(
+                    False,
+                    "librcc",
+                    "ras+rld required for --toolchains hs (librcc suite)",
+                    sub="hs",
+                )
+            )
+            continue
+        ran = True
+        argv = [python_exe(), str(driver), "--toolchain", tc]
+        if tc == "hs":
+            argv.extend(["--ras", str(cfg.ras_path), "--rld", str(cfg.rld_path)])
+        if cfg.filter_re:
+            argv.extend(["--filter", cfg.filter_re.pattern])
         if cfg.verbose:
-            results: list[TResult] = []
+            argv.append("--verbose")
+
+        r = run_capture(argv, cwd=cfg.root)
+        out = r.stdout or ""
+        if r.returncode != 0:
+            failures.append(TResult(False, f"librcc[{tc}]", (r.stderr or "") + out, sub=tc))
+            continue
+
+        if cfg.verbose:
             summary_line = ""
             for line in out.splitlines():
                 s = line.strip()
                 if s.startswith("PASS "):
-                    results.append(TResult(True, f"librcc:{s[5:].strip()}", ""))
+                    verbose_rows.append(
+                        TResult(True, f"librcc:{tc}:{s[5:].strip()}", "", sub=tc)
+                    )
                 elif s.startswith("librcc-tests:"):
                     summary_line = s
             if summary_line:
-                results.append(TResult(True, "librcc-summary", summary_line))
-            if results:
-                return results
-            tail = out.strip().splitlines()
-            return [TResult(True, "librcc", tail[-1] if tail else "ok")]
-        tail = out.strip().splitlines()
-        summary = tail[-1] if tail else "ok"
-        return [TResult(True, "librcc", "")]
-    return [TResult(False, "librcc", (r.stderr or "") + out)]
+                verbose_rows.append(TResult(True, f"librcc-summary:{tc}", summary_line, sub=tc))
+
+    if failures:
+        return failures
+    if not ran:
+        msg = "no runnable librcc toolchain (hs needs ras+rld)"
+        if cfg.skip_unavailable:
+            return [TResult(True, "librcc", f"(skipped) {msg}")]
+        return [TResult(False, "librcc", msg)]
+    if cfg.verbose and verbose_rows:
+        return verbose_rows
+    return [TResult(True, "librcc", "")]
 
 
 def run_float_suite(cfg: RunConfig) -> list[TResult]:
@@ -1826,6 +2010,11 @@ def main() -> int:
     ap.add_argument("--rsim", metavar="PATH", help="Haskell simulator (rsim)")
     ap.add_argument("--sim2", metavar="PATH", help="C simulator binary")
     ap.add_argument(
+        "--toolchains",
+        default="hs,py",
+        help="comma list: hs (ras+rld), py (pyras+pyld); used for RCC/IO/size/librcc/toolchain linking",
+    )
+    ap.add_argument(
         "--assemblers",
         default="hs",
         help="comma list: hs (default), py (deprecated pytools.asm)",
@@ -1874,6 +2063,12 @@ def main() -> int:
     root = repo_root()
     filt = re.compile(args.filter) if args.filter else None
 
+    toolchains = tuple(x.strip() for x in args.toolchains.split(",") if x.strip())
+    for t in toolchains:
+        if t not in ("hs", "py"):
+            print(f"unknown toolchain {t!r}", file=sys.stderr)
+            return 2
+
     assemblers = tuple(x.strip() for x in args.assemblers.split(",") if x.strip())
     simulators = tuple(x.strip() for x in args.simulators.split(",") if x.strip())
     if args.also_rsim and "hs" not in simulators:
@@ -1902,6 +2097,7 @@ def main() -> int:
         root=root,
         jobs=max(1, args.jobs),
         filter_re=filt,
+        toolchains=toolchains,  # type: ignore[arg-type]
         assemblers=assemblers,  # type: ignore[arg-type]
         simulators=simulators,  # type: ignore[arg-type]
         skip_unavailable=args.skip_unavailable,
@@ -1926,10 +2122,12 @@ def main() -> int:
 
     if not args.skip_unavailable:
         missing = []
-        if (want_rcc or want_io or want_toolchain or want_librcc) and not rld_path:
-            missing.append("rld (cabal build exe:rld in tools/)")
-        if (want_toolchain or want_librcc or "hs" in assemblers) and not ras_path:
-            missing.append("ras (cabal build exe:ras in tools/)")
+        if "hs" in toolchains and (want_rcc or want_io or want_toolchain or want_librcc) and not rld_path:
+            missing.append("rld (for --toolchains hs; cabal build exe:rld in tools/)")
+        if "hs" in toolchains and (
+            want_toolchain or want_librcc or want_size or "hs" in assemblers
+        ) and not ras_path:
+            missing.append("ras (for --toolchains hs; cabal build exe:ras in tools/)")
         if "hs" in simulators and not rsim_path:
             missing.append("rsim (cabal build exe:rsim in tools/)")
         if "c" in simulators and not sim2_path:

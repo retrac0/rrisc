@@ -7,9 +7,6 @@
 
     .global main
 main:
-_B_main_0:
-    clrt
-    bf _B_main_1
 _B_main_1:
     li r2, 1
     clrt

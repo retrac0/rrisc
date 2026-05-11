@@ -53,6 +53,23 @@ def _stdin_is_kernel_tty(fd: int) -> bool:
         return False
 
 
+def _stdin_has_termios_modes(fd: int) -> bool:
+    """True if termios can manage this fd (real TTY), even when isatty/ttyname lie.
+
+    Used so we still disable kernel echo before the guest UART layer software-echoes
+    (e.g. libc gets() putchar), avoiding double characters on the first key and beyond.
+    """
+    try:
+        import termios
+
+        termios.tcgetattr(fd)
+        return True
+    except termios.error:
+        return False
+    except (OSError, AttributeError):
+        return False
+
+
 class Terminal:
     def __init__(self, translate=False, preload=None, read_stdin=True):
         self._rx: deque[int] = deque()
@@ -72,7 +89,8 @@ class Terminal:
             fd = _stdin_fd()
             # Dup + cbreak for real TTYs so each key is readable immediately.
             # If cbreak fails, fall back to reading the same fd without dup.
-            if _stdin_is_kernel_tty(fd):
+            use_tty_modes = _stdin_is_kernel_tty(fd) or _stdin_has_termios_modes(fd)
+            if use_tty_modes:
                 try:
                     self._enter_cbreak()
                     self._stdin_read_fd = os.dup(fd)
@@ -86,6 +104,11 @@ class Terminal:
         fd = sys.stdin.fileno()
         self._old_term = termios.tcgetattr(fd)
         tty.setcbreak(fd)
+        # setcbreak clears ECHO on most platforms; force off so UART apps that echo in software
+        # (e.g. gets → putchar) do not double with kernel echo on quirky terminals.
+        mode = termios.tcgetattr(fd)
+        mode[3] = mode[3] & ~(termios.ECHO | termios.ECHONL)
+        termios.tcsetattr(fd, termios.TCSADRAIN, mode)
         atexit.register(self._restore_term)
 
     def _restore_term(self):

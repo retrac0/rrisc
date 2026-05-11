@@ -61,7 +61,7 @@ data Instr
   | IReturn  (Maybe Operand)
   | IAllocLocal Temp    -- reserve stack space for a local array/struct; no code emitted
   | IAsmInline Text     -- verbatim assembly string
-  deriving (Show)
+  deriving (Show, Eq)
 
 data Global = Global
   { globalName  :: Label

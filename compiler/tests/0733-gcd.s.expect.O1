@@ -7,9 +7,7 @@
 
     .global main
 main:
-    subi r6, 1
-    swr r5, r6
-    subi r6, 6
+    subi r6, 5
 _B_main_0:
     li r2, 48
     and r1, r6, r7
@@ -19,7 +17,7 @@ _B_main_0:
     addi r1, 1
     swr r2, r1
     clrt
-    bf _B_main_6
+    bf _B_main_5
 _B_main_1:
     and r1, r6, r7
     addi r1, 3
@@ -36,44 +34,13 @@ _B_main_1:
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_1
-    clrt
-    bf _B_main_4
-_B_main_2:
-    and r1, r6, r7
-    addi r1, 5
-    lwr r3, r1
-    and r1, r6, r7
-    addi r1, 3
-    lwr r2, r1
-    li r1, __mod
-    jalr r5, r1
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
-    clrt
-    bf _B_main_5
 _B_main_4:
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 4
     lwr r2, r1
     clrt
     bf _epi_main
 _B_main_5:
-    and r1, r6, r7
-    addi r1, 4
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 3
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 5
-    swr r2, r1
-    clrt
-    bf _B_main_1
-_B_main_6:
     and r1, r6, r7
     addi r1, 1
     lwr r2, r1
@@ -83,15 +50,10 @@ _B_main_6:
     and r1, r6, r7
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 4
     swr r2, r1
     clrt
     bf _B_main_1
 _epi_main:
-    addi r6, 6
-    lwr r5, r6
-    addi r6, 1
+    addi r6, 5
     jalr r0, r5
-
-; rcc: lib/librcc.s (integer multiply/divide/modulo)
-%include "librcc.s"

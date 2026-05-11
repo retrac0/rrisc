@@ -94,16 +94,29 @@ reachableBlocks f = go Set.empty [S.fEntry f]
           let succs = maybe [] (succsOf . S.bTerm) (Map.lookup b bm)
            in go (Set.insert b seen) (succs ++ bs)
 
+-- | Drop phi operands whose predecessor block is no longer a CFG predecessor.
+-- Needed after terminator edits (e.g. branch threading): @recomputePredSucc@ updates
+-- @bPreds@ but does not remove stale phi edges by itself.
+alignPhisToPredsBlock :: S.Block -> S.Block
+alignPhisToPredsBlock b =
+  let ps = Set.fromList (S.bPreds b)
+      alignInstr (S.IPhi nm edges) = S.IPhi nm [ e | e@(p, _) <- edges, Set.member p ps ]
+      alignInstr i = i
+   in b { S.bInstrs = map alignInstr (S.bInstrs b) }
+
 recomputePredSucc :: Map S.BlockId S.Block -> Map S.BlockId S.Block
 recomputePredSucc bm =
   let succMap = Map.map (succsOf . S.bTerm) bm
       predMap = Map.fromListWith (++) [ (s, [b]) | (b, ss) <- Map.toList succMap, s <- ss ]
-   in Map.mapWithKey
-        (\bid b ->
-           b { S.bSuccs = Map.findWithDefault [] bid succMap
-             , S.bPreds = Map.findWithDefault [] bid predMap
-             })
-        bm
+      bm1 =
+        Map.mapWithKey
+          (\bid b ->
+             b { S.bSuccs = Map.findWithDefault [] bid succMap
+               , S.bPreds = Map.findWithDefault [] bid predMap
+               }
+          )
+          bm
+   in Map.map alignPhisToPredsBlock bm1
 
 foldConstBranch :: S.Term -> S.Term
 foldConstBranch (S.TBr (S.VConst 0) _ f) = S.TGoto f
@@ -857,9 +870,76 @@ strengthReduceMulProg = mapProc strengthReduceMulProc
 
 -- ---------------------------------------------------------------------------
 -- Tail merge: merge identical basic blocks (same instrs + terminator)
+--
+-- Fingerprint is structural (not derived Show): stable across unrelated IR
+-- pretty-printing changes and ignores block metadata (preds/succs/labels).
+
+sep :: Text
+sep = "\x1E"
+
+rec :: Text
+rec = "\x1D"
 
 blockFingerprintKey :: S.Block -> Text
-blockFingerprintKey b = T.pack (show (S.bInstrs b, S.bTerm b))
+blockFingerprintKey b = T.concat (map fpInstr (S.bInstrs b)) <> sep <> fpTerm (S.bTerm b)
+
+fpBlockId :: S.BlockId -> Text
+fpBlockId bid = T.pack (show (S.unBlockId bid))
+
+fpValue :: S.Value -> Text
+fpValue (S.VVar t) = "v" <> sep <> t
+fpValue (S.VConst n) = "c" <> sep <> T.pack (show n)
+fpValue (S.VAddr l) = "a" <> sep <> l
+fpValue (S.VLocalAddr t) = "l" <> sep <> t
+
+fpBinOp :: TAC.BinOp -> Text
+fpBinOp op = "b" <> sep <> T.pack (show op)
+
+fpUnOp :: TAC.UnOp -> Text
+fpUnOp op = "u" <> sep <> T.pack (show op)
+
+fpOp :: S.Op -> Text
+fpOp (S.OBin o a b) = T.concat ["B", sep, fpBinOp o, sep, fpValue a, sep, fpValue b]
+fpOp (S.OUn o a) = T.concat ["U", sep, fpUnOp o, sep, fpValue a]
+fpOp (S.OCopy v) = T.concat ["C", sep, fpValue v]
+fpOp (S.OLoad v) = T.concat ["L", sep, fpValue v]
+fpOp (S.OCall fn args) =
+  T.concat ["F", sep, fn, sep, T.intercalate rec (map fpValue args)]
+fpOp (S.OAsm t) = T.concat ["M", sep, t]
+
+fpPhiEdge :: (S.BlockId, S.Value) -> Text
+fpPhiEdge (bid, v) = fpBlockId bid <> sep <> fpValue v
+
+fpInstr :: S.Instr -> Text
+fpInstr (S.IPhi nm edges) =
+  T.concat ["P", sep, nm, sep, T.intercalate rec (map fpPhiEdge edges), sep]
+fpInstr (S.IDef nm op) = T.concat ["D", sep, nm, sep, fpOp op, sep]
+fpInstr (S.IEffect op) = T.concat ["E", sep, fpOp op, sep]
+fpInstr (S.IStore a b) = T.concat ["S", sep, fpValue a, sep, fpValue b, sep]
+fpInstr (S.IComment t) = T.concat ["K", sep, t, sep]
+
+fpTerm :: S.Term -> Text
+fpTerm (S.TGoto b) = T.concat ["g", sep, fpBlockId b]
+fpTerm (S.TReturn mv) =
+  T.concat ["r", sep, maybe "0" (\v -> "1" <> sep <> fpValue v) mv]
+fpTerm (S.TBr v t f) =
+  T.concat ["i", sep, fpValue v, sep, fpBlockId t, sep, fpBlockId f]
+fpTerm (S.TBrCmp inv op a b t f) =
+  T.concat
+    [ "j"
+    , sep
+    , if inv then "1" else "0"
+    , sep
+    , fpBinOp op
+    , sep
+    , fpValue a
+    , sep
+    , fpValue b
+    , sep
+    , fpBlockId t
+    , sep
+    , fpBlockId f
+    ]
 
 mergeIdenticalBlocksFunc :: S.Func -> (S.Func, Bool)
 mergeIdenticalBlocksFunc f =
@@ -981,8 +1061,11 @@ branchThreadFunc f =
           S.TBr v a b -> S.TBr v (tgt a) (tgt b)
           S.TBrCmp inv op a b' x y -> S.TBrCmp inv op a b' (tgt x) (tgt y)
           _ -> t
-      bm' = Map.map (\b -> b { S.bTerm = rwTerm (S.bTerm b) }) bm
-      changed = any (\bid -> S.bTerm (bm Map.! bid) /= S.bTerm (bm' Map.! bid)) (Map.keys bm)
+      bm1 = Map.map (\b -> b { S.bTerm = rwTerm (S.bTerm b) }) bm
+      bm' = recomputePredSucc bm1
+      changed =
+        any (\bid -> S.bTerm (bm Map.! bid) /= S.bTerm (bm1 Map.! bid)) (Map.keys bm)
+          || bm' /= bm
    in (f { S.fBlocks = bm' }, changed)
 
 branchThreadProg :: SP.SSAProg -> (SP.SSAProg, Bool)

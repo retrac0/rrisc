@@ -5,8 +5,8 @@
 --     * Branches with a simple-label operand become 'brel' records (the
 --       linker relaxes them).
 --
---     * Instructions whose operand is a simple label (li / jmp / call /
---       .word) emit placeholder lui+addi (or jalr) words with rd already
+--     * Instructions whose operand is a simple label (li / .word) emit
+--       placeholder lui+addi words with rd already
 --       encoded plus a 'reloc' record; the linker patches the imm6 fields
 --       once final symbol addresses are known.  Without this, the
 --       assembler would bake in *pre-relaxation* addresses that go stale
@@ -26,7 +26,7 @@ import qualified Data.Map.Strict as M
 import RRISC.Asm.Encode (encodeStmt, splitOps)
 import RRISC.Asm.Layout (isSimpleLabel, labelsFromStmts, linkageMapFromStmts)
 import RRISC.Asm.Types
-import RRISC.ISA (addiOp, encodeR3, encodeRI, jalrRb, luiOp, specOp)
+import RRISC.ISA (addiOp, encodeRI, luiOp)
 import RRISC.Obj.Format
 
 encodeToObject
@@ -116,22 +116,6 @@ emitStmt st labels _ =
                         ]
                    in Right (recs, 2)
                 Left _ -> fallback
-        ("jmp", [tgt]) | isSimpleLabel (T.strip tgt) ->
-          let recs =
-                [ RecWord (encodeRI luiOp 4 0)
-                , RecWord (encodeRI addiOp 4 0)
-                , RecWord (encodeR3 specOp 0 4 jalrRb)
-                , RecReloc RkJmpTarget12 (T.strip tgt) 0
-                ]
-           in Right (recs, 3)
-        ("call", [tgt]) | isSimpleLabel (T.strip tgt) ->
-          let recs =
-                [ RecWord (encodeRI luiOp 4 0)
-                , RecWord (encodeRI addiOp 4 0)
-                , RecWord (encodeR3 specOp 5 4 jalrRb)
-                , RecReloc RkCallTarget12 (T.strip tgt) 0
-                ]
-           in Right (recs, 3)
         (".word", _) ->
           encodeDotWord ops fp ln labels
         _ -> fallback

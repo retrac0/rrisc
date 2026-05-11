@@ -7,7 +7,7 @@
 
     .global sum
 sum:
-    subi r6, 8
+    subi r6, 6
     and r1, r6, r7
     swr r2, r1
 _B_sum_0:
@@ -20,7 +20,7 @@ _B_sum_0:
     addi r1, 2
     swr r2, r1
     clrt
-    bf _B_sum_7
+    bf _B_sum_6
 _B_sum_1:
     and r1, r6, r7
     addi r1, 4
@@ -43,59 +43,18 @@ _L_sum_ne_27:
     lwr r2, r1
     sub r0, r0, r2
     bt _B_sum_1
-    clrt
-    bf _B_sum_5
-_B_sum_2:
-    and r1, r6, r7
-    addi r1, 6
-    lwr r3, r1
-    and r1, r6, r7
-    addi r1, 4
-    lwr r2, r1
-    add r2, r3, r2
-    and r1, r6, r7
-    addi r1, 5
-    swr r2, r1
-    clrt
-    bf _B_sum_1
-_B_sum_3:
-    and r1, r6, r7
-    addi r1, 4
-    lwr r3, r1
-    li r2, 1
-    add r2, r3, r2
-    and r1, r6, r7
-    addi r1, 7
-    swr r2, r1
-    clrt
-    bf _B_sum_6
 _B_sum_5:
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 5
     lwr r2, r1
     clrt
     bf _epi_sum
 _B_sum_6:
     and r1, r6, r7
-    addi r1, 5
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 6
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 7
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
-    clrt
-    bf _B_sum_1
-_B_sum_7:
-    and r1, r6, r7
     addi r1, 1
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 5
     swr r2, r1
     and r1, r6, r7
     addi r1, 2
@@ -106,7 +65,7 @@ _B_sum_7:
     clrt
     bf _B_sum_1
 _epi_sum:
-    addi r6, 8
+    addi r6, 6
     jalr r0, r5
 
     .global main

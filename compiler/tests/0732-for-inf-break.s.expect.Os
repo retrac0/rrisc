@@ -42,16 +42,7 @@ _L_main_ne_27:
     addi r1, 3
     lwr r2, r1
     sub r0, r0, r2
-    bt _B_main_2
-    clrt
-    bf _B_main_4
-_B_main_2:
-    clrt
-    bf _B_main_7
-_B_main_4:
-    clrt
-    bf _B_main_5
-_B_main_5:
+    bt _B_main_7
     clrt
     bf _B_main_8
 _B_main_7:

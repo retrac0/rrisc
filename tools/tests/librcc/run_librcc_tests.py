@@ -31,6 +31,8 @@ sys.path.insert(0, str(ROOT))
 from rrisc_toolchain import (  # noqa: E402
     lib_dir,
     py_sim_argv,
+    pyld_cmd,
+    pyras_emit_obj_cmd,
     ras_emit_obj_cmd,
     resolve_ras,
     resolve_rld,
@@ -148,8 +150,9 @@ def all_cases() -> list[Case]:
 
 def link_one_case(
     *,
-    ras: Path,
-    rld: Path,
+    toolchain: str,
+    ras: Path | None,
+    rld: Path | None,
     lib: Path,
     tmp: Path,
     case: Case,
@@ -164,45 +167,87 @@ def link_one_case(
     user_o = tmp / "user.o"
     bin_path = tmp / "a.bin"
 
-    r0 = subprocess.run(
-        ras_emit_obj_cmd(ras, crt0_s, crt0_o, cli_defines=[("RCC_STACK_TOP", STACK_TOP)]),
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if r0.returncode != 0:
-        return False, f"crt0.ras:\n{r0.stderr or r0.stdout}"
+    if toolchain == "hs":
+        assert ras is not None and rld is not None
+        r0 = subprocess.run(
+            ras_emit_obj_cmd(ras, crt0_s, crt0_o, cli_defines=[("RCC_STACK_TOP", STACK_TOP)]),
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if r0.returncode != 0:
+            return False, f"crt0.ras:\n{r0.stderr or r0.stdout}"
 
-    ru = subprocess.run(
-        ras_emit_obj_cmd(ras, user_s, user_o, include_dirs=[lib]),
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if ru.returncode != 0:
-        return False, f"user.ras:\n{ru.stderr or ru.stdout}"
+        ru = subprocess.run(
+            ras_emit_obj_cmd(ras, user_s, user_o, include_dirs=[lib]),
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if ru.returncode != 0:
+            return False, f"user.ras:\n{ru.stderr or ru.stdout}"
 
-    rl = subprocess.run(
-        ras_emit_obj_cmd(ras, librcc_s, librcc_o, include_dirs=[lib]),
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if rl.returncode != 0:
-        return False, f"librcc.ras:\n{rl.stderr or rl.stdout}"
+        rl = subprocess.run(
+            ras_emit_obj_cmd(ras, librcc_s, librcc_o, include_dirs=[lib]),
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if rl.returncode != 0:
+            return False, f"librcc.ras:\n{rl.stderr or rl.stdout}"
 
-    rk = subprocess.run(
-        rld_cmd(rld, [crt0_o, librcc_o, user_o], bin_path, code_base=CODE_BASE, data_base=DATA_BASE),
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if rk.returncode != 0:
-        return False, f"rld:\n{rk.stderr or rk.stdout}"
+        rk = subprocess.run(
+            rld_cmd(rld, [crt0_o, librcc_o, user_o], bin_path, code_base=CODE_BASE, data_base=DATA_BASE),
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if rk.returncode != 0:
+            return False, f"rld:\n{rk.stderr or rk.stdout}"
+    else:
+        r0 = subprocess.run(
+            pyras_emit_obj_cmd(crt0_s, crt0_o, cli_defines=[("RCC_STACK_TOP", STACK_TOP)]),
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if r0.returncode != 0:
+            return False, f"crt0.pyras:\n{r0.stderr or r0.stdout}"
+
+        ru = subprocess.run(
+            pyras_emit_obj_cmd(user_s, user_o, include_dirs=[lib]),
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if ru.returncode != 0:
+            return False, f"user.pyras:\n{ru.stderr or ru.stdout}"
+
+        rl = subprocess.run(
+            pyras_emit_obj_cmd(librcc_s, librcc_o, include_dirs=[lib]),
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if rl.returncode != 0:
+            return False, f"librcc.pyras:\n{rl.stderr or rl.stdout}"
+
+        rk = subprocess.run(
+            pyld_cmd([crt0_o, librcc_o, user_o], bin_path, code_base=CODE_BASE, data_base=DATA_BASE),
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if rk.returncode != 0:
+            return False, f"pyld:\n{rk.stderr or rk.stdout}"
 
     sim = subprocess.run(
         [
@@ -235,19 +280,28 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="lib/librcc.s regression harness")
     ap.add_argument("--verbose", "-v", action="store_true")
     ap.add_argument("--filter", metavar="REGEX", help="only cases whose name matches")
-    ap.add_argument("--ras", type=Path, metavar="PATH", help="override ras executable")
-    ap.add_argument("--rld", type=Path, metavar="PATH", help="override rld executable")
+    ap.add_argument(
+        "--toolchain",
+        choices=("hs", "py"),
+        default="hs",
+        help="hs: ras+rld (default); py: pyras+pyld",
+    )
+    ap.add_argument("--ras", type=Path, metavar="PATH", help="override ras executable (hs only)")
+    ap.add_argument("--rld", type=Path, metavar="PATH", help="override rld executable (hs only)")
     args = ap.parse_args()
 
     filt = re.compile(args.filter) if args.filter else None
-    ras = resolve_ras(ROOT, str(args.ras) if args.ras else None)
-    rld = resolve_rld(ROOT, str(args.rld) if args.rld else None)
-    if not ras:
-        print("librcc-tests: ras not found (build exe:ras in tools/)", file=sys.stderr)
-        return 2
-    if not rld:
-        print("librcc-tests: rld not found (build exe:rld in tools/)", file=sys.stderr)
-        return 2
+    ras: Path | None = None
+    rld: Path | None = None
+    if args.toolchain == "hs":
+        ras = resolve_ras(ROOT, str(args.ras) if args.ras else None)
+        rld = resolve_rld(ROOT, str(args.rld) if args.rld else None)
+        if not ras:
+            print("librcc-tests: ras not found (build exe:ras in tools/)", file=sys.stderr)
+            return 2
+        if not rld:
+            print("librcc-tests: rld not found (build exe:rld in tools/)", file=sys.stderr)
+            return 2
 
     lib = lib_dir(ROOT)
     cases = [c for c in all_cases() if not filt or filt.search(c.name)]
@@ -259,7 +313,14 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="rrisc-librcc-") as td:
         tmp = Path(td)
         for c in cases:
-            ok, detail = link_one_case(ras=ras, rld=rld, lib=lib, tmp=tmp, case=c)
+            ok, detail = link_one_case(
+                toolchain=args.toolchain,
+                ras=ras,
+                rld=rld,
+                lib=lib,
+                tmp=tmp,
+                case=c,
+            )
             if ok:
                 if args.verbose:
                     print(f"PASS {c.name}", flush=True)

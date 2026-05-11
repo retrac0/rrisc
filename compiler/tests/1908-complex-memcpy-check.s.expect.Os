@@ -42,10 +42,10 @@ _B_mcpy_1:
     addi r1, 4
     lwr r2, r1
     sub r0, r0, r2
-    bt _B_mcpy_2
+    bt _B_mcpy_3
     clrt
     bf _B_mcpy_5
-_B_mcpy_2:
+_B_mcpy_3:
     and r1, r6, r7
     addi r1, 1
     lwr r3, r1
@@ -79,9 +79,6 @@ _B_mcpy_2:
     addi r1, 8
     lwr r1, r1
     swr r2, r1
-    clrt
-    bf _B_mcpy_3
-_B_mcpy_3:
     and r1, r6, r7
     addi r1, 5
     lwr r3, r1
@@ -125,9 +122,7 @@ main:
 _B_main_0:
     and r1, r6, r7
     addi r1, 1
-    and r3, r1, r7
-    and r2, r0, r0
-    add r2, r3, r2
+    and r2, r1, r7
     and r1, r6, r7
     swr r2, r1
     li r2, 1

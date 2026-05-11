@@ -271,9 +271,7 @@ main:
     swr r5, r6
     subi r6, 9
 _B_main_0:
-    li r3, a
-    and r2, r0, r0
-    add r2, r3, r2
+    li r2, a
     and r1, r6, r7
     swr r2, r1
     li r2, 1

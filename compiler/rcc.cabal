@@ -34,6 +34,7 @@ library
         RCC.LowerEmitSSA
         RCC.LowerSSA
         RCC.SSA.IR
+        RCC.SSA.Verify
         RCC.SSA.CFG
         RCC.SSA.Dom
         RCC.SSA.Prog

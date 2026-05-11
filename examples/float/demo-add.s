@@ -97,14 +97,10 @@ _start:
 
         halt
 
-hdr:    .unicode "3.0 + 4.0 cells = "
-        .word 0
-dec_lbl: .unicode "3.0 + 4.0 decimal = "
-        .word 0
-spc:    .unicode " "
-        .word 0
-nl:     .unicode "\n"
-        .word 0
+hdr:    .strz "3.0 + 4.0 cells = "
+dec_lbl: .strz "3.0 + 4.0 decimal = "
+spc:    .strz " "
+nl:     .strz "\n"
 
 %include "io/putchar.s"
 %include "io/putstr.s"

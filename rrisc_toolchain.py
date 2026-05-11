@@ -2,7 +2,8 @@
 """Shared path resolution, flags, and argv builders for RRISC tooling (tests, scripts).
 
 Haskell-first: prefer `ras` / `rld` / `rsim` from cabal-built binaries under
-`tools/`. The deprecated flat assembler lives in `pytools` (`python3 -m pytools.asm`).
+`tools/`. Python mirrors: `python -m pytools.pyras`, `python -m pytools.pyld`,
+`python -m pytools.pyrsim`. The deprecated flat assembler is `python3 -m pytools.asm`.
 """
 
 from __future__ import annotations
@@ -118,8 +119,41 @@ def py_asm_argv() -> list[str]:
 
 
 def py_sim_argv() -> list[str]:
-    """Argv prefix to run the Python simulator: ``python3 -m pytools.sim``."""
-    return [python_exe(), "-m", "pytools.sim"]
+    """Argv prefix to run the Python simulator: ``python3 -m pytools.pyrsim``."""
+    return [python_exe(), "-m", "pytools.pyrsim"]
+
+
+def pyrsim_argv() -> list[str]:
+    """Canonical Python simulator CLI (alias of :func:`py_sim_argv`)."""
+    return py_sim_argv()
+
+
+def pyras_argv() -> list[str]:
+    """Argv prefix for ``python3 -m pytools.pyras`` (mirrors Haskell ``ras`` CLI)."""
+    return [python_exe(), "-m", "pytools.pyras"]
+
+
+def pyld_cmd(
+    objs: Sequence[Path],
+    out_bin: Path,
+    *,
+    code_base: str,
+    data_base: str | None,
+) -> list[str]:
+    """Invoke Python ``pyld`` like :func:`rld_cmd` for ``rrisc_toolchain`` / tests."""
+    argv = [
+        python_exe(),
+        "-m",
+        "pytools.pyld",
+        *[str(o) for o in objs],
+        "-o",
+        str(out_bin),
+        "--code-base",
+        code_base,
+    ]
+    if data_base is not None:
+        argv.extend(["--data-base", data_base])
+    return argv
 
 
 def resolve_rcc(root: Path, override: str | None) -> Path | None:
@@ -229,6 +263,47 @@ def ras_emit_obj_cmd(
     for k, v in cli_defines or ():
         argv.extend(["-D", f"{k}={v}"])
     return argv
+
+
+def pyras_emit_obj_cmd(
+    src: Path,
+    obj_out: Path,
+    *,
+    include_dirs: Sequence[Path] | None = None,
+    cli_defines: Sequence[tuple[str, str]] | None = None,
+) -> list[str]:
+    """Like :func:`ras_emit_obj_cmd` but invokes ``python -m pytools.pyras`` (relocatable ``.o``)."""
+    argv = [*pyras_argv(), str(src), "-o", str(obj_out)]
+    for d in include_dirs or ():
+        argv.extend(["-I", str(d)])
+    for k, v in cli_defines or ():
+        argv.extend(["-D", f"{k}={v}"])
+    return argv
+
+
+def pyras_flat_bin_cmd(
+    src: Path,
+    out: Path,
+    *,
+    include_dirs: Sequence[Path] | None = None,
+) -> list[str]:
+    """Flat ``.bin`` via ``pyras`` (same route as ``ras --format bin``)."""
+    argv = [*pyras_argv(), str(src), "--format", "bin", "-o", str(out)]
+    for d in include_dirs or ():
+        argv.extend(["-I", str(d)])
+    return argv
+
+
+def pyld_simple_cmd(objs: Sequence[Path], out_bin: Path) -> list[str]:
+    """Invoke ``pyld`` with default section bases (matches a bare ``rld … -o``)."""
+    return [
+        python_exe(),
+        "-m",
+        "pytools.pyld",
+        *[str(o) for o in objs],
+        "-o",
+        str(out_bin),
+    ]
 
 
 def rld_cmd(

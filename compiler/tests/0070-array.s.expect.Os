@@ -11,11 +11,9 @@ arr:
 
     .global main
 main:
-    subi r6, 10
+    subi r6, 8
 _B_main_0:
-    li r3, arr
-    and r2, r0, r0
-    add r2, r3, r2
+    li r2, arr
     and r1, r6, r7
     swr r2, r1
     li r2, 1
@@ -66,47 +64,35 @@ _B_main_0:
     addi r1, 4
     lwr r1, r1
     swr r2, r1
-    li r3, arr
-    li r2, 1
-    add r2, r3, r2
+    and r1, r6, r7
+    addi r1, 1
+    lwr r1, r1
+    lwr r2, r1
     and r1, r6, r7
     addi r1, 5
     swr r2, r1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 3
     lwr r1, r1
     lwr r2, r1
     and r1, r6, r7
     addi r1, 6
     swr r2, r1
-    li r3, arr
-    li r2, 3
-    add r2, r3, r2
     and r1, r6, r7
-    addi r1, 7
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 7
-    lwr r1, r1
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 8
-    swr r2, r1
-    and r1, r6, r7
-    addi r1, 6
+    addi r1, 5
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 8
+    addi r1, 6
     lwr r2, r1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 7
     swr r2, r1
     and r1, r6, r7
-    addi r1, 9
+    addi r1, 7
     lwr r2, r1
     clrt
     bf _epi_main
 _epi_main:
-    addi r6, 10
+    addi r6, 8
     jalr r0, r5

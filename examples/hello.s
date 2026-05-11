@@ -13,8 +13,7 @@
         jalr r5, r1
         halt
 
-msg:    .unicode "Hello, world!\n"
-        .word 0
+msg:    .strz "Hello, world!\n"
 
 %include "io/putchar.s"
 %include "io/putstr.s"

@@ -9,7 +9,7 @@
 isqrt:
     subi r6, 1
     swr r5, r6
-    subi r6, 8
+    subi r6, 7
     and r1, r6, r7
     swr r2, r1
 _B_isqrt_0:
@@ -29,26 +29,18 @@ _B_isqrt_1:
     addi r1, 2
     swr r2, r1
     and r1, r6, r7
-    addi r1, 3
-    lwr r3, r1
-    li r2, 1
-    add r2, r3, r2
-    and r1, r6, r7
-    addi r1, 4
-    swr r2, r1
-    and r1, r6, r7
     addi r1, 2
     lwr r3, r1
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 2
     lwr r2, r1
     li r1, __mul
     jalr r5, r1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 4
     swr r2, r1
     and r1, r6, r7
-    addi r1, 5
+    addi r1, 4
     lwr r3, r1
     and r1, r6, r7
     lwr r2, r1
@@ -57,14 +49,14 @@ _B_isqrt_1:
     add r2, r2, r1
     sub r1, r2, r3
     li r2, 1
-    bf _L_isqrt_ne_52
+    bf _L_isqrt_ne_44
     li r2, 0
-_L_isqrt_ne_52:
+_L_isqrt_ne_44:
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 5
     swr r2, r1
     and r1, r6, r7
-    addi r1, 6
+    addi r1, 5
     lwr r2, r1
     sub r0, r0, r2
     bt _B_isqrt_2
@@ -77,7 +69,7 @@ _B_isqrt_2:
     li r2, 1
     add r2, r3, r2
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 6
     swr r2, r1
     clrt
     bf _B_isqrt_5
@@ -89,7 +81,7 @@ _B_isqrt_4:
     bf _epi_isqrt
 _B_isqrt_5:
     and r1, r6, r7
-    addi r1, 7
+    addi r1, 6
     lwr r2, r1
     and r1, r6, r7
     addi r1, 3
@@ -106,7 +98,7 @@ _B_isqrt_6:
     clrt
     bf _B_isqrt_1
 _epi_isqrt:
-    addi r6, 8
+    addi r6, 7
     lwr r5, r6
     addi r6, 1
     jalr r0, r5

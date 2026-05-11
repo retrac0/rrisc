@@ -29,14 +29,11 @@ _B_main_1:
     sub r0, r0, r2
     bt _B_main_2
     clrt
-    bf _B_main_4
+    bf _B_main_5
 _B_main_2:
     li r2, 1
     clrt
     bf _epi_main
-_B_main_4:
-    clrt
-    bf _B_main_5
 _B_main_5:
     and r2, r0, r0
     clrt

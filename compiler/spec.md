@@ -420,17 +420,76 @@ assembly (`.s`) including the crt0 prelude above.
 The **`rrisc-tools`** package ([`tools/`](../tools)) provides the supported assembler, linker, and simulator:
 **`ras`** assembles `.s` to a relocatable **`.o`** by default (`-o` optional); **`--format bin`**
 or **`--format readmemb`** emits a flat **`.bin`** or **`.mem`** instead. **`rld`** links one or
-more `.o` files into a final image. **`rsim`** is the Haskell simulator (alternatives: `sim.py`,
+more `.o` files into a final image. **`rsim`** is the Haskell simulator (alternatives: `python3 -m pytools.sim`,
 `sim2`). Bases and defines must stay consistent with the `%define` lines `rcc` emits — see
 [`docs/toolchain.md`](../docs/toolchain.md) for the contract, build commands, and object-format
 versioning.
 
 **`rcc` driver (summary).** Typical flags: `-o`, `--code-base`, `--data-base`, `--stack-top`,
 `--preprocessor`, **`-O0`** (no Cytron SSA / no SSA opts), **`-Os`** (default, size),
-**`-O1`** (speed), **`-O2`** (same as `-O1`), **`--pass +name,-name`** (per-pass overrides),
+**`-O1`** (same defaults as `-Os` today), **`-O2`** (same as `-O1`), **`--pass +name,-name`** (per-pass overrides),
 **`--dump-ast`**, **`--dump-tac`**,
 **`--dump-ssa`**, **`--optimize` / `--no-optimize`** (compat aliases for `-Os` / `-O0`). Full CLI
 and workflow examples are in [`MANUAL.md`](MANUAL.md).
+
+---
+
+## 11c. Deviations from ISO C99
+
+The syntax overlaps C99 in many places (control flow, declarations, most operators, compound
+literals, mixed declarations in `for`). **`rcc` is not a conforming ISO C99 implementation.**
+For a programmer-oriented tour of the differences, see [`MANUAL.md`](MANUAL.md) Part I §1 and
+Part IV §19.
+
+**Type and representation** (see also §2, §3, §8):
+
+- `int` and `unsigned` are **12-bit**; there are no `char`, `short`, `long`, or `double` (§11a).
+- **`sizeof` yields sizes in words**, not bytes (§2).
+- **Pointer arithmetic** `p + n` and `p - n` advances the address by **`n` words**, not by
+  `n * sizeof(*p)` (§2). For arrays of aggregates, indexing still uses each element’s size in
+  words (§2).
+- **String literals** have type **`int *`** and are stored as **one word per character** in
+  rodata (§3), not as a `char` array in bytes.
+- **Character literals** are **integer constants** equal to the character’s Unicode code point,
+  with the escape set in §3 — not C’s “narrow character constant” rules.
+- **`bool`** is an alias of **`int`**; `true` and `false` are the integer literals 1 and 0 (§2),
+  not C99 `_Bool` / `<stdbool.h>` semantics.
+- **`float`** is **48-bit** (`float48`) and is **always passed and returned by pointer** in the
+  ABI (§2, §8).
+
+**Lexical forms** (§3):
+
+- **Octal** may be written with the **`0o` prefix** (the form emphasized in §3 and shared with the
+  assembler), and **C-style leading-zero octal** (e.g. `0777`) is also accepted — the latter
+  matches C99 lexically, while `0o` is not C99 syntax.
+- **Binary** literals **`0b…`** are accepted; they are not part of C99.
+- All **integer literals** must fit the **12-bit** range; out-of-range literals are a compile error.
+
+**Operations and behaviour** (see §4, §11, §11b):
+
+- **Signed integer overflow** is **undefined** at the language level (§11), but the
+  implementation **wraps at 12 bits**. Programs must not rely on this as if it were guaranteed
+  by the language; it is **not** the same as well-defined two’s-complement wrap in ISO C (where
+  signed overflow is still undefined).
+- **Integer division and `%` with divisor zero** yield **0** for quotient and remainder (12-bit),
+  via the **`librcc`** helpers when needed (§11b). In C99, division by zero is undefined.
+- **`>>` on signed `int`** is **arithmetic** (sign-extending) (§4). C99 leaves the result of
+  right-shifting a negative signed integer **implementation-defined**.
+
+**Preprocessor and environment:**
+
+- `rcc` does **not** implement the C preprocessor. **`#include`**, **`#define`**, and other
+  directives require an **optional host `cpp`** (see §11b and [`MANUAL.md`](MANUAL.md)), unlike a
+  self-contained C99 compiler.
+
+**Program structure:**
+
+- **One C translation unit per `rcc` run**; there is no `extern` / `static` linkage model as in C
+  (§11a). `main` may be declared **`void main()`** as well as `int main()` (§7); the latter is the
+  only form ISO C guarantees for a hosted environment.
+
+Features **omitted entirely** from the language are listed in **§11a**. **Toolchain and driver**
+details are in **§11b** and [`docs/toolchain.md`](../docs/toolchain.md).
 
 ---
 

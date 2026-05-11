@@ -11,43 +11,28 @@ side_effect_called:
 
     .global main
 main:
-    subi r6, 5
-_B_main_0:
-    clrt
-    bf _B_main_4
-_B_main_4:
+    subi r6, 3
+_B_main_5:
     and r2, r0, r0
     and r1, r6, r7
     swr r2, r1
-    clrt
-    bf _B_main_15
-_B_main_5:
     and r1, r6, r7
-    addi r1, 1
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_6
     clrt
-    bf _B_main_7
+    bf _B_main_12
 _B_main_6:
     li r2, 99
     li r1, side_effect_called
     swr r2, r1
-    clrt
-    bf _B_main_7
-_B_main_7:
-    clrt
-    bf _B_main_11
-_B_main_11:
+_B_main_12:
     li r2, 1
     and r1, r6, r7
-    addi r1, 2
+    addi r1, 1
     swr r2, r1
-    clrt
-    bf _B_main_16
-_B_main_12:
     and r1, r6, r7
-    addi r1, 3
+    addi r1, 1
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_13
@@ -57,36 +42,17 @@ _B_main_13:
     and r2, r0, r0
     li r1, side_effect_called
     swr r2, r1
-    clrt
-    bf _B_main_14
 _B_main_14:
     li r1, side_effect_called
     lwr r2, r1
     and r1, r6, r7
-    addi r1, 4
+    addi r1, 2
     swr r2, r1
-    and r1, r6, r7
-    addi r1, 4
-    lwr r2, r1
-    clrt
-    bf _epi_main
-_B_main_15:
-    and r1, r6, r7
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 1
-    swr r2, r1
-    clrt
-    bf _B_main_5
-_B_main_16:
     and r1, r6, r7
     addi r1, 2
     lwr r2, r1
-    and r1, r6, r7
-    addi r1, 3
-    swr r2, r1
     clrt
-    bf _B_main_12
+    bf _epi_main
 _epi_main:
-    addi r6, 5
+    addi r6, 3
     jalr r0, r5

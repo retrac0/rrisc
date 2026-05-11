@@ -17,7 +17,8 @@ Source format:
   .float value[, ...]   emit four 12-bit words (48-bit RRISC float) per value
   .fill count[, value]   emit count words of value (default 0)
   .align n               advance address to next multiple of n
-  .unicode "string"      emit UTF-8 bytes of string, one byte per word
+  .str "string"          emit UTF-8 bytes of string, one byte per word
+  .strz "string"         same as .str plus a trailing 0 word (NUL)
   .org address           set current address counter
 
 Number literals:
@@ -64,10 +65,11 @@ class Statement:
     filename:     str
     lineno:       int
     labels:       list
-    mnemonic:     str   # lowercased; '' for labels-only lines
+    mnemonic:     str   # opcode/directive name as parsed; '' for labels-only lines
     operands_str: str   # text after mnemonic, stripped; '' if none
     addr:         int = 0
     source_index: int = 0
+    section:      str = "text"  # current section (see ``assign_addresses`` / Layout.hs)
 
 # -- error --
 
@@ -547,10 +549,50 @@ def substitute(lines: list, define_table: dict) -> list:
     return out
 
 
-def assign_addresses(lines: list) -> tuple:
+def _split_comma_nonempty(ops: str) -> list[str]:
+    """Like Haskell ``splitComma`` / ``delta`` operand splitting."""
+    if not ops or not ops.strip():
+        return []
+    return [x.strip() for x in ops.split(",")]
+
+
+def _is_linkage_directive(mnem: str) -> bool:
+    m = mnem.lower().strip()
+    return m in (".global", ".globl", ".local")
+
+
+def group_contig_by_section(stmts: list) -> list[list]:
+    """``groupContigBySection`` from Layout.hs — split runs with the same ``section``."""
+    if not stmts:
+        return []
+    out = []
+    cur_sec = getattr(stmts[0], "section", "text")
+    chunk: list = []
+    for s in stmts:
+        sec = getattr(s, "section", "text")
+        if sec == cur_sec:
+            chunk.append(s)
+        else:
+            out.append(chunk)
+            chunk = [s]
+            cur_sec = sec
+    if chunk:
+        out.append(chunk)
+    return out
+
+
+def assign_addresses(lines: list, *, object_layout: bool = False) -> tuple:
     """Stage 7: tokenize SourceLines, collect labels, assign word addresses.
-    Returns (stmts, label_table)."""
+
+    Matches ``assignAddresses`` / ``RRISC.Asm.Layout`` (single linear ``addr``,
+    ``.section`` switches section without resetting ``addr``, ``.org`` does not
+    emit a statement).
+
+    When ``object_layout`` is True, ``.base`` is rejected like ``ras`` (flat mode
+    may still use ``.base`` for register-relative addressing).
+    """
     addr = 0
+    cur_sec = "text"
     stmts = []
     labels = {}
 
@@ -559,70 +601,107 @@ def assign_addresses(lines: list) -> tuple:
         if stmt is None:
             continue
 
+        mnem_raw = stmt.mnemonic
+        mnem = mnem_raw
+
+        if mnem == ".section":
+            name = stmt.operands_str.strip()
+            if not name:
+                raise AsmError(sl.filename, sl.lineno, ".section requires a section name")
+            stmt.addr = addr
+            stmt.section = name
+            stmts.append(stmt)
+            cur_sec = name
+            continue
+
+        stmt.section = cur_sec
+        stmt.addr = addr
+
         for label in stmt.labels:
             if label in labels:
                 raise AsmError(sl.filename, sl.lineno, f"duplicate label '{label}'")
             labels[label] = addr
 
-        stmt.addr = addr
-
-        if not stmt.mnemonic:
-            stmts.append(stmt)  # keep so _labels_from_stmts can find standalone labels
-            continue
-
-        mnem = stmt.mnemonic
-        ops  = stmt.operands_str
-
-        if mnem.lower() in ('.global', '.globl', '.local'):
+        if not mnem_raw:
             stmts.append(stmt)
             continue
 
-        if mnem == '.org':
-            if not ops:
+        if mnem == ".org":
+            ops = stmt.operands_str
+            if not ops.strip():
                 raise AsmError(sl.filename, sl.lineno, ".org requires an address")
             addr = _eval_expr(ops, labels, sl.filename, sl.lineno)
             if not 0 <= addr <= WORD_MASK:
-                raise AsmError(sl.filename, sl.lineno,
-                               f".org address {addr} out of range (0..{WORD_MASK})")
+                raise AsmError(
+                    sl.filename,
+                    sl.lineno,
+                    f".org address {addr} out of range (0..{WORD_MASK})",
+                )
+            continue
+
+        if mnem == ".align":
+            ops = stmt.operands_str
+            if not ops.strip():
+                raise AsmError(sl.filename, sl.lineno, ".align requires an argument")
+            align = _eval_expr(ops.strip(), labels, sl.filename, sl.lineno)
+            if align < 1:
+                raise AsmError(
+                    sl.filename,
+                    sl.lineno,
+                    f".align argument {align} must be >= 1",
+                )
+            stmts.append(stmt)
+            addr = (addr + align - 1) // align * align
+            continue
+
+        if _is_linkage_directive(mnem_raw):
+            stmts.append(stmt)
             continue
 
         stmts.append(stmt)
 
-        if mnem == 'li':
+        ops = stmt.operands_str
+
+        if object_layout and mnem == ".base":
+            raise AsmError(
+                sl.filename,
+                sl.lineno,
+                "'.base' is not supported by this assembler",
+            )
+
+        if mnem == "li":
             addr += 2
-        elif mnem == '.word':
-            addr += len(ops.split(',')) if ops else 1
-        elif mnem == '.float':
-            addr += (len(ops.split(',')) if ops else 1) * 4
-        elif mnem == '.sixbit':
+        elif mnem == ".word":
+            parts = _split_comma_nonempty(ops)
+            addr += max(1, len(parts))
+        elif mnem == ".float":
+            parts = _split_comma_nonempty(ops)
+            addr += max(1, len(parts)) * 4
+        elif mnem == ".sixbit":
             addr += len(_parse_string_literal(ops, sl.filename, sl.lineno))
-        elif mnem == '.unicode':
+        elif mnem == ".str":
             s = _parse_string_literal(ops, sl.filename, sl.lineno)
-            addr += len(''.join(s).encode('utf-8'))
-        elif mnem == '.fill':
-            count_str = ops.split(',')[0].strip() if ops else ''
+            addr += len("".join(s).encode("utf-8"))
+        elif mnem == ".strz":
+            s = _parse_string_literal(ops, sl.filename, sl.lineno)
+            addr += 1 + len("".join(s).encode("utf-8"))
+        elif mnem == ".fill":
+            count_str = ops.split(",")[0].strip() if ops else ""
             if not count_str:
                 raise AsmError(sl.filename, sl.lineno, ".fill requires a count")
             count = _eval_expr(count_str, labels, sl.filename, sl.lineno)
             if count < 0:
-                raise AsmError(sl.filename, sl.lineno,
-                               f".fill count {count} must be non-negative")
+                raise AsmError(
+                    sl.filename,
+                    sl.lineno,
+                    f".fill count {count} must be non-negative",
+                )
             addr += count
-        elif mnem == '.align':
-            if not ops:
-                raise AsmError(sl.filename, sl.lineno, ".align requires an argument")
-            align = _eval_expr(ops, labels, sl.filename, sl.lineno)
-            if align < 1:
-                raise AsmError(sl.filename, sl.lineno,
-                               f".align argument {align} must be >= 1")
-            addr = (addr + align - 1) // align * align
-        elif mnem == '.base':
+        elif mnem == ".base":
             pass
-        elif mnem in ('jmp', 'call'):
+        elif mnem == "or":
             addr += 3
-        elif mnem == 'or':
-            addr += 3
-        elif mnem == 'xor':
+        elif mnem == "xor":
             addr += 4
         else:
             addr += 1
@@ -660,35 +739,66 @@ class Assembler:
         stmts, self.labels = self._relax_branches(stmts)
         return self._encode_all(stmts)
 
+    def assemble_object(self, source, cli_defines=None):
+        """Emit a relocatable ``ObjectFile`` (``assembleFileToObject`` / no branch relaxation)."""
+        from .asm_obj_emit import encode_to_object
+
+        cli_defines = dict(cli_defines or {})
+        raw = expand_includes(
+            source,
+            self.filename,
+            frozenset({os.path.normpath(os.path.abspath(self.filename))})
+            if self.filename
+            else frozenset(),
+            self.include_dirs,
+        )
+        raw, self.param_macros = collect_macro_defs(raw)
+        raw = expand_macros(raw, self.param_macros)
+        self._flat_lines = raw
+
+        lines = strip_lines(raw)
+        lines, self.macros = collect_defines(lines)
+        self.macros.update(cli_defines)
+        lines = filter_conditionals(lines, self.macros)
+        lines = substitute(lines, self.macros)
+
+        stmts, self.labels = assign_addresses(lines, object_layout=True)
+        return encode_to_object(stmts, self._flat_lines, self)
+
     # -- branch relaxation --
 
     def _stmt_size(self, stmt) -> int:
         mnem = stmt.mnemonic
         ops  = stmt.operands_str
         f, n = stmt.filename, stmt.lineno
-        if mnem in ('', '.base', '.align') or mnem.lower() in ('.global', '.globl', '.local'):
+        if mnem in ('', '.base', '.align', '.section') or mnem.lower() in ('.global', '.globl', '.local'):
             return 0
         if mnem == 'li':
             return 2
         if mnem == '.word':
-            return len(ops.split(',')) if ops else 1
+            parts = _split_comma_nonempty(ops)
+            return max(1, len(parts))
         if mnem == '.float':
-            return (len(ops.split(',')) if ops else 1) * 4
+            parts = _split_comma_nonempty(ops)
+            return max(1, len(parts)) * 4
         if mnem == '.sixbit':
             try: return len(_parse_string_literal(ops, f, n))
             except Exception: return 0
-        if mnem == '.unicode':
+        if mnem == '.str':
             try:
                 s = _parse_string_literal(ops, f, n)
                 return len(''.join(s).encode('utf-8'))
+            except Exception: return 0
+        if mnem == '.strz':
+            try:
+                s = _parse_string_literal(ops, f, n)
+                return 1 + len(''.join(s).encode('utf-8'))
             except Exception: return 0
         if mnem == '.fill':
             count_str = ops.split(',')[0].strip() if ops else ''
             if not count_str: return 0
             try: return max(0, _eval_expr(count_str, {}, f, n))
             except Exception: return 0
-        if mnem in ('jmp', 'call'):
-            return 3
         if mnem == 'or':
             return 3
         if mnem == 'xor':
@@ -718,13 +828,22 @@ class Assembler:
             addr += self._stmt_size(stmt)
 
     def _relax_branches(self, stmts):
+        chunks = group_contig_by_section(stmts)
+        merged: list = []
+        for ch in chunks:
+            merged.extend(self._relax_branches_chunk(ch))
+        return merged, self._labels_from_stmts(merged)
+
+    def _relax_branches_chunk(self, stmts):
+        stmts = list(stmts)
         skip_n = 0
         for _iteration in range(20):
             labels = self._labels_from_stmts(stmts)
             violations = [
-                i for i, s in enumerate(stmts)
-                if s.mnemonic in ('bt', 'bf')
-                and re.fullmatch(r'[A-Za-z_]\w*', s.operands_str.strip())
+                i
+                for i, s in enumerate(stmts)
+                if s.mnemonic in ("bt", "bf")
+                and re.fullmatch(r"[A-Za-z_]\w*", s.operands_str.strip())
                 and s.operands_str.strip() in labels
                 and not (-64 <= labels[s.operands_str.strip()] - s.addr <= 63)
             ]
@@ -733,18 +852,55 @@ class Assembler:
             for i in reversed(violations):
                 stmt = stmts[i]
                 target = stmt.operands_str.strip()
-                skip_lbl = f'__br_{skip_n}'
+                skip_lbl = f"__br_{skip_n}"
                 skip_n += 1
-                inv = 'bf' if stmt.mnemonic == 'bt' else 'bt'
+                inv = "bf" if stmt.mnemonic == "bt" else "bt"
                 f, ln, si = stmt.filename, stmt.lineno, stmt.source_index
-                stmts[i:i+1] = [
-                    Statement(f, ln, list(stmt.labels), inv,    skip_lbl,        addr=-1, source_index=si),
-                    Statement(f, ln, [],                'li',   f'r4, {target}', addr=-1, source_index=si),
-                    Statement(f, ln, [],                'jalr', 'r0, r4',        addr=-1, source_index=si),
-                    Statement(f, ln, [skip_lbl],        '',     '',              addr=-1, source_index=si),
+                sec = getattr(stmt, "section", "text")
+                stmts[i : i + 1] = [
+                    Statement(
+                        f,
+                        ln,
+                        list(stmt.labels),
+                        inv,
+                        skip_lbl,
+                        addr=-1,
+                        source_index=si,
+                        section=sec,
+                    ),
+                    Statement(
+                        f,
+                        ln,
+                        [],
+                        "li",
+                        f"r4, {target}",
+                        addr=-1,
+                        source_index=si,
+                        section=sec,
+                    ),
+                    Statement(
+                        f,
+                        ln,
+                        [],
+                        "jalr",
+                        "r0, r4",
+                        addr=-1,
+                        source_index=si,
+                        section=sec,
+                    ),
+                    Statement(
+                        f,
+                        ln,
+                        [skip_lbl],
+                        "",
+                        "",
+                        addr=-1,
+                        source_index=si,
+                        section=sec,
+                    ),
                 ]
             self._recompute_stmt_addrs(stmts)
-        return stmts, self._labels_from_stmts(stmts)
+        return stmts
 
     # -- encoding --
 
@@ -775,7 +931,7 @@ class Assembler:
         f, n    = stmt.filename, stmt.lineno
         addr    = stmt.addr
 
-        if mnem.lower() in ('.global', '.globl', '.local'):
+        if mnem.lower() in ('.global', '.globl', '.local', '.section'):
             return []
 
         match mnem:
@@ -816,9 +972,14 @@ class Assembler:
                     result.append(v)
                 return result if len(result) != 1 else result[0]
 
-            case '.unicode':
+            case '.str':
                 s = _parse_string_literal(ops_str.strip(), f, n)
                 result = list(''.join(s).encode('utf-8'))
+                return result if len(result) != 1 else result[0]
+
+            case '.strz':
+                s = _parse_string_literal(ops_str.strip(), f, n)
+                result = list(''.join(s).encode('utf-8')) + [0]
                 return result if len(result) != 1 else result[0]
 
             case '.float':
@@ -959,28 +1120,6 @@ class Assembler:
                 self._expect(ops, 0, mnem, f, n)
                 return encode_r3(OP_SUB, 0, 0, 7)
 
-            case 'jmp':
-                self._expect(ops, 1, mnem, f, n)
-                val = _eval_expr(ops[0], self.labels, f, n) & WORD_MASK
-                lower = val & IMM6_MASK
-                upper = (val >> 6) & IMM6_MASK
-                return [
-                    encode_ri(OP_LUI,  4, upper),
-                    encode_ri(OP_ADDI, 4, lower),
-                    encode_r3(OP_SPEC, 0, 4, RB_JALR),
-                ]
-
-            case 'call':
-                self._expect(ops, 1, mnem, f, n)
-                val = _eval_expr(ops[0], self.labels, f, n) & WORD_MASK
-                lower = val & IMM6_MASK
-                upper = (val >> 6) & IMM6_MASK
-                return [
-                    encode_ri(OP_LUI,  4, upper),
-                    encode_ri(OP_ADDI, 4, lower),
-                    encode_r3(OP_SPEC, 5, 4, RB_JALR),
-                ]
-
             case 'or':
                 self._expect(ops, 3, mnem, f, n)
                 rx = _reg(ops[0], f, n)
@@ -1076,7 +1215,8 @@ def format_listing(flat_lines, listing_entries):
 
 def main():
     print(
-        "pytools.asm: deprecated: use ras instead (cd tools && cabal run ras -- …).",
+        "pytools.asm: deprecated: use `python -m pytools.pyras --format bin …` "
+        "(flat assembly) or the Haskell `ras` binary for relocatable `.o`.",
         file=sys.stderr,
     )
     parser = argparse.ArgumentParser(description='RRISC assembler')

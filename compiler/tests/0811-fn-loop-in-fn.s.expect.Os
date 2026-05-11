@@ -42,10 +42,10 @@ _L_sum_ne_27:
     addi r1, 3
     lwr r2, r1
     sub r0, r0, r2
-    bt _B_sum_2
+    bt _B_sum_3
     clrt
     bf _B_sum_5
-_B_sum_2:
+_B_sum_3:
     and r1, r6, r7
     addi r1, 6
     lwr r3, r1
@@ -56,9 +56,6 @@ _B_sum_2:
     and r1, r6, r7
     addi r1, 5
     swr r2, r1
-    clrt
-    bf _B_sum_3
-_B_sum_3:
     and r1, r6, r7
     addi r1, 4
     lwr r3, r1

@@ -1,6 +1,6 @@
-; 1020-unicode.s -- test .unicode directive
+; 1020-str.s -- test .str directive
 ;
-; .unicode stores UTF-8 bytes one per word.  This test encodes "Hi€":
+; .str stores UTF-8 bytes one per word.  This test encodes "Hi€":
 ;   'H'  = 0x48         = 0o110
 ;   'i'  = 0x69         = 0o151
 ;   '€'  = U+20AC -> UTF-8 0xE2 0x82 0xAC = 0o342, 0o202, 0o254
@@ -24,4 +24,4 @@
         lwr  r6, r1             ; r6 = 0xAC (0o254, third byte of €)
         halt
 
-msg:    .unicode "Hi€"
+msg:    .str "Hi€"

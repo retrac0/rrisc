@@ -26,9 +26,6 @@ main:
     subi r6, 1
     swr r5, r6
     subi r6, 2
-_B_main_0:
-    clrt
-    bf _B_main_1
 _B_main_1:
     li r1, set_flag
     jalr r5, r1
@@ -37,15 +34,7 @@ _B_main_1:
     and r1, r6, r7
     lwr r2, r1
     sub r0, r0, r2
-    bt _B_main_4
-    clrt
-    bf _B_main_2
-_B_main_2:
-    clrt
-    bf _B_main_5
-_B_main_4:
-    clrt
-    bf _B_main_5
+    bt _B_main_5
 _B_main_5:
     li r1, flag
     lwr r2, r1

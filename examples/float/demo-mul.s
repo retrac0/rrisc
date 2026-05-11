@@ -60,10 +60,8 @@ _start:
         jalr   r5, r1
         halt
 
-hdr:    .unicode "1.5 * 1.5 = "
-        .word 0
-nl:     .unicode "\n"
-        .word 0
+hdr:    .strz "1.5 * 1.5 = "
+nl:     .strz "\n"
 
 %include "io/putchar.s"
 %include "io/putstr.s"

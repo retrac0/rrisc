@@ -44,15 +44,6 @@ _L_main_ne_27:
     sub r0, r0, r2
     bt _B_main_7
     clrt
-    bf _B_main_1
-_B_main_2:
-    clrt
-    bf _B_main_7
-_B_main_4:
-    clrt
-    bf _B_main_1
-_B_main_5:
-    clrt
     bf _B_main_8
 _B_main_7:
     and r1, r6, r7

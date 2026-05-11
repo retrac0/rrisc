@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module RCC.OptFrameworkSSA
   ( optimizeSSAWith
+  , optimizeSSAWithUntilStable
   , defaultSsaPasses
   ) where
 
@@ -12,7 +13,9 @@ import qualified RCC.SSA.Prog as SP
 
 defaultSsaPasses :: [Pass SP.SSAProg]
 defaultSsaPasses =
-  -- Canonical SSA pipeline pass IDs (stable, user-facing):
+  -- Canonical SSA pipeline pass IDs (stable, user-facing).
+  -- CFG-editing passes rely on `recomputePredSucc` (see Optimize) to keep
+  -- `bPreds`/`bSuccs` and phi incoming edges consistent.
   [ Pass
       { passId = PassId "ssa-cfg-normalize"
       , passDesc = "Recompute preds/succs and drop unreachable blocks"
@@ -46,7 +49,7 @@ defaultSsaPasses =
   , Pass
       { passId = PassId "ssa-phi-simplify"
       , passDesc = "Trivial phi elimination (to copies)"
-      , passDefaultOn = []
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.phiSimplifyProg p in PassResult out ch
       }
   , Pass
@@ -64,25 +67,25 @@ defaultSsaPasses =
   , Pass
       { passId = PassId "ssa-cfg-shrink"
       , passDesc = "Merge fall-through blocks, fold empty gotos, phis (fixpoint)"
-      , passDefaultOn = []
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.cfgShrinkProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-pure-cse"
       , passDesc = "Common subexpression elimination on pure ops (per basic block)"
-      , passDefaultOn = []
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.pureCSEProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-copy-prop-post-cse"
       , passDesc = "Copy propagation after CSE"
-      , passDefaultOn = []
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.copyPropProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-dce-post-cse"
       , passDesc = "DCE after CSE and copy"
-      , passDefaultOn = []
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.dceProg p in PassResult out ch
       }
   , Pass
@@ -100,13 +103,13 @@ defaultSsaPasses =
   , Pass
       { passId = PassId "ssa-tail-merge-blocks"
       , passDesc = "Merge identical basic blocks"
-      , passDefaultOn = []
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.tailMergeProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-cfg-normalize-post-opt"
       , passDesc = "Normalize CFG after optional CFG transforms"
-      , passDefaultOn = []
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.normalizeCFGProg p in PassResult out ch
       }
   , Pass
@@ -118,8 +121,20 @@ defaultSsaPasses =
   , Pass
       { passId = PassId "ssa-cfg-thread"
       , passDesc = "Jump/branch threading"
-      , passDefaultOn = [O1]
+      , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.branchThreadProg p in PassResult out ch
+      }
+  , Pass
+      { passId = PassId "ssa-cfg-normalize-post-thread"
+      , passDesc = "Normalize CFG after branch threading"
+      , passDefaultOn = [Os, O1]
+      , passRun = \p -> let (out, ch) = SOpt.normalizeCFGProg p in PassResult out ch
+      }
+  , Pass
+      { passId = PassId "ssa-cfg-simplify-post-thread"
+      , passDesc = "CFG simplification after branch threading"
+      , passDefaultOn = [Os, O1]
+      , passRun = \p -> let (out, ch) = SOpt.simplifyCFGProg p in PassResult out ch
       }
   , Pass
       { passId = PassId "ssa-float-arg-forward"
@@ -138,6 +153,18 @@ defaultSsaPasses =
       , passDesc = "Deduplicate float rodata globals"
       , passDefaultOn = [Os, O1]
       , passRun = \p -> let (out, ch) = SOpt.dedupeFloatRoDataProg p in PassResult out ch
+      }
+  , Pass
+      { passId = PassId "ssa-round-cleanup-v1"
+      , passDesc = "Composite: normalize CFG → simplify → DCE"
+      , passDefaultOn = []
+      , passRun = roundCleanupV1
+      }
+  , Pass
+      { passId = PassId "ssa-round-cleanup-v2"
+      , passDesc = "Composite: phi simplify → normalize → simplify → DCE"
+      , passDefaultOn = []
+      , passRun = roundCleanupV2
       }
 
   -- Back-compat aliases for older IDs (all default-off).
@@ -167,7 +194,28 @@ defaultSsaPasses =
         , passRun = \p -> let (out, ch) = f p in PassResult out ch
         }
 
+roundCleanupV1 :: SP.SSAProg -> PassResult SP.SSAProg
+roundCleanupV1 p =
+  let (p1, c1) = SOpt.normalizeCFGProg p
+      (p2, c2) = SOpt.simplifyCFGProg p1
+      (p3, c3) = SOpt.dceProg p2
+   in PassResult p3 (c1 || c2 || c3)
+
+roundCleanupV2 :: SP.SSAProg -> PassResult SP.SSAProg
+roundCleanupV2 p =
+  let (p1, c1) = SOpt.phiSimplifyProg p
+      (p2, c2) = SOpt.normalizeCFGProg p1
+      (p3, c3) = SOpt.simplifyCFGProg p2
+      (p4, c4) = SOpt.dceProg p3
+   in PassResult p4 (c1 || c2 || c3 || c4)
+
 optimizeSSAWith :: Map PassId Bool -> [Pass SP.SSAProg] -> SP.SSAProg -> SP.SSAProg
 optimizeSSAWith enabled passes prog =
   runPasses enabled passes prog
+
+-- | Run SSA passes repeatedly until stable or @maxRounds@ sweeps (see 'Pass.runPassesUntilStable').
+optimizeSSAWithUntilStable ::
+  Map PassId Bool -> Int -> [Pass SP.SSAProg] -> SP.SSAProg -> (SP.SSAProg, Int, Bool)
+optimizeSSAWithUntilStable enabled maxRounds passes prog =
+  runPassesUntilStable enabled maxRounds passes prog
 

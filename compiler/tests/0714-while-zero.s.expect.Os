@@ -7,30 +7,15 @@
 
     .global main
 main:
-    subi r6, 2
-_B_main_0:
+    subi r6, 1
+_B_main_4:
     and r2, r0, r0
     and r1, r6, r7
     swr r2, r1
-    clrt
-    bf _B_main_5
-_B_main_1:
-    clrt
-    bf _B_main_4
-_B_main_4:
     and r1, r6, r7
-    addi r1, 1
     lwr r2, r1
     clrt
     bf _epi_main
-_B_main_5:
-    and r1, r6, r7
-    lwr r2, r1
-    and r1, r6, r7
-    addi r1, 1
-    swr r2, r1
-    clrt
-    bf _B_main_1
 _epi_main:
-    addi r6, 2
+    addi r6, 1
     jalr r0, r5

@@ -34,7 +34,7 @@ _B_main_1:
     sub r0, r0, r2
     bt _B_main_2
     clrt
-    bf _B_main_10
+    bf _B_main_11
 _B_main_2:
     li r2, 1
     and r1, r6, r7
@@ -46,7 +46,7 @@ _B_main_2:
     sub r0, r0, r2
     bt _B_main_3
     clrt
-    bf _B_main_9
+    bf _B_main_11
 _B_main_3:
     li r2, 1
     and r1, r6, r7
@@ -58,7 +58,7 @@ _B_main_3:
     sub r0, r0, r2
     bt _B_main_4
     clrt
-    bf _B_main_8
+    bf _B_main_11
 _B_main_4:
     li r2, 1
     and r1, r6, r7
@@ -70,24 +70,12 @@ _B_main_4:
     sub r0, r0, r2
     bt _B_main_5
     clrt
-    bf _B_main_7
+    bf _B_main_11
 _B_main_5:
     and r1, r6, r7
     lwr r2, r1
     clrt
     bf _epi_main
-_B_main_7:
-    clrt
-    bf _B_main_8
-_B_main_8:
-    clrt
-    bf _B_main_9
-_B_main_9:
-    clrt
-    bf _B_main_10
-_B_main_10:
-    clrt
-    bf _B_main_11
 _B_main_11:
     and r2, r0, r0
     clrt

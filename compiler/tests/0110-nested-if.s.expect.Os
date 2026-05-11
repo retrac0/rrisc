@@ -71,8 +71,6 @@ _B_main_6:
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_10
-    clrt
-    bf _B_main_7
 _B_main_7:
     and r1, r6, r7
     lwr r3, r1
@@ -80,9 +78,9 @@ _B_main_7:
     sub r1, r3, r2
     sub r0, r0, r1
     li r2, 1
-    bf _L_main_ne_75
+    bf _L_main_ne_73
     li r2, 0
-_L_main_ne_75:
+_L_main_ne_73:
     and r1, r6, r7
     addi r1, 8
     swr r2, r1
@@ -91,8 +89,6 @@ _L_main_ne_75:
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_10
-    clrt
-    bf _B_main_8
 _B_main_8:
     and r2, r0, r0
     and r1, r6, r7
@@ -135,8 +131,6 @@ _B_main_14:
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_18
-    clrt
-    bf _B_main_15
 _B_main_15:
     and r2, r0, r0
     and r1, r6, r7
@@ -147,8 +141,6 @@ _B_main_15:
     lwr r2, r1
     sub r0, r0, r2
     bt _B_main_18
-    clrt
-    bf _B_main_16
 _B_main_16:
     and r2, r0, r0
     and r1, r6, r7

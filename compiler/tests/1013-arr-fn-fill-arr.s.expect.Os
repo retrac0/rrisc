@@ -42,10 +42,10 @@ _B_fill_1:
     addi r1, 4
     lwr r2, r1
     sub r0, r0, r2
-    bt _B_fill_2
+    bt _B_fill_3
     clrt
     bf _B_fill_5
-_B_fill_2:
+_B_fill_3:
     and r1, r6, r7
     lwr r3, r1
     and r1, r6, r7
@@ -62,9 +62,6 @@ _B_fill_2:
     addi r1, 6
     lwr r1, r1
     swr r2, r1
-    clrt
-    bf _B_fill_3
-_B_fill_3:
     and r1, r6, r7
     addi r1, 5
     lwr r3, r1

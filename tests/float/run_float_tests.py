@@ -133,7 +133,7 @@ def dump_int_block() -> str:
 
 def common_data() -> str:
     return (
-        "spc: .unicode \" \"\n"
+        "spc: .str \" \"\n"
         "     .word 0\n"
     )
 
