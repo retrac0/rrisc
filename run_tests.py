@@ -6,7 +6,7 @@ and optional lib/librcc.s direct harness (tools/tests/librcc/run_librcc_tests.py
 
 Replaces compiler/run_tests.sh and runtests.sh with one subprocess-based harness:
   - Correct argv handling (no shell splitting bugs)
-  - Optional matrix over the Haskell assembler (default) and deprecated Python asm.py
+  - Optional matrix over the Haskell assembler (default) and deprecated Python pytools.asm
     plus Python, C, and Haskell (rsim) simulators by default; use --simulators to trim
   - Parallel execution via ThreadPoolExecutor
 
@@ -46,11 +46,12 @@ from typing import Sequence, TextIO
 from rrisc_toolchain import (
     IO_RCC_EXTRA_DEFAULT,
     IO_SIM_EXTRA_DEFAULT,
-    asm_py_path,
     lib_dir,
     parse_flags_file,
     parse_rcc_defines,
     py_asm_cmd,
+    py_asm_argv,
+    py_sim_argv,
     python_exe,
     ras_cmd,
     ras_emit_obj_cmd,
@@ -63,7 +64,6 @@ from rrisc_toolchain import (
     resolve_rsim,
     resolve_sim2,
     rld_cmd,
-    sim_py_path,
 )
 from toolchain_checks import (
     collect_toolchain_asm_sources,
@@ -72,15 +72,15 @@ from toolchain_checks import (
 )
 
 PY_ASM_IN_MATRIX_DEPRECATION = (
-    "run_tests: warning: --assemblers py (asm.py) is deprecated; "
+    "run_tests: warning: --assemblers py (pytools.asm) is deprecated; "
     "use ras (default --assemblers hs). Example: cabal build exe:ras && cabal list-bin exe:ras."
 )
 
 
 def _stderr_without_py_asm_deprecation(stderr: str) -> str:
-    """asm.py prints a one-line deprecation to stderr before diagnostics; strip it for golden compares."""
+    """pytools.asm prints a one-line deprecation to stderr before diagnostics; strip it for golden compares."""
     lines = stderr.splitlines(keepends=True)
-    if lines and lines[0].startswith("asm.py:") and "deprecated" in lines[0]:
+    if lines and lines[0].startswith("pytools.asm:") and "deprecated" in lines[0]:
         return "".join(lines[1:])
     return stderr
 
@@ -103,6 +103,11 @@ def run_capture(
     else:
         stdin_f = None
         stdin_arg = subprocess.DEVNULL
+    child_env = os.environ.copy()
+    if env is not None:
+        child_env.update(env)
+    # Exercise SSA verifyFunc in CI unless opted out (RCC_VERIFY_SSA=0 / false / no).
+    child_env.setdefault("RCC_VERIFY_SSA", "1")
     try:
         return subprocess.run(
             list(argv),
@@ -110,7 +115,7 @@ def run_capture(
             stdin=stdin_arg,
             capture_output=True,
             text=True,
-            env=env,
+            env=child_env,
             check=False,
         )
     finally:
@@ -323,8 +328,7 @@ def _run_rcc_output_variant_sims(
         sim_base = sim_runner_base(cfg, defs)
         if sim_id == "py":
             sim_argv = [
-                python_exe(),
-                str(sim_py_path(cfg.root)),
+                *py_sim_argv(),
                 *sim_base,
                 *sim_extra,
             ]
@@ -933,8 +937,7 @@ def run_io_terminal_test(cfg: RunConfig, src: Path, tmp_root: Path, gcc_path: Pa
         sim_argv: list[str]
         if sim_id == "py":
             sim_argv = [
-                python_exe(),
-                str(sim_py_path(cfg.root)),
+                *py_sim_argv(),
                 *io_sim_base,
                 *per_sim,
                 str(bin_path),
@@ -1072,13 +1075,13 @@ def bless_rcc_output(cfg: RunConfig) -> int:
     lib = lib_dir(cfg.root)
     if not cfg.ras_path:
         print(
-            "bless-output: warning: ras not found; using deprecated asm.py. "
+            "bless-output: warning: ras not found; using deprecated pytools.asm. "
             "Build exe:ras in tools/.",
             file=sys.stderr,
         )
     elif not cfg.rld_path:
         print(
-            "bless-output: warning: rld not found; falling back to flat ras/asm.py "
+            "bless-output: warning: rld not found; falling back to flat ras/pytools.asm "
             "(build exe:rld for crt0 link).",
             file=sys.stderr,
         )
@@ -1170,8 +1173,7 @@ def bless_rcc_output(cfg: RunConfig) -> int:
                         variant_failed = True
                         break
                 sim_argv = [
-                    python_exe(),
-                    str(sim_py_path(cfg.root)),
+                    *py_sim_argv(),
                     *sim_runner_base(cfg, defs),
                     *sim_extra,
                 ]
@@ -1329,7 +1331,7 @@ def run_asm_error_test(cfg: RunConfig, src: Path) -> TResult:
                 cwd=cfg.root,
             )
     else:
-        r = run_capture([python_exe(), str(asm_py_path(cfg.root)), str(src)], cwd=cfg.root)
+        r = run_capture([*py_asm_argv(), str(src)], cwd=cfg.root)
     if r.returncode == 0:
         return TResult(False, f"asmerr:{base}", "assembler succeeded but should fail")
     if not expect.is_file():
@@ -1426,7 +1428,7 @@ def run_asm_success_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TRes
             continue
 
         if sim_id == "py":
-            sim_argv = [python_exe(), str(sim_py_path(cfg.root)), *sim_base_py, *flags, str(primary_bin)]
+            sim_argv = [*py_sim_argv(), *sim_base_py, *flags, str(primary_bin)]
         elif sim_id == "hs":
             sim_argv = [str(cfg.rsim_path), *sim_base_py, *flags, str(primary_bin)]
         else:
@@ -1525,8 +1527,7 @@ def run_example_test(cfg: RunConfig, src: Path, tmp_root: Path) -> list[TResult]
             continue
         if sim_id == "py":
             argv = [
-                python_exe(),
-                str(sim_py_path(cfg.root)),
+                *py_sim_argv(),
                 "--terminal",
                 "--summary",
                 "--start",
@@ -1827,7 +1828,7 @@ def main() -> int:
     ap.add_argument(
         "--assemblers",
         default="hs",
-        help="comma list: hs (default), py (deprecated asm.py)",
+        help="comma list: hs (default), py (deprecated pytools.asm)",
     )
     ap.add_argument(
         "--also-rsim",

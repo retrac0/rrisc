@@ -11,7 +11,7 @@
 ; Test 3: 6  x ror of r3=0o7700    -> r3=0o0077 (logical right shift by 6)
 ; Test 4: 6  x rol of r4=r3        -> r4=0o7700 (shift back)
 ;
-; Expected final register state (verify with sim.py --trace):
+; Expected final register state (verify with python3 -m pytools.sim --trace):
 ;   r1 = 0001   r2 = 0001   r3 = 0077   r4 = 7700   T = 0
 
         .org 0o1000

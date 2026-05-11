@@ -13,9 +13,9 @@ The expected UART output is computed in Python using ``pytools.float48`` (the bi
 reference model) so a discrepancy means the asm is wrong, not the harness.
 
 Run:
-  python3 tools/tests/float/run_float_tests.py
-  python3 tools/tests/float/run_float_tests.py --verbose
-  python3 tools/tests/float/run_float_tests.py --filter fmul
+  python3 tests/float/run_float_tests.py
+  python3 tests/float/run_float_tests.py --verbose
+  python3 tests/float/run_float_tests.py --filter fmul
 
 The harness is also wired into run_tests.py as the `float` suite.
 """
@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-ROOT = next(p for p in Path(__file__).resolve().parents if (p / "rrisc_toolchain.py").is_file())
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from rrisc_toolchain import lib_dir, py_asm_cmd, py_sim_argv  # noqa: E402

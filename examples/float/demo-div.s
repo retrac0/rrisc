@@ -5,12 +5,12 @@
 ; in 12 bits of mantissa: q = floor((a_hi << 11) / b_hi), low cells zero.
 ;
 ; Golden words:
-;   python3 -c "from float48 import format_words, from_float; print(format_words(from_float(3.0)))"
+;   python3 -c "from pytools.float48 import format_words, from_float; print(format_words(from_float(3.0)))"
 ;   ->  1001 6000 0000 0000   (= 0x401 0xc00 0x000 0x000)
 ;
 ; Build & run:
-;   python3 asm.py -I lib examples/float/demo-div.s -o /tmp/f.bin
-;   python3 sim.py /tmp/f.bin --terminal --start 0o1000
+;   env PYTHONPATH=. python3 -m pytools.asm -I lib examples/float/demo-div.s -o /tmp/f.bin
+;   env PYTHONPATH=. python3 -m pytools.sim /tmp/f.bin --terminal --start 0o1000
 
 %include "macros/uart_tx.inc"
 

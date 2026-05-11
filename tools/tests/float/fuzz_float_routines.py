@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import run_float_tests as ft  # noqa: E402
 
-import float48 as f48  # noqa: E402
+import pytools.float48 as f48  # noqa: E402
 
 # All float routines except __ftoa (no stable Python oracle without mirroring asm).
 DEFAULT_ROUTINES = (

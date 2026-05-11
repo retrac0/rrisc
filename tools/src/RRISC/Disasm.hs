@@ -1,5 +1,5 @@
 {-# LANGUAGE MultiWayIf #-}
--- | Instruction decode and disassembly (isa.py).
+-- | Instruction decode and disassembly (pytools/isa.py).
 module RRISC.Disasm (branchOffset, disasmWord) where
 
 import Data.Bits ((.&.), shiftR)

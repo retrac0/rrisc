@@ -4,12 +4,12 @@
 ; round-trips back to a decimal string with __ftoa.
 ;
 ; Golden words:
-;   python3 -c "from float48 import format_words, from_float; print(format_words(from_float(12.5)))"
+;   python3 -c "from pytools.float48 import format_words, from_float; print(format_words(from_float(12.5)))"
 ;   ->  2003 6200 0000 0000   (= 0x403 0xc80 0x000 0x000)
 ;
 ; Build & run:
-;   python3 asm.py -I lib examples/float/demo-parse.s -o /tmp/f.bin
-;   python3 sim.py /tmp/f.bin --terminal --start 0o1000
+;   env PYTHONPATH=. python3 -m pytools.asm -I lib examples/float/demo-parse.s -o /tmp/f.bin
+;   env PYTHONPATH=. python3 -m pytools.sim /tmp/f.bin --terminal --start 0o1000
 
 %include "macros/uart_tx.inc"
 

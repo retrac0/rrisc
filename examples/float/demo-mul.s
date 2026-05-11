@@ -4,15 +4,15 @@
 ; Prints the result as hex cells and as a decimal string.
 ;
 ; Golden words:
-;   python3 -c "from float48 import format_words, from_float; print(format_words(from_float(2.25)))"
+;   python3 -c "from pytools.float48 import format_words, from_float; print(format_words(from_float(2.25)))"
 ;   ->  1001 4400 0000 0000   (= 0x401 0x900 0x000 0x000)
 ;
 ; __fmul has documented sig_hi/sig_mid precision (~24 bits): for 1.5 the
 ; product 0x900 << 12 fits exactly in sig_hi:sig_mid so the result is exact.
 ;
 ; Build & run:
-;   python3 asm.py -I lib examples/float/demo-mul.s -o /tmp/f.bin
-;   python3 sim.py /tmp/f.bin --terminal --start 0o1000
+;   env PYTHONPATH=. python3 -m pytools.asm -I lib examples/float/demo-mul.s -o /tmp/f.bin
+;   env PYTHONPATH=. python3 -m pytools.sim /tmp/f.bin --terminal --start 0o1000
 
 %include "macros/uart_tx.inc"
 

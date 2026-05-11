@@ -28,7 +28,7 @@ import sys
 import threading
 from collections import deque
 
-from sixbit import encode_sixbit, decode_sixbit
+from .sixbit import encode_sixbit, decode_sixbit
 
 _RX_DEPTH = 16
 

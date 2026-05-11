@@ -10,7 +10,7 @@
 
 #define WORD_MASK  0xFFFu
 
-/* Opcodes (bits 11:9) — must match isa.py / Arch.md */
+/* Opcodes (bits 11:9) — must match pytools/isa.py / Arch.md */
 #define OP_AND  0
 #define OP_SUB  1
 #define OP_ADD  2
@@ -60,7 +60,7 @@ static int      T  = 0;
 static uint16_t pc = 0;
 static int      use_terminal = 0;
 static int      use_translate = 0;
-/* UART RX: one prefetched word for 0o7773 (matches sim.py pipe/stdin behavior). */
+/* UART RX: one prefetched word for 0o7773 (matches pytools.sim pipe/stdin behavior). */
 static int      uart_rx_have = 0;
 static uint16_t uart_rx_val = 0;
 
@@ -88,7 +88,7 @@ static uint16_t parse_addr(const char *s) {
     return (uint16_t)(strtoul(s, NULL, 0) & WORD_MASK);
 }
 
-/* Match sim.py: pc = int(args.start, 8) — bare digits are octal, not decimal. */
+/* Match pytools.sim: pc = int(args.start, 8) — bare digits are octal, not decimal. */
 static uint16_t parse_start_like_sim_py(const char *s) {
     if (s[0] == '0' && (s[1] == 'o' || s[1] == 'O'))
         return (uint16_t)(strtoul(s + 2, NULL, 8) & WORD_MASK);
@@ -119,7 +119,7 @@ static int parse_bank_spec(const char *spec) {
 }
 
 static void add_default_banks(void) {
-    /* Match sim.py DEFAULT_BANK_SPECS: ('ram', 0, 0o7770) */
+    /* Match pytools.sim DEFAULT_BANK_SPECS: ('ram', 0, 0o7770) */
     banks[num_banks++] = (Bank){BANK_RAM, 0, 07770, NULL};
 }
 

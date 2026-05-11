@@ -3,7 +3,7 @@
 Direct regression tests for lib/librcc.s (integer runtime used by rcc).
 
 Each case builds crt0.o + librcc.o + a tiny user.o (main loads r3/r2, jalr to one
-helper, halt), links with rld, runs sim.py --summary, and checks **r2** at halt
+helper, halt), links with rld, runs ``python3 -m pytools.sim --summary``, and checks **r2** at halt
 against the expected 12-bit word.
 
 Run:
@@ -30,12 +30,11 @@ sys.path.insert(0, str(ROOT))
 
 from rrisc_toolchain import (  # noqa: E402
     lib_dir,
-    python_exe,
+    py_sim_argv,
     ras_emit_obj_cmd,
     resolve_ras,
     resolve_rld,
     rld_cmd,
-    sim_py_path,
 )
 
 
@@ -80,7 +79,7 @@ def oct_lit(w: int) -> str:
 
 
 def parse_r2(summary_stdout: str) -> int | None:
-    """First line from ``sim.py --summary`` is like: ``T: 0 PC: ... r2: 0052 ...``."""
+    """First line from ``pytools.sim --summary`` is like: ``T: 0 PC: ... r2: 0052 ...``."""
     for line in summary_stdout.splitlines():
         m = re.search(r"\br2:\s*([0-7]{4})\b", line)
         if m:
@@ -207,8 +206,7 @@ def link_one_case(
 
     sim = subprocess.run(
         [
-            python_exe(),
-            str(sim_py_path(ROOT)),
+            *py_sim_argv(),
             "--summary",
             "--start",
             CODE_BASE,

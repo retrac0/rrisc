@@ -12,7 +12,7 @@ All routines follow the RRISC calling convention:
 
 Float values are passed as pointers to 4 words:
 - `w0`: sign/exp
-- `w1..w3`: significand chunks (layout is consistent with `float48.py`)
+- `w1..w3`: significand chunks (layout is consistent with `pytools/float48.py`)
 
 Exported entry points:
 - **`__fcopy(r2=*dst, r3=*src)`**

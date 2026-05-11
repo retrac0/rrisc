@@ -1,16 +1,16 @@
 ; demo-add.s -- soft-float addition with hex-cell and decimal-string output.
 ;
 ; Adds 3.0 + 4.0 in float48 format and prints the result twice:
-;   1. Raw 12-bit cells via float/put_hex12.s   (round-trip with float48.py)
+;   1. Raw 12-bit cells via float/put_hex12.s   (round-trip with pytools/float48.py)
 ;   2. Human-readable decimal via float/__ftoa.s
 ;
 ; Golden words (cross-check on the host):
-;   python3 -c "from float48 import format_words, from_float; print(format_words(from_float(7.0)))"
+;   python3 -c "from pytools.float48 import format_words, from_float; print(format_words(from_float(7.0)))"
 ;   ->  1002 7000 0000 0000   (= 0x402 0xe00 0x000 0x000)
 ;
 ; Build & run:
-;   python3 asm.py -I lib examples/float/demo-add.s -o /tmp/f.bin
-;   python3 sim.py /tmp/f.bin --terminal --start 0o1000
+;   env PYTHONPATH=. python3 -m pytools.asm -I lib examples/float/demo-add.s -o /tmp/f.bin
+;   env PYTHONPATH=. python3 -m pytools.sim /tmp/f.bin --terminal --start 0o1000
 
 %include "macros/uart_tx.inc"
 

@@ -1,7 +1,7 @@
 ; 0500-hello.s -- Hello World via the UART terminal
 ;
 ; Polls TX RDY before writing each character, then halts.
-; Run standalone: python sim.py tests/0500-hello.bin --terminal
+; Run standalone: env PYTHONPATH=. python3 -m pytools.sim tools/tests/asm/0500-hello.bin --terminal
 ;
 ; Register usage:
 ;   r1  pointer into string (advances each iteration)

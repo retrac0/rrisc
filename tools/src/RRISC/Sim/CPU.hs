@@ -2,7 +2,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RecordWildCards #-}
 
--- | CPU core (sim.py @CPU@).
+-- | CPU core (pytools/sim.py @CPU@).
 module RRISC.Sim.CPU (
   CPU (..),
   CpuScalars (..),
@@ -199,7 +199,7 @@ showState cpu = do
     printf "T: %d PC: %04o %s\n" t pc regStr
       ++ printf "Instructions retired: %d (%d cycles)\n" ir cy
 
--- | Trace annotation matching sim.py (derived from post-execution state).
+-- | Trace annotation matching pytools/sim.py (derived from post-execution state).
 traceNote :: CPU -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> IO String
 traceNote cpu oldpc ir op rd _ra rb _imm = do
   CpuScalars {csPc = pc, csT = t} <- readScalars cpu

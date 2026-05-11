@@ -85,7 +85,7 @@ optsInfo :: ParserInfo Opts
 optsInfo =
   info (optsP <**> helper <**> versionOpt) $
     fullDesc
-      <> progDesc "RRISC simulator (sim.py parity)"
+      <> progDesc "RRISC simulator (pytools/sim.py parity)"
       <> header "rsim — RRISC simulator"
   where
     versionOpt =
@@ -93,7 +93,7 @@ optsInfo =
         ("rsim " ++ showVersion version)
         (long "version" <> short 'V' <> help "print version and exit")
 
--- | Match @int(args.start, 8)@ in sim.py (always octal base 8).
+-- | Match @int(args.start, 8)@ in pytools/sim.py (always octal base 8).
 readStartOct :: String -> Int
 readStartOct s0 =
   let s = dropWhile (== ' ') . reverse . dropWhile (== ' ') . reverse $ s0

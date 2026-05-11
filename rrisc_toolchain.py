@@ -2,7 +2,7 @@
 """Shared path resolution, flags, and argv builders for RRISC tooling (tests, scripts).
 
 Haskell-first: prefer `ras` / `rld` / `rsim` from cabal-built binaries under
-`tools/`. Python `asm.py` remains available for deprecation / fallback paths.
+`tools/`. The deprecated flat assembler lives in `pytools` (`python3 -m pytools.asm`).
 """
 
 from __future__ import annotations
@@ -43,14 +43,6 @@ def repo_root() -> Path:
 
 def lib_dir(root: Path | None = None) -> Path:
     return (root or repo_root()) / "lib"
-
-
-def asm_py_path(root: Path | None = None) -> Path:
-    return (root or repo_root()) / "asm.py"
-
-
-def sim_py_path(root: Path | None = None) -> Path:
-    return (root or repo_root()) / "sim.py"
 
 
 def parse_flags_file(path: Path) -> list[str]:
@@ -113,11 +105,21 @@ def _usable_exe(p: Path | None) -> Path | None:
 
 
 def python_exe() -> str:
-    """Interpreter to run asm.py / sim.py (avoid broken sys.executable in some IDEs)."""
+    """Interpreter for ``pytools.asm`` / ``pytools.sim`` (avoid broken sys.executable in some IDEs)."""
     if _usable_exe(Path(sys.executable)):
         return sys.executable
     w = shutil.which("python3") or shutil.which("python")
     return w or "python3"
+
+
+def py_asm_argv() -> list[str]:
+    """Argv prefix to run the deprecated flat assembler: ``python3 -m pytools.asm``."""
+    return [python_exe(), "-m", "pytools.asm"]
+
+
+def py_sim_argv() -> list[str]:
+    """Argv prefix to run the Python simulator: ``python3 -m pytools.sim``."""
+    return [python_exe(), "-m", "pytools.sim"]
 
 
 def resolve_rcc(root: Path, override: str | None) -> Path | None:
@@ -179,7 +181,7 @@ def py_asm_cmd(
     out: Path,
     include_dirs: Sequence[Path] | None = None,
 ) -> list[str]:
-    argv = [python_exe(), str(asm_py_path(root))]
+    argv = [*py_asm_argv()]
     for d in include_dirs or ():
         argv.extend(["-I", str(d)])
     argv.extend([str(src), "-o", str(out)])

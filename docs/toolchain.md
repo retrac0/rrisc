@@ -30,7 +30,9 @@ Binaries are produced under `dist-newstyle/`; use `cabal list-bin exe:ras` (etc.
 1. **`rcc`** (`compiler/` cabal package) reads one `.c` file (optional host `cpp`) and prints RRISC **assembly** (`.s`): `%define RCC_CODE_BASE`, `RCC_DATA_BASE`, `RCC_STACK_TOP`, then `%include` of [`lib/crt0.s`](../lib/crt0.s), code, and data sections.
 2. **`ras`** ([`tools/`](../tools/), package **`rrisc-tools`**) assembles `.s` to a relocatable **`.o`** by default (`-o` optional; same stem with `.o` if omitted). For a **flat** raw `.bin` or `$readmemb` **`.mem`**, pass **`--format bin`** or **`--format readmemb`** (see [`tools/app/Main.hs`](../tools/app/Main.hs)).
 3. **`rld`** links one or more `.o` files into a final image; bases must agree with the `%define` lines from step 1 (see contract below).
-4. **`rsim`** runs the binary; alternatives are [`sim.py`](../sim.py) and **`sim2`** (built via `make sim2`). CI usually gates on the Python simulator only.
+4. **`rsim`** runs the binary; alternatives are **`python3 -m pytools.sim`** ([`pytools/sim.py`](../pytools/sim.py)) and **`sim2`** (built via `make sim2`). CI usually gates on the Python simulator only.
+
+Invoke **`python3 -m pytools.asm`** / **`python3 -m pytools.sim`** from the repository root, or set **`PYTHONPATH`** to the repo root when the current working directory is elsewhere (see [`examples/Makefile`](../examples/Makefile) and [`demos/test_rpn.sh`](../demos/test_rpn.sh)).
 
 For **`rcc` CLI flags** (`-O0`, `-Os`, `-O1`, `-O2` (alias of `-O1`), dumps, `--pass`, …), see [`compiler/app/Main.hs`](../compiler/app/Main.hs) and [`compiler/MANUAL.md`](../compiler/MANUAL.md) §13.
 
@@ -41,7 +43,7 @@ For **`rcc` CLI flags** (`-O0`, `-Os`, `-O1`, `-O2` (alias of `-O1`), dumps, `--
 | `rcc` | `compiler/` | C-like frontend → **assembly** (`.s`), not object files |
 | `ras` | `rrisc-tools` (`tools/`) | Assembler → default **`.o`**; flat **`.bin`** / **`.mem`** with `--format` |
 | `rld` | `rrisc-tools` (`tools/`) | Linker → final `.bin` from one or more `.o` files |
-| `rsim` | `rrisc-tools` (`tools/`) | Haskell simulator (optional vs `sim.py` / `sim2`) |
+| `rsim` | `rrisc-tools` (`tools/`) | Haskell simulator (optional vs `pytools.sim` / `sim2`) |
 
 Stable automation for tests and scripts lives in [`rrisc_toolchain.py`](../rrisc_toolchain.py) (path resolution, argv builders). Object / link checks are in [`toolchain_checks.py`](../toolchain_checks.py).
 

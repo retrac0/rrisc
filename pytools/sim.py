@@ -1,6 +1,6 @@
-#!/bin/env python3
+#!/usr/bin/env python3
 
-# sim.py
+# pytools.sim — Python RRISC simulator
 
 # 12-bit word RISC-like architecture with 8 general-purpose registers
 
@@ -8,8 +8,8 @@ import argparse
 import random
 import time
 
-from terminal import Terminal
-from isa import (OP_ADDI, OP_LUI, OP_AND, OP_ADD, OP_ADDC, OP_SUB, OP_SUBI, OP_SPEC,
+from .terminal import Terminal
+from .isa import (OP_ADDI, OP_LUI, OP_AND, OP_ADD, OP_ADDC, OP_SUB, OP_SUBI, OP_SPEC,
                  RB_JALR, RB_ROR, RB_ROL, RB_LWR, RB_SWR,
                  branch_offset, decode, disasm_word, WORD_MASK, IMM6_MASK)
 

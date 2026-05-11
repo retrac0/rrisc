@@ -1,4 +1,4 @@
--- | 48-bit RRISC float packing (reference semantics from float48.py).
+-- | 48-bit RRISC float packing (reference semantics from pytools/float48.py).
 module RRISC.Float48 (fromFloat) where
 
 import Data.Bits ((.&.), (.|.), shiftL, shiftR)
@@ -43,7 +43,7 @@ frexp x
           eOut = eInt + d
        in (mant, eOut)
 
--- | Four 12-bit words, matching @float48.from_float@.
+-- | Four 12-bit words, matching @pytools.float48.from_float@.
 fromFloat :: Double -> [Int]
 fromFloat x
   | Prelude.isNaN x =

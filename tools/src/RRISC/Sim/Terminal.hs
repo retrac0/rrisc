@@ -1,6 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
--- | UART terminal (terminal.py parity).
+-- | UART terminal (pytools/terminal.py parity).
 module RRISC.Sim.Terminal (
   TerminalOptions (..),
   attachTerminal,
@@ -83,7 +83,7 @@ attachTerminal bus opts = do
           foldl (\acc b -> pushRx acc (fromIntegral b .&. 0xFF)) s0 (B.unpack bs)
     Nothing -> pure ()
 
-  -- Match terminal.py: unbuffered byte reads for the RX thread.  Without this,
+  -- Match pytools/terminal.py: unbuffered byte reads for the RX thread.  Without this,
   -- @hGetChar@ on a non-'hIsTerminalDevice' Handle stays line-buffered and
   -- interactive @getchar()@ in the guest never sees keys until Enter.
   termStdin <- hIsTerminalDevice stdin
@@ -96,7 +96,7 @@ attachTerminal bus opts = do
 
   when guestEchoesInput $ hSetEcho stdin False
 
-  -- Match terminal.py: stop the reader thread on stdin EOF (pipe/file closed), do not spin forever.
+  -- Match pytools/terminal.py: stop the reader thread on stdin EOF (pipe/file closed), do not spin forever.
   when (termReadStdin opts) $ do
     tid <-
       forkIO $

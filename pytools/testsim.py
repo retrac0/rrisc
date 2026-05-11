@@ -1,5 +1,5 @@
 """Bus and simulator verification tests."""
-from sim import CPU, Bus, BusConflict, DEFAULT_BANK_SPECS, parse_mem_spec
+from .sim import CPU, Bus, BusConflict, DEFAULT_BANK_SPECS, parse_mem_spec
 
 
 def _first_ram(cpu):

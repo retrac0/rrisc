@@ -1,8 +1,8 @@
 ; print_oct.s -- Demo: print one octal word and newline (rcc calling convention)
 ;
 ; Assemble and run:
-;   python asm.py examples/print_oct.s
-;   python sim.py examples/print_oct.bin --terminal --start 1000
+;   env PYTHONPATH=. python3 -m pytools.asm examples/print_oct.s
+;   env PYTHONPATH=. python3 -m pytools.sim examples/print_oct.bin --terminal --start 1000
 ;
 %include "macros/uart_tx.inc"
 

@@ -1,6 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
--- | Memory banks and binary load (sim.py @MemBank@, @build_bus_from_banks@, @load_mem@).
+-- | Memory banks and binary load (pytools/sim.py @MemBank@, @build_bus_from_banks@, @load_mem@).
 module RRISC.Sim.Memory (
   BankKind (..),
   BankRecord (..),
@@ -105,7 +105,7 @@ memorySystemFromSpecs bus = go []
         pure (BankRecord BankIo baseM size Nothing)
     go (rec : acc) rest
 
--- | Load packed 12-bit little-endian words into backing RAM/ROM (sim.py @load_mem@).
+-- | Load packed 12-bit little-endian words into backing RAM/ROM (pytools/sim.py @load_mem@).
 loadPackedBinaryIntoBanks :: FilePath -> Int -> [BankRecord] -> IO ()
 loadPackedBinaryIntoBanks path addr0 banks =
   withBinaryFile path ReadMode $ \h -> loadLoop h 0

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""asm.py -- RRISC flat assembler.
+"""RRISC flat assembler (module ``pytools.asm``).
 
-Usage: python asm.py input.asm [-o output.bin]
+Usage: python3 -m pytools.asm input.asm [-o output.bin]
 
 Source format:
   %define NAME value     simple text substitution
@@ -35,11 +35,11 @@ import sys
 from collections import namedtuple
 from dataclasses import dataclass, field
 
-from isa import (OP_ADDI, OP_LUI, OP_AND, OP_ADD, OP_ADDC, OP_SUB, OP_SUBI, OP_SPEC,
-                 RB_JALR, RB_ROR, RB_ROL, RB_LWR, RB_SWR,
-                 encode_r3, encode_ri, WORD_MASK, IMM6_MASK)
-from float48 import from_float
-from sixbit import encode_sixbit
+from .isa import (OP_ADDI, OP_LUI, OP_AND, OP_ADD, OP_ADDC, OP_SUB, OP_SUBI, OP_SPEC,
+                  RB_JALR, RB_ROR, RB_ROL, RB_LWR, RB_SWR,
+                  encode_r3, encode_ri, WORD_MASK, IMM6_MASK)
+from .float48 import from_float
+from .sixbit import encode_sixbit
 
 # -- intermediate data types --
 
@@ -1076,7 +1076,7 @@ def format_listing(flat_lines, listing_entries):
 
 def main():
     print(
-        "asm.py: deprecated: use ras instead (cd tools && cabal run ras -- …).",
+        "pytools.asm: deprecated: use ras instead (cd tools && cabal run ras -- …).",
         file=sys.stderr,
     )
     parser = argparse.ArgumentParser(description='RRISC assembler')
@@ -1096,10 +1096,10 @@ def main():
         with open(args.source, encoding='utf-8') as f:
             source = f.read()
     except UnicodeDecodeError:
-        print(f"asm.py: {args.source}: not a text file", file=sys.stderr)
+        print(f"pytools.asm: {args.source}: not a text file", file=sys.stderr)
         sys.exit(1)
     except OSError as e:
-        print(f"asm.py: {e}", file=sys.stderr)
+        print(f"pytools.asm: {e}", file=sys.stderr)
         sys.exit(1)
 
     try:

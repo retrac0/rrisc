@@ -39,7 +39,7 @@ lib/
 
 `lib/float/__*.s` is the soft-float runtime that the compiler emits calls into
 when a program uses `float`. Each routine takes pointer arguments to 4-word
-float48 cells. See [`float48.py`](../float48.py) for the bit-level reference
+float48 cells. See [`pytools/float48.py`](../pytools/float48.py) for the bit-level reference
 and [`tools/tests/float/run_float_tests.py`](../tools/tests/float/run_float_tests.py) for
 the regression harness.
 

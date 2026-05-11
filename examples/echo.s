@@ -5,8 +5,8 @@
 ; a continuous-echo variant would just need the bf/halt block removed.
 ;
 ; Build & pipe input:
-;   python3 asm.py -I lib examples/echo.s -o /tmp/echo.bin
-;   echo 'hello' | python3 sim.py /tmp/echo.bin --terminal --start 0o1000
+;   env PYTHONPATH=. python3 -m pytools.asm -I lib examples/echo.s -o /tmp/echo.bin
+;   echo 'hello' | env PYTHONPATH=. python3 -m pytools.sim /tmp/echo.bin --terminal --start 0o1000
 
 %include "macros/uart_tx.inc"
 %include "macros/uart_rx.inc"

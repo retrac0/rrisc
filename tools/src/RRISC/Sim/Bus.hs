@@ -1,6 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
--- | Memory bus (sim.py @Bus@).
+-- | Memory bus (pytools/sim.py @Bus@).
 module RRISC.Sim.Bus (
   Bus,
   BusHandler (..),

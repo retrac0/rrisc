@@ -1,4 +1,4 @@
--- | RRISC SIXBIT encoding (sixbit.py).
+-- | RRISC SIXBIT encoding (pytools/sixbit.py).
 module RRISC.SixBit (encodeSixbit, decodeSixbit) where
 
 import Data.Bits ((.&.))
@@ -31,6 +31,6 @@ table =
 encodeSixbit :: Char -> Maybe Int
 encodeSixbit c = M.lookup c table
 
--- | Decode a 6-bit SIXBIT value to a string (empty for NUL), matching @decode_sixbit@ in sixbit.py.
+-- | Decode a 6-bit SIXBIT value to a string (empty for NUL), matching @decode_sixbit@ in pytools/sixbit.py.
 decodeSixbit :: Int -> String
 decodeSixbit v = sixbitDecode (v .&. 0x3F)
