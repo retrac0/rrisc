@@ -3,6 +3,7 @@
 module RCC.RuntimeDeps
   ( asmCalleeName
   , floatRuntimeIncludeLines
+  , floatRuntimeIncludeLinesAll
   ) where
 
 import Data.Foldable (foldl')
@@ -83,6 +84,20 @@ usesStandaloneLibItoa (TAC.TACProg _ procs) =
   where
     isItoa (TAC.ICall _ fname _) = fname == "itoa"
     isItoa _ = False
+
+-- | Every soft-float @%include@ in dependency order (for the primary object in
+--   a multi-file link where other objects call helpers this TU does not reference).
+floatRuntimeIncludeLinesAll :: [Text]
+floatRuntimeIncludeLinesAll =
+  let allFiles =
+        Set.unions
+          [ Set.fromList fs
+          | fs <- Map.elems routineFileDeps
+          ]
+   in [ "%include \"" <> f <> "\""
+      | f <- masterFloatFileOrder
+      , f `Set.member` allFiles
+      ]
 
 -- | @%include@ lines (paths relative to @lib/@, for @ras -I lib@). Empty if no soft-float is used.
 floatRuntimeIncludeLines :: TAC.TACProg -> [Text]

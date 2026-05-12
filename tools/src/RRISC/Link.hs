@@ -5,6 +5,10 @@
 --   fixed-point branch-relaxation pass over each section's 'brel' records,
 --   resolves symbols, and emits a flat 12-bit word stream plus a map file.
 --
+--   Cross-object resolution: a symbol assembled as @LkLocal@ in one object
+--   can satisfy an undefined reference from another object when that name has
+--   exactly one definition address across the whole link (otherwise duplicate).
+--
 --   Reloc records are applied during final emission via 'patchPlaceholders'.
 module RRISC.Link (
   LinkOptions (..),
@@ -22,7 +26,7 @@ module RRISC.Link (
 import Control.Monad (foldM, when)
 import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
 import Data.Char (intToDigit)
-import Data.List (foldl', sortBy)
+import Data.List (foldl', nub, sortBy)
 import Data.Ord (comparing)
 import qualified Data.IntSet as IS
 import Data.Text (Text)
@@ -310,6 +314,11 @@ layoutSection relaxed items =
 data SymbolEnv = SymbolEnv
   { seGlobal :: !(M.Map Text Int)
   , seLocal :: !(M.Map (FilePath, Text) Int)
+  -- | Names that appear as @LkLocal@ in exactly one place (one address) across
+  --   all objects.  Used to resolve references from another object to a label
+  --   that was assembled as file-local (e.g. @__fcopy@ from an @%include@ in
+  --   one TU while a second TU calls it without defining it).
+  , seUniqueLocalName :: !(M.Map Text Int)
   }
   deriving (Show)
 
@@ -329,13 +338,48 @@ collectPlacedSymbols bases sections =
           Nothing -> base + (lyOffsets layout !! idx)
   ]
 
+-- | One address per name for @LkLocal@ definitions that appear across objects.
+--   If the same name is defined locally in two places at different addresses,
+--   linking fails with 'LinkDuplicateSymbol'.
+uniqueLocalNamesFromSections
+  :: [(Text, Int)]
+  -> [(Text, Layout, [Item])]
+  -> Either LinkError (M.Map Text Int)
+uniqueLocalNamesFromSections bases sections =
+  M.traverseWithKey unify grouped
+  where
+    pairs :: [(Text, Int)]
+    pairs =
+      concat
+        [ [ (name, addr)
+          | (idx, ItemSym _objFp name lk mo) <- zip [0 :: Int ..] items
+          , lk == LkLocal
+          , let base = sectionBase bases secnm
+                addr =
+                  case mo of
+                    Just o -> base + o
+                    Nothing -> base + (lyOffsets layout !! idx)
+          ]
+        | (secnm, layout, items) <- sections
+        ]
+    grouped :: M.Map Text [Int]
+    grouped = foldl' (\m (n, a) -> M.insertWith (++) n [a] m) M.empty pairs
+    unify :: Text -> [Int] -> Either LinkError Int
+    unify name addrs =
+      case nub addrs of
+        [a] -> Right a
+        (a : b : _) -> Left (LinkDuplicateSymbol name a b)
+        [] -> Left (LinkUnsupported "" ("internal: empty local sym list for " <> name))
+
 -- | Merge global definitions (visible across objects) and per-object locals.
 buildSymbolEnv
   :: [(Text, Int)]
   -> [(Text, Layout, [Item])]
   -> Either LinkError SymbolEnv
-buildSymbolEnv bases sections =
-  foldM mergeSection (SymbolEnv M.empty M.empty) sections
+buildSymbolEnv bases sections = do
+  env <- foldM mergeSection (SymbolEnv M.empty M.empty M.empty) sections
+  ulns <- uniqueLocalNamesFromSections bases sections
+  pure (env {seUniqueLocalName = ulns})
   where
     mergeSection env (secnm, layout, items) =
       foldM (mergeItem secnm layout) env (zip [0 :: Int ..] items)
@@ -367,7 +411,9 @@ resolveSym objFp name env =
     Just a -> Right a
     Nothing -> case M.lookup name (seGlobal env) of
       Just a -> Right a
-      Nothing -> Left (LinkUndefinedSymbol name)
+      Nothing -> case M.lookup name (seUniqueLocalName env) of
+        Just a -> Right a
+        Nothing -> Left (LinkUndefinedSymbol name)
 
 ------------------------------------------------------------
 -- Fixed-point relaxation

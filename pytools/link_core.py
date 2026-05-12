@@ -225,6 +225,8 @@ def layout_section(relaxed: set[int], items: list[Item]) -> Layout:
 class SymbolEnv:
     global_: dict[str, int] = field(default_factory=dict)
     local: dict[tuple[str, str], int] = field(default_factory=dict)
+    #: Names with exactly one LkLocal definition address across all objects.
+    unique_local_name: dict[str, int] = field(default_factory=dict)
 
 
 def collect_placed_symbols(
@@ -288,6 +290,34 @@ def build_symbol_env(
         for idx, it in enumerate(items):
             merge_item(secnm, layout, idx, it)
 
+    by_name: dict[str, list[int]] = {}
+    for secnm, layout, items in sections:
+        base = section_base(bases, secnm)
+        for idx, it in enumerate(items):
+            if not isinstance(it, ItemSym):
+                continue
+            if it.linkage != objfmt.Linkage.LOCAL:
+                continue
+            if it.offset is not None:
+                addr = base + it.offset
+            else:
+                addr = base + layout.offsets[idx]
+            by_name.setdefault(it.name, []).append(addr)
+
+    unique: dict[str, int] = {}
+    for name, addrs in by_name.items():
+        xs: list[int] = []
+        for a in addrs:
+            if a not in xs:
+                xs.append(a)
+        if len(xs) == 1:
+            unique[name] = xs[0]
+        else:
+            raise LinkError(
+                f"duplicate definition of '{name}' at 0o{oct(xs[0])} and 0o{oct(xs[1])}"
+            )
+
+    env.unique_local_name = unique
     return env
 
 
@@ -297,6 +327,8 @@ def resolve_sym(obj_fp: str, name: str, env: SymbolEnv) -> int:
         return env.local[key]
     if name in env.global_:
         return env.global_[name]
+    if name in env.unique_local_name:
+        return env.unique_local_name[name]
     raise LinkError(f"undefined reference to '{name}'")
 
 

@@ -17,7 +17,17 @@ import Numeric (showOct)
 
 import qualified RCC.TAC as TAC
 
-import RCC.RuntimeDeps (asmCalleeName, floatRuntimeIncludeLines)
+import RCC.Mach
+  ( AsmLine (..)
+  , Imm12 (..)
+  , MachInsn (..)
+  , Reg (..)
+  , imm6
+  , machLoadConst
+  , reg
+  , renderAsmProgram
+  )
+import RCC.RuntimeDeps (asmCalleeName, floatRuntimeIncludeLines, floatRuntimeIncludeLinesAll)
 
 -- ---------------------------------------------------------------------------
 -- Options
@@ -26,10 +36,19 @@ data CodegenOpts = CodegenOpts
   { codeBase :: Int
   , dataBase :: Int
   , stackTop :: Int
+  -- | When true, do not append @%include@ float runtime files. Use when this
+  -- object will be linked with another rcc object that already provides them
+  -- (avoids duplicate symbols such as @__fstore_zero@).
+  , omitFloatRuntime :: Bool
+  -- | When true, @%include@ the full soft-float library even if this TU does not
+  -- reference every helper (for multi-object links; pair with @omitFloatRuntime@
+  -- on companion objects and a linker that resolves file-local labels across
+  -- inputs).
+  , embedFullFloatRuntime :: Bool
   } deriving (Show)
 
 defaultOpts :: CodegenOpts
-defaultOpts = CodegenOpts 0o1000 0o3000 0o3000
+defaultOpts = CodegenOpts 0o1000 0o3000 0o3000 False False
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -40,14 +59,19 @@ tshow = T.pack . show
 octT :: Int -> Text
 octT n = "0o" <> T.pack (showOct n "")
 
-line :: Text -> Text
-line t = "    " <> t
+-- | Parse @%include "path"@ from a single-line preprocessed directive.
+pathFromPercentInclude :: Text -> Text
+pathFromPercentInclude t =
+  let u = T.strip t
+   in case T.stripPrefix "%include \"" u of
+        Nothing -> error ("RCC.Codegen.pathFromPercentInclude: " <> T.unpack t)
+        Just rest -> fst (T.breakOn "\"" rest)
 
 -- ---------------------------------------------------------------------------
 -- Per-procedure code generation state
 
 data CGState = CGState
-  { cgLines    :: [Text]            -- output (reversed)
+  { cgLines    :: [AsmLine]         -- output (reversed)
   , cgSlots    :: Map TAC.Temp Int  -- temp -> slot offset from r6 (after prologue)
   , cgEpiLabel :: TAC.Label
   , cgFuncName :: TAC.Label
@@ -55,11 +79,23 @@ data CGState = CGState
 
 type CG = State CGState
 
-emit :: Text -> CG ()
-emit t = modify $ \s -> s { cgLines = t : cgLines s }
+emitAsm :: AsmLine -> CG ()
+emitAsm x = modify $ \s -> s { cgLines = x : cgLines s }
 
-emitL :: Text -> CG ()
-emitL t = emit (line t)
+emitInstr :: MachInsn -> CG ()
+emitInstr = emitAsm . AsmInstr
+
+emitInss :: [MachInsn] -> CG ()
+emitInss = mapM_ emitInstr
+
+emitLoadConst :: Int -> Int -> CG ()
+emitLoadConst r n = emitInss (machLoadConst (reg r) n)
+
+emitLiSym :: Int -> TAC.Label -> CG ()
+emitLiSym r sym = emitInstr (ILiLabel (reg r) sym)
+
+emitLiOct :: Int -> Int -> CG ()
+emitLiOct r n = emitInstr (ILi (reg r) (Imm12Oct n))
 
 slotOf :: TAC.Temp -> CG Int
 slotOf t = do
@@ -72,15 +108,16 @@ slotOf t = do
 -- Top-level codegen
 
 codegen :: CodegenOpts -> TAC.TACProg -> Text
-codegen opts prog@(TAC.TACProg globals procs) = T.unlines $
-  prelude
-  ++ rwPackedData
-  ++ textSectionDecl
-  ++ concatMap genProc procs
-  ++ floatRuntimeBlock
-  ++ librccRuntimeBlock
-  ++ rodata
-  ++ rwSplitData
+codegen opts prog@(TAC.TACProg globals procs) =
+  renderAsmProgram $
+    prelude
+      ++ rwPackedData
+      ++ textSectionDecl
+      ++ concatMap genProc procs
+      ++ floatRuntimeBlock
+      ++ librccRuntimeBlock
+      ++ rodata
+      ++ rwSplitData
   where
     roGlobs = filter TAC.globalConst globals
     rwGlobs = filter (not . TAC.globalConst) globals
@@ -94,59 +131,74 @@ codegen opts prog@(TAC.TACProg globals procs) = T.unlines $
       | otherwise      = dataBase opts + rwWords
 
     prelude =
-      [ "; rcc-generated assembly"
-      , "%define RCC_CODE_BASE " <> octT effectiveCodeBase
-      , "%define RCC_DATA_BASE " <> octT (dataBase opts)
-      , "%define RCC_STACK_TOP " <> octT (stackTop opts)
+      [ AsmSemiComment "rcc-generated assembly"
+      , AsmPreprocDefine "RCC_CODE_BASE" (octT effectiveCodeBase)
+      , AsmPreprocDefine "RCC_DATA_BASE" (octT (dataBase opts))
+      , AsmPreprocDefine "RCC_STACK_TOP" (octT (stackTop opts))
       ]
 
     rwPackedData =
       if null rwGlobs || splitMemLayout
         then []
         else
-          "" :
-          "    .section data" :
-          concatMap genGlobal rwGlobs
+          AsmBlank
+            : AsmSection "data"
+            : concatMap genGlobal rwGlobs
 
     textSectionDecl =
-      [ ""
-      , "    .section text"
+      [ AsmBlank
+      , AsmSection "text"
       ]
 
     rwSplitData =
       if splitMemLayout && not (null rwGlobs)
         then
-          "" :
-          "    .section data" :
-          concatMap genGlobal rwGlobs
+          AsmBlank
+            : AsmSection "data"
+            : concatMap genGlobal rwGlobs
         else []
 
-    rodata = if null roGlobs then [] else
-      [""] ++ concatMap genGlobal roGlobs
+    rodata = if null roGlobs then [] else AsmBlank : concatMap genGlobal roGlobs
 
-    floatRuntimeBlock =
-      case floatRuntimeIncludeLines prog of
-        []   -> []
-        incs -> "" : "; rcc: runtime library (auto-included)" : incs
+    floatRuntimeBlock
+      | omitFloatRuntime opts = []
+      | embedFullFloatRuntime opts =
+          case floatRuntimeIncludeLinesAll of
+            [] -> []
+            incs ->
+              AsmBlank
+                : AsmSemiComment "rcc: runtime library (full, for multi-object link)"
+                : map (AsmPreprocInclude . pathFromPercentInclude) incs
+      | otherwise =
+          case floatRuntimeIncludeLines prog of
+            [] -> []
+            incs ->
+              AsmBlank
+                : AsmSemiComment "rcc: runtime library (auto-included)"
+                : map (AsmPreprocInclude . pathFromPercentInclude) incs
 
     librccRuntimeBlock =
       if any (procUsesLibrcc . TAC.procInstrs) procs
-        then ["", "; rcc: lib/librcc.s (integer multiply/divide/modulo)", "%include \"librcc.s\""]
+        then
+          [ AsmBlank
+          , AsmSemiComment "rcc: lib/librcc.s (integer multiply/divide/modulo)"
+          , AsmPreprocInclude "librcc.s"
+          ]
         else []
 
-genGlobal :: TAC.Global -> [Text]
+genGlobal :: TAC.Global -> [AsmLine]
 genGlobal g =
-  [ TAC.globalName g <> ":" ] ++ body
+  AsmLabelDef (TAC.globalName g) : body
   where
     sz = TAC.globalSize g
     init_ = TAC.globalInit g
     body
-      | null init_ = [ line (".fill " <> tshow sz) ]
-      | otherwise  =
-          [ line (".word " <> T.intercalate ", " (map tshow init_)) ]
-          ++ if length init_ < sz
-               then [ line (".fill " <> tshow (sz - length init_)) ]
-               else []
+      | null init_ = [AsmDirFill sz]
+      | otherwise =
+          AsmDirWord init_
+            : if length init_ < sz
+              then [AsmDirFill (sz - length init_)]
+              else []
 
 -- ---------------------------------------------------------------------------
 -- Procedure codegen
@@ -160,7 +212,7 @@ genGlobal g =
 --   r6  — stack pointer (full descending).
 -- Indirect call / branch: load target into r1, then jalr (preserves r2–r4 for args).
 
-genProc :: TAC.Proc -> [Text]
+genProc :: TAC.Proc -> [AsmLine]
 genProc p =
   let temps      = collectTemps p
       (slots, n) = buildSlotMap (TAC.procLocSzs p) temps
@@ -172,12 +224,12 @@ genProc p =
           && not (procUsesLibrcc (TAC.procInstrs p))
       usedTemps = collectUsedTemps (TAC.procInstrs p)
       action  = do
-        emit ""
-        emit ("    .global " <> TAC.procName p)
-        emit (TAC.procName p <> ":")
+        emitAsm AsmBlank
+        emitAsm (AsmGlobal (TAC.procName p))
+        emitAsm (AsmLabelDef (TAC.procName p))
         genPrologue p n isLeaf usedTemps
         mapM_ genInstr (TAC.procInstrs p)
-        emit (epi <> ":")
+        emitAsm (AsmLabelDef epi)
         genEpilogue n numStack isLeaf
   in reverse $ cgLines (execState action initSt)
 
@@ -262,7 +314,7 @@ tryUnsignedDivModPow2 TAC.TUMod a (TAC.OConst kb) =
          Just $ do
            loadOpInto 3 a
            emitLoadConst 2 (k - 1)
-           emitL "and r2, r3, r2"
+           emitInstr (IAnd R2 R3 R2)
        else Nothing
 tryUnsignedDivModPow2 _ _ _ = Nothing
 
@@ -327,15 +379,15 @@ genPrologue p n isLeaf usedTemps = do
   let saveR5 = not isLeaf
   -- Save r5 for non-leaf functions.
   when saveR5 $ do
-    emitL "subi r6, 1"
-    emitL "swr r5, r6"
+    emitInstr (ISubi R6 (imm6 1))
+    emitInstr (ISwr R5 R6)
   -- Allocate slots for all temps (addi unsigned 0..63; subi for decrements)
   when (n > 0) $
     if n <= 63
-      then emitL ("subi r6, " <> tshow n)
+      then emitInstr (ISubi R6 (imm6 n))
       else do
         emitLoadConst 1 n
-        emitL "sub r6, r6, r1"
+        emitInstr (ISub R6 R6 R1)
   -- Save parameters into their slots: r2/r3/r4 for the first three, stack for the rest.
   -- Stack args were pushed right-to-left by the caller; arg 4 is closest to the frame
   -- (at offset n+1 from r6 when r5 is saved, otherwise offset n), arg 5 at +1, etc.
@@ -349,22 +401,22 @@ genPrologue p n isLeaf usedTemps = do
           let stackBase   = n + (if saveR5 then 1 else 0)
               stackOffset = stackBase + (i - 3)
           addrOfSlot stackOffset
-          emitL "lwr r2, r1"
+          emitInstr (ILwr R2 R1)
           storeRegToTemp 2 paramName
 
 genEpilogue :: Int -> Int -> Bool -> CG ()
 genEpilogue n numStack isLeaf = do
   when (n > 0) $
     if n <= 63
-      then emitL ("addi r6, " <> tshow n)
+      then emitInstr (IAddi R6 (imm6 n))
       else do
         emitLoadConst 1 n
-        emitL "add r6, r6, r1"
+        emitInstr (IAdd R6 R6 R1)
   when (not isLeaf) $ do
-    emitL "lwr r5, r6"
-    emitL "addi r6, 1"
-  when (numStack > 0) $ emitL ("addi r6, " <> tshow numStack)
-  emitL "jalr r0, r5"
+    emitInstr (ILwr R5 R6)
+    emitInstr (IAddi R6 (imm6 1))
+  when (numStack > 0) $ emitInstr (IAddi R6 (imm6 numStack))
+  emitInstr (IJalr R0 R5)
 
 -- ---------------------------------------------------------------------------
 -- Loading and storing temps
@@ -372,11 +424,11 @@ genEpilogue n numStack isLeaf = do
 -- Compute (r6 + slot) into r1.
 addrOfSlot :: Int -> CG ()
 addrOfSlot s
-  | s == 0    = emitL "and r1, r6, r7"
-  | s <= 63   = do emitL "and r1, r6, r7"
-                   emitL ("addi r1, " <> tshow s)
+  | s == 0    = emitInstr (IAnd R1 R6 R7)
+  | s <= 63   = do emitInstr (IAnd R1 R6 R7)
+                   emitInstr (IAddi R1 (imm6 s))
   | otherwise = do emitLoadConst 1 s
-                   emitL "add r1, r1, r6"
+                   emitInstr (IAdd R1 R1 R6)
 
 -- Emit the most compact single instruction that loads constant n into reg.
 -- val = n masked to 12 bits.
@@ -384,61 +436,48 @@ addrOfSlot s
 --   val == 0xFFF (i.e. -1): and rx, r7, r7  (1 word)
 --   lower 6 bits zero:     lui rx, val>>6  (1 word, rx not r0/r7)
 --   otherwise:             li rx, n        (2 words)
-emitLoadConst :: Int -> Int -> CG ()
-emitLoadConst reg n =
-  let val = n .&. 0xFFF
-      rn  = "r" <> tshow reg
-  in emitL $ case () of
-      _ | val == 0
-                   -> "and " <> rn <> ", r0, r0"
-        | val == 0xFFF
-                   -> "and " <> rn <> ", r7, r7"
-        | val .&. 0x3F == 0, reg /= 0, reg /= 7
-                   -> "lui " <> rn <> ", " <> tshow (val `shiftR` 6)
-        | otherwise
-                   -> "li "  <> rn <> ", " <> tshow val
-
 -- Load operand into the given register (2, 3, or 4).
 loadOpInto :: Int -> TAC.Operand -> CG ()
-loadOpInto reg (TAC.OConst n)  = emitLoadConst reg n
-loadOpInto reg (TAC.OAddr lbl) = emitL ("li r" <> tshow reg <> ", " <> lbl)
-loadOpInto reg (TAC.OTemp t)   = do
+loadOpInto r (TAC.OConst n)  = emitLoadConst r n
+loadOpInto r (TAC.OAddr lbl) = emitLiSym r lbl
+loadOpInto r (TAC.OTemp t)   = do
   s <- slotOf t
   addrOfSlot s
-  emitL ("lwr r" <> tshow reg <> ", r1")
-loadOpInto reg (TAC.OLocalAddr t) = do
+  emitInstr (ILwr (reg r) R1)
+loadOpInto r (TAC.OLocalAddr t) = do
   s <- slotOf t
   addrOfSlot s
-  when (reg /= 1) $ emitL ("and r" <> tshow reg <> ", r1, r7")
+  when (r /= 1) $ emitInstr (IAnd (reg r) R1 R7)
 
 -- Like loadOpInto but adds adj to the slot offset (compensates for r6 drift during arg pushes).
 loadOpIntoAdj :: Int -> TAC.Operand -> Int -> CG ()
-loadOpIntoAdj reg (TAC.OTemp t) adj = do
+loadOpIntoAdj r (TAC.OTemp t) adj = do
   s <- slotOf t
   let s' = s + adj
   addrOfSlot s'
-  emitL ("lwr r" <> tshow reg <> ", r1")
-loadOpIntoAdj reg (TAC.OLocalAddr t) adj = do
+  emitInstr (ILwr (reg r) R1)
+loadOpIntoAdj r (TAC.OLocalAddr t) adj = do
   s <- slotOf t
   let s' = s + adj
   addrOfSlot s'
-  when (reg /= 1) $ emitL ("and r" <> tshow reg <> ", r1, r7")
-loadOpIntoAdj reg op _ = loadOpInto reg op
+  when (r /= 1) $ emitInstr (IAnd (reg r) R1 R7)
+loadOpIntoAdj r op _ = loadOpInto r op
 
 storeRegToTemp :: Int -> TAC.Temp -> CG ()
-storeRegToTemp reg t = do
+storeRegToTemp r t = do
   s <- slotOf t
   addrOfSlot s
-  emitL ("swr r" <> tshow reg <> ", r1")
+  emitInstr (ISwr (reg r) R1)
 
 -- ---------------------------------------------------------------------------
 -- Per-instruction codegen
 
 genInstr :: TAC.Instr -> CG ()
-genInstr (TAC.ILabel      lbl) = emit (lbl <> ":")
-genInstr (TAC.IComment    txt) = emit (";; " <> txt)
+genInstr (TAC.ILabel      lbl) = emitAsm (AsmLabelDef lbl)
+genInstr (TAC.IComment    txt) = emitAsm (AsmComment txt)
 genInstr (TAC.IAllocLocal _  ) = pure ()  -- slot reserved by buildSlotMap; no code needed
-genInstr (TAC.IAsmInline  txt) = emitL txt
+genInstr (TAC.IAsmInline  txt) =
+  when (not (T.null txt)) (emitAsm (AsmUserAsmInline txt))
 
 genInstr (TAC.IAssign t op) = do
   loadOpInto 2 op
@@ -457,34 +496,34 @@ genInstr (TAC.IBinOp t op a b) = do
 genInstr (TAC.IUnOp t op a) = do
   loadOpInto 2 a
   case op of
-    TAC.TNeg  -> emitL "sub r2, r0, r2"          -- r2 = 0 - r2
+    TAC.TNeg  -> emitInstr (ISub R2 R0 R2) -- r2 = 0 - r2
     TAC.TNot  -> do
-      emitL "sub r0, r0, r2"                     -- T = 1 iff r2 != 0
+      emitInstr (ISub R0 R0 R2) -- T = 1 iff r2 != 0
       lTrue <- freshLbl "not_zero"
       lEnd  <- freshLbl "not_end"
-      emitL ("bt " <> lTrue)
-      emitL "li r2, 1"
-      emitL "sub r0, r0, r7"
-      emitL ("bt " <> lEnd)
-      emit (lTrue <> ":")
-      emitL "li r2, 0"
-      emit (lEnd <> ":")
-    TAC.TBNot -> emitL "sub r2, r7, r2"          -- r2 = -1 - r2 = ~r2
+      emitInstr (IBt lTrue)
+      emitInstr (ILi R2 (Imm12Dec 1))
+      emitInstr (ISub R0 R0 R7)
+      emitInstr (IBt lEnd)
+      emitAsm (AsmLabelDef lTrue)
+      emitInstr (ILi R2 (Imm12Dec 0))
+      emitAsm (AsmLabelDef lEnd)
+    TAC.TBNot -> emitInstr (ISub R2 R7 R2) -- r2 = -1 - r2 = ~r2
   storeRegToTemp 2 t
 
 genInstr (TAC.ILoad t addr) = do
   loadOpInto 1 addr               -- address in r1
-  emitL "lwr r2, r1"              -- r2 = mem[r1]
+  emitInstr (ILwr R2 R1)          -- r2 = mem[r1]
   storeRegToTemp 2 t
 
 genInstr (TAC.IStore addr val) = do
   loadOpInto 2 val                -- value in r2
   loadOpInto 1 addr               -- address in r1 (doesn't clobber r2)
-  emitL "swr r2, r1"              -- mem[r1] = r2
+  emitInstr (ISwr R2 R1)         -- mem[r1] = r2
 
 genInstr (TAC.IGoto lbl) = do
-  emitL "clrt"
-  emitL ("bf " <> lbl)
+  emitInstr IClrt
+  emitInstr (IBf lbl)
 
 genInstr (TAC.IIfCmp op a b lbl) = do
   emitCmpToT op a b >>= \inv ->
@@ -497,13 +536,13 @@ genInstr (TAC.IIfNCmp op a b lbl) = do
 genInstr (TAC.IIfZ op lbl) = do
   -- T=1 iff op!=0; branch when op==0. Assembler relaxes bf if out of ±63 range.
   loadOpInto 2 op
-  emitL "sub r0, r0, r2"
-  emitL ("bf " <> lbl)
+  emitInstr (ISub R0 R0 R2)
+  emitInstr (IBf lbl)
 
 genInstr (TAC.IIfNZ op lbl) = do
   loadOpInto 2 op
-  emitL "sub r0, r0, r2"
-  emitL ("bt " <> lbl)
+  emitInstr (ISub R0 R0 R2)
+  emitInstr (IBt lbl)
 
 genInstr (TAC.ICall mt fname args) = do
   let regArgs   = take 3 args
@@ -512,13 +551,13 @@ genInstr (TAC.ICall mt fname args) = do
   -- Push stack args right-to-left; adjust slot offsets as r6 descends.
   forM_ (zip [0..] (reverse stackArgs)) $ \(k, op) -> do
     loadOpIntoAdj 2 op k
-    emitL "subi r6, 1"
-    emitL "swr r2, r6"
+    emitInstr (ISubi R6 (imm6 1))
+    emitInstr (ISwr R2 R6)
   -- Load register args; r6 is now numStack words below the frame base.
   forM_ (zip [2,3,4] regArgs) $ \(r, op) -> loadOpIntoAdj r op numStack
   -- Issue the call. Callee pops the stack args in its epilogue.
-  emitL ("li r1, " <> asmCalleeName fname)
-  emitL "jalr r5, r1"
+  emitLiSym 1 (asmCalleeName fname)
+  emitInstr (IJalr R5 R1)
   -- Capture return value if requested.
   case mt of
     Just t  -> storeRegToTemp 2 t
@@ -526,14 +565,14 @@ genInstr (TAC.ICall mt fname args) = do
 
 genInstr (TAC.IReturn Nothing) = do
   epi <- gets cgEpiLabel
-  emitL "clrt"
-  emitL ("bf " <> epi)
+  emitInstr IClrt
+  emitInstr (IBf epi)
 
 genInstr (TAC.IReturn (Just op)) = do
   loadOpInto 2 op                 -- return value in r2
   epi <- gets cgEpiLabel
-  emitL "clrt"
-  emitL ("bf " <> epi)
+  emitInstr IClrt
+  emitInstr (IBf epi)
 
 -- ---------------------------------------------------------------------------
 -- Compare helpers for IIfCmp/IIfNCmp
@@ -548,40 +587,40 @@ emitCmpToT op a b = do
   loadOpInto 2 b
   case op of
     TAC.TNe -> do
-      emitL "sub r1, r3, r2"
-      emitL "sub r0, r0, r1"      -- T=1 iff a!=b
+      emitInstr (ISub R1 R3 R2)
+      emitInstr (ISub R0 R0 R1) -- T=1 iff a!=b
       pure False
     TAC.TEq -> do
-      emitL "sub r1, r3, r2"
-      emitL "sub r0, r0, r1"      -- T=1 iff a!=b (inverted)
+      emitInstr (ISub R1 R3 R2)
+      emitInstr (ISub R0 R0 R1) -- T=1 iff a!=b (inverted)
       pure True
     TAC.TULt -> do
-      emitL "sub r1, r3, r2"      -- T=1 iff a<b unsigned
+      emitInstr (ISub R1 R3 R2) -- T=1 iff a<b unsigned
       pure False
     TAC.TUGt -> do
-      emitL "sub r1, r2, r3"      -- T=1 iff b<a
+      emitInstr (ISub R1 R2 R3) -- T=1 iff b<a
       pure False
     TAC.TULe -> do
-      emitL "sub r1, r2, r3"      -- T=1 iff a>b (inverted)
+      emitInstr (ISub R1 R2 R3) -- T=1 iff a>b (inverted)
       pure True
     TAC.TUGe -> do
-      emitL "sub r1, r3, r2"      -- T=1 iff a<b (inverted)
+      emitInstr (ISub R1 R3 R2) -- T=1 iff a<b (inverted)
       pure True
     TAC.TLt -> do
       emitSignedNorm
-      emitL "sub r1, r3, r2"      -- T=1 iff a<b signed
+      emitInstr (ISub R1 R3 R2) -- T=1 iff a<b signed
       pure False
     TAC.TGt -> do
       emitSignedNorm
-      emitL "sub r1, r2, r3"      -- T=1 iff a>b signed
+      emitInstr (ISub R1 R2 R3) -- T=1 iff a>b signed
       pure False
     TAC.TLe -> do
       emitSignedNorm
-      emitL "sub r1, r2, r3"      -- T=1 iff a>b (inverted)
+      emitInstr (ISub R1 R2 R3) -- T=1 iff a>b (inverted)
       pure True
     TAC.TGe -> do
       emitSignedNorm
-      emitL "sub r1, r3, r2"      -- T=1 iff a<b (inverted)
+      emitInstr (ISub R1 R3 R2) -- T=1 iff a<b (inverted)
       pure True
     _ -> do
       -- Not expected for IIfCmp/IIfNCmp; fall back to boolean materialization path.
@@ -591,14 +630,14 @@ emitCmpToT op a b = do
         TAC.TUDiv -> emitDivModLibrary TAC.TUDiv
         TAC.TUMod -> emitDivModLibrary TAC.TUMod
         _         -> emitBinOp op
-      emitL "sub r0, r0, r2"
+      emitInstr (ISub R0 R0 R2)
       pure False
 
 jumpOnT :: TAC.Label -> CG ()
-jumpOnT lbl = emitL ("bt " <> lbl)
+jumpOnT lbl = emitInstr (IBt lbl)
 
 jumpOnNotT :: TAC.Label -> CG ()
-jumpOnNotT lbl = emitL ("bf " <> lbl)
+jumpOnNotT lbl = emitInstr (IBf lbl)
 
 -- ---------------------------------------------------------------------------
 -- Binary operation codegen
@@ -607,22 +646,22 @@ jumpOnNotT lbl = emitL ("bf " <> lbl)
 
 emitBinOp :: TAC.BinOp -> CG ()
 emitBinOp TAC.TAdd = do
-  emitL "add r2, r3, r2"
+  emitInstr (IAdd R2 R3 R2)
 emitBinOp TAC.TSub = do
-  emitL "sub r2, r3, r2"
+  emitInstr (ISub R2 R3 R2)
 emitBinOp TAC.TBand = do
-  emitL "and r2, r3, r2"
+  emitInstr (IAnd R2 R3 R2)
 emitBinOp TAC.TBor = do
   -- r3 | r2 = (r3 + r2) - (r3 & r2)
-  emitL "and r1, r3, r2"
-  emitL "add r2, r3, r2"
-  emitL "sub r2, r2, r1"
+  emitInstr (IAnd R1 R3 R2)
+  emitInstr (IAdd R2 R3 R2)
+  emitInstr (ISub R2 R2 R1)
 emitBinOp TAC.TBxor = do
   -- r3 XOR r2 = (r3 | r2) - (r3 & r2) - (r3 & r2)
-  emitL "and r1, r3, r2"
-  emitL "add r2, r3, r2"
-  emitL "sub r2, r2, r1"
-  emitL "sub r2, r2, r1"
+  emitInstr (IAnd R1 R3 R2)
+  emitInstr (IAdd R2 R3 R2)
+  emitInstr (ISub R2 R2 R1)
+  emitInstr (ISub R2 R2 R1)
 emitBinOp TAC.TShl  = emitShift True  True   -- logical left
 emitBinOp TAC.TShr  = emitShift False False  -- arithmetic right (sign-extending)
 emitBinOp TAC.TUShr = emitShift False True   -- logical right (unsigned)
@@ -637,60 +676,60 @@ emitBinOp TAC.TUMod =
   error "RCC.Codegen.emitBinOp: TUMod lowered via genDivModOp only"
 emitBinOp TAC.TAnd = do
   -- Logical: should not appear (lowered to branches by TAC), but handle anyway.
-  emitL "and r2, r3, r2"
+  emitInstr (IAnd R2 R3 R2)
 emitBinOp TAC.TOr = do
-  emitL "and r1, r3, r2"
-  emitL "add r2, r3, r2"
-  emitL "sub r2, r2, r1"
+  emitInstr (IAnd R1 R3 R2)
+  emitInstr (IAdd R2 R3 R2)
+  emitInstr (ISub R2 R2 R1)
 
 -- Comparisons: result in r2 as 0 or 1.
 emitBinOp TAC.TEq = do
-  emitL "sub r1, r3, r2"          -- r1 = a - b
-  emitL "sub r0, r0, r1"          -- T = 1 iff (a - b) != 0
-  ttoR2 True                      -- r2 = NOT T (1 if equal)
+  emitInstr (ISub R1 R3 R2) -- r1 = a - b
+  emitInstr (ISub R0 R0 R1) -- T = 1 iff (a - b) != 0
+  ttoR2 True -- r2 = NOT T (1 if equal)
 emitBinOp TAC.TNe = do
-  emitL "sub r1, r3, r2"
-  emitL "sub r0, r0, r1"          -- T = 1 iff a != b
-  ttoR2 False                     -- r2 = T
+  emitInstr (ISub R1 R3 R2)
+  emitInstr (ISub R0 R0 R1) -- T = 1 iff a != b
+  ttoR2 False -- r2 = T
 emitBinOp TAC.TLt = do
   emitSignedNorm
-  emitL "sub r1, r3, r2"          -- T = 1 iff (a' < b') = (a < b signed)
+  emitInstr (ISub R1 R3 R2) -- T = 1 iff (a' < b') = (a < b signed)
   ttoR2 False
 emitBinOp TAC.TGt = do
   emitSignedNorm
-  emitL "sub r1, r2, r3"          -- T = 1 iff b' < a' = a > b
+  emitInstr (ISub R1 R2 R3) -- T = 1 iff b' < a' = a > b
   ttoR2 False
 emitBinOp TAC.TLe = do
   emitSignedNorm
-  emitL "sub r1, r2, r3"          -- T = 1 iff a > b
-  ttoR2 True                      -- r2 = NOT T = a <= b
+  emitInstr (ISub R1 R2 R3) -- T = 1 iff a > b
+  ttoR2 True -- r2 = NOT T = a <= b
 emitBinOp TAC.TGe = do
   emitSignedNorm
-  emitL "sub r1, r3, r2"          -- T = 1 iff a < b
-  ttoR2 True                      -- r2 = NOT T = a >= b
+  emitInstr (ISub R1 R3 R2) -- T = 1 iff a < b
+  ttoR2 True -- r2 = NOT T = a >= b
 
 -- Unsigned comparisons: borrow flag of 'sub' gives the answer directly.
 emitBinOp TAC.TULt = do
-  emitL "sub r1, r3, r2"          -- T = 1 iff a < b unsigned
+  emitInstr (ISub R1 R3 R2) -- T = 1 iff a < b unsigned
   ttoR2 False
 emitBinOp TAC.TUGt = do
-  emitL "sub r1, r2, r3"          -- T = 1 iff b < a, i.e., a > b
+  emitInstr (ISub R1 R2 R3) -- T = 1 iff b < a, i.e., a > b
   ttoR2 False
 emitBinOp TAC.TULe = do
-  emitL "sub r1, r2, r3"          -- T = 1 iff b < a (a > b)
-  ttoR2 True                      -- NOT T = a <= b
+  emitInstr (ISub R1 R2 R3) -- T = 1 iff b < a (a > b)
+  ttoR2 True -- NOT T = a <= b
 emitBinOp TAC.TUGe = do
-  emitL "sub r1, r3, r2"          -- T = 1 iff a < b
-  ttoR2 True                      -- NOT T = a >= b
+  emitInstr (ISub R1 R3 R2) -- T = 1 iff a < b
+  ttoR2 True -- NOT T = a >= b
 
 -- Add 2048 (sign-bit flip) to both r3 and r2 to convert signed comparison
 -- into an unsigned one that 'sub' borrow can answer.  Uses r1 as a constant
 -- holder; r1 is freely clobbered later by the comparing 'sub'.
 emitSignedNorm :: CG ()
 emitSignedNorm = do
-  emitL "li r1, 0o4000"
-  emitL "add r3, r3, r1"
-  emitL "add r2, r2, r1"
+  emitLiOct 1 0o4000
+  emitInstr (IAdd R3 R3 R1)
+  emitInstr (IAdd R2 R2 R1)
 
 -- After T is set such that T = 1 means "negative result":
 -- ttoR2 False -> r2 = T          (used when T=1 means TRUE)
@@ -698,13 +737,13 @@ emitSignedNorm = do
 ttoR2 :: Bool -> CG ()
 ttoR2 invert = do
   if not invert
-    then emitL "rol r2, r0"        -- r2 = T (clears T)
+    then emitInstr (IRol R2 R0) -- r2 = T (clears T)
     else do
       lSkip <- freshLbl "ne"
-      emitL "li r2, 1"              -- assume true
-      emitL ("bf " <> lSkip)
-      emitL "li r2, 0"              -- T was 1: result is false
-      emit (lSkip <> ":")
+      emitInstr (ILi R2 (Imm12Dec 1)) -- assume true
+      emitInstr (IBf lSkip)
+      emitInstr (ILi R2 (Imm12Dec 0)) -- T was 1: result is false
+      emitAsm (AsmLabelDef lSkip)
 
 -- Variable-amount shift: r3 = source, r2 = count.
 -- isLeft: True = left shift; False = right shift.
@@ -714,23 +753,23 @@ emitShift :: Bool -> Bool -> CG ()
 emitShift isLeft isLogical = do
   lLoop <- freshLbl "shift_loop"
   lEnd  <- freshLbl "shift_end"
-  emitL "and r2, r2, r2"            -- noop to mark start of shift
+  emitInstr (IAnd R2 R2 R2) -- noop to mark start of shift
   -- Loop: while r2 > 0: shift r3 by 1; r2--.
-  emit (lLoop <> ":")
-  emitL "sub r0, r0, r2"            -- T = 1 iff r2 != 0
-  emitL ("bf " <> lEnd)             -- exit when r2 == 0
+  emitAsm (AsmLabelDef lLoop)
+  emitInstr (ISub R0 R0 R2) -- T = 1 iff r2 != 0
+  emitInstr (IBf lEnd) -- exit when r2 == 0
   case (isLeft, isLogical) of
-    (True, _)      -> do emitL "clrt"; emitL "rol r3, r3"
-    (False, True)  -> do emitL "clrt"; emitL "ror r3, r3"
-    (False, False) -> do              -- arithmetic: fill with sign bit
-      emitL "and r1, r3, r7"         -- r1 = r3
-      emitL "rol r1, r1"             -- T = bit 11 of r3 (sign bit)
-      emitL "ror r3, r3"             -- r3 >>= 1, bit 11 filled with T
-  emitL "subi r2, 1"
-  emitL "sub r0, r0, r7"
-  emitL ("bt " <> lLoop)
-  emit (lEnd <> ":")
-  emitL "and r2, r3, r7"
+    (True, _) -> do emitInstr IClrt; emitInstr (IRol R3 R3)
+    (False, True) -> do emitInstr IClrt; emitInstr (IRor R3 R3)
+    (False, False) -> do -- arithmetic: fill with sign bit
+      emitInstr (IAnd R1 R3 R7) -- r1 = r3
+      emitInstr (IRol R1 R1) -- T = bit 11 of r3 (sign bit)
+      emitInstr (IRor R3 R3) -- r3 >>= 1, bit 11 filled with T
+  emitInstr (ISubi R2 (imm6 1))
+  emitInstr (ISub R0 R0 R7)
+  emitInstr (IBt lLoop)
+  emitAsm (AsmLabelDef lEnd)
+  emitInstr (IAnd R2 R3 R7)
 
 -- ---------------------------------------------------------------------------
 -- Integer multiply: strength-reduce small / power-of-two constants; otherwise
@@ -788,26 +827,26 @@ emitMulByConst k v | isPow2 k = do
   emitShift True True
 emitMulByConst 3 v = do
   loadOpInto 3 v
-  emitL "and r4, r3, r7"
+  emitInstr (IAnd R4 R3 R7)
   emitLoadConst 2 1
   emitShift True True
-  emitL "add r2, r4, r2"
+  emitInstr (IAdd R2 R4 R2)
 emitMulByConst 5 v = do
   loadOpInto 3 v
-  emitL "and r4, r3, r7"
+  emitInstr (IAnd R4 R3 R7)
   emitLoadConst 2 2
   emitShift True True
-  emitL "add r2, r4, r2"
+  emitInstr (IAdd R2 R4 R2)
 emitMulByConst 6 v = do
   loadOpInto 3 v
-  emitL "and r4, r3, r7"
+  emitInstr (IAnd R4 R3 R7)
   emitLoadConst 2 2
   emitShift True True
-  emitL "and r1, r2, r7"
+  emitInstr (IAnd R1 R2 R7)
   loadOpInto 3 v
   emitLoadConst 2 1
   emitShift True True
-  emitL "add r2, r1, r2"
+  emitInstr (IAdd R2 R1 R2)
 emitMulByConst k v = do
   loadOpInto 3 v
   emitLoadConst 2 k
@@ -840,13 +879,13 @@ emitDivModLibrary op = case op of
 
 emitLibrcc :: Text -> CG ()
 emitLibrcc sym = do
-  emitL ("li r1, " <> sym)
-  emitL "jalr r5, r1"
+  emitLiSym 1 sym
+  emitInstr (IJalr R5 R1)
 
 -- Fresh local label within a procedure (uses cgFuncName for uniqueness).
 freshLbl :: Text -> CG Text
 freshLbl base = do
   ls <- gets cgLines
-  let n = length ls   -- monotonic counter; not perfectly unique but adequate
+  let n = length ls
   fn <- gets cgFuncName
   pure $ "_L_" <> fn <> "_" <> base <> "_" <> tshow n

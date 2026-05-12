@@ -121,7 +121,7 @@ defaultSsaPasses =
   , Pass
       { passId = PassId "ssa-cfg-thread"
       , passDesc = "Jump/branch threading"
-      , passDefaultOn = [Os, O1]
+      , passDefaultOn = [O1]
       , passRun = \p -> let (out, ch) = SOpt.branchThreadProg p in PassResult out ch
       }
   , Pass

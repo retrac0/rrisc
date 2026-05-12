@@ -8,7 +8,7 @@ CABAL  ?= cabal
 #   cabal build exe:rcc exe:ras exe:rld exe:rsim
 # Binaries live under dist-newstyle; use `cabal list-bin` or `cabal install`.
 
-.PHONY: all sim2 ras rld rsim rcc examples clean
+.PHONY: all sim2 ras rld rsim rcc examples forth clean
 
 all: sim2 ras rld rsim rcc
 
@@ -35,7 +35,11 @@ rcc:
 examples:
 	@make -C examples all
 
+forth:
+	@make -C forth all
+
 clean:
 	-rm -f sim2 *.bin tools/tests/asm/*.bin tools/tests/asm/*.output tools/tests/asm/*.sim2.output tools/tests/asm/*.err
 	-rm -f examples/*.bin examples/*.output examples/*.sim2.output
 	-rm -rf examples/build
+	-make -C forth clean

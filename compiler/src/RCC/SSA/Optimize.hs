@@ -1043,6 +1043,13 @@ dispatchBalanceProg = mapProc dispatchBalanceProc
 
 -- ---------------------------------------------------------------------------
 -- Branch threading (very basic: TGoto to TGoto target)
+--
+-- Only follow @TGoto@ through blocks with no instructions.  Chasing across
+-- non-empty blocks would skip real code (e.g. @i = 0@ before a loop), producing
+-- miscompiles such as an infinite loop in @float_sqrt@ at @-O1@.
+
+jumpThruEmpty :: S.Block -> Bool
+jumpThruEmpty bb = null (S.bInstrs bb)
 
 branchThreadFunc :: S.Func -> (S.Func, Bool)
 branchThreadFunc f =
@@ -1050,10 +1057,12 @@ branchThreadFunc f =
       tgt :: S.BlockId -> S.BlockId
       tgt b =
         case Map.lookup b bm of
-          Just bb ->
-            case S.bTerm bb of
-              S.TGoto c | c /= b -> tgt c
-              _ -> b
+          Just bb
+            | jumpThruEmpty bb ->
+                case S.bTerm bb of
+                  S.TGoto c | c /= b -> tgt c
+                  _ -> b
+            | otherwise -> b
           _ -> b
       rwTerm t =
         case t of
@@ -1073,6 +1082,17 @@ branchThreadProg = mapProc (\sp -> let (f',ch)=branchThreadFunc (SP.spFunc sp) i
 
 -- ---------------------------------------------------------------------------
 -- Float copy elimination (SSA form)
+--
+-- Fuse  @t = fn(dst, …);  __fcopy(dst2, dst)@  into  @t = fn(dst2, …)@  when
+-- @src == dst@ (the call wrote its float result through @dst@, then we copied
+-- from that same address).  Only safe for helpers whose first argument is a
+-- pure float *output* buffer.  Do not apply to @__ftoa@, @float_sqrt@, etc.:
+-- their first argument may be read (or alias other live data); matching
+-- @__fcopy(dest, &r)@ after @__ftoa(&r, buf)@ would wrongly retarget the call.
+
+elimFloatDstFirstArgOps :: Set Text
+elimFloatDstFirstArgOps =
+  Set.fromList ["__fneg", "__fadd", "__fsub", "__fmul", "__fdiv", "__itof"]
 
 elimFloatCopiesFunc :: S.Func -> (S.Func, Bool)
 elimFloatCopiesFunc f =
@@ -1087,6 +1107,7 @@ elimFloatCopiesFunc f =
   where
     rewriteSeq (S.IDef t (S.OCall fn (dst : args)) : S.IEffect (S.OCall "__fcopy" [dst2, src]) : rest)
       | fn /= "__fcopy"
+      , fn `Set.member` elimFloatDstFirstArgOps
       , src == dst =
           S.IDef t (S.OCall fn (dst2 : args)) : rest
     rewriteSeq (x:xs) = x : rewriteSeq xs
@@ -1180,7 +1201,15 @@ collectCallees f =
 eliminateDeadCodeProg :: SP.SSAProg -> (SP.SSAProg, Bool)
 eliminateDeadCodeProg prog =
   let procMap = Map.fromList [ (S.fName (SP.spFunc sp), sp) | sp <- SP.ssaProcs prog ]
-      live = bfs Set.empty ["main"] procMap
+      -- Reachability from `main` only.  Library TUs (e.g. rlmath.c) have no
+      -- `main`; starting BFS only at "main" would drop every real procedure
+      -- (undefined symbols / garbage jumps after link).  Treat every procedure
+      -- as an entry when `main` is absent.
+      roots =
+        if Map.member "main" procMap
+          then ["main"]
+          else Map.keys procMap
+      live = bfs Set.empty roots procMap
       procs1 = [ sp | sp <- SP.ssaProcs prog, Set.member (S.fName (SP.spFunc sp)) live ]
       changed = length procs1 /= length (SP.ssaProcs prog)
    in (prog { SP.ssaProcs = procs1 }, changed)

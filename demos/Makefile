@@ -21,21 +21,9 @@ SIM := env PYTHONPATH=$(ROOT) python3 -m pytools.sim --terminal $(SIM_MEM) $(SIM
 
 RCC_FLAGS := --code-base $(CODE_BASE) --data-base $(DATA_BASE) --stack-top $(STACK_TOP)
 
-.PHONY: all run rpn_float clean forth run-forth
+.PHONY: all run rpn_float print_float run_print_float clean
 
 all: rpn.bin
-
-# Standalone Forth-style demo: forth/ at repo root (hand-written asm, no rcc)
-FORTH_SRCS := $(wildcard $(ROOT)/forth/*.s)
-forth.bin: $(FORTH_SRCS)
-	$(RAS_RUN) lib/crt0.s -o demos/forth.crt0.o \
-	    -D RCC_STACK_TOP=$(STACK_TOP)
-	$(RAS_RUN) forth/forth.s -I forth -I lib -o demos/forth.user.o
-	$(RLD_RUN) demos/forth.crt0.o demos/forth.user.o -o demos/forth.bin \
-	    --code-base $(CODE_BASE) --data-base $(DATA_BASE)
-
-run-forth: forth.bin
-	$(SIM) demos/forth.bin
 
 # Soft-float RPN: -O0 keeps this demo under 4k words with lib/itoa.s (not C itoa).
 RPN_FLOAT_RCC_FLAGS := $(RCC_FLAGS) -O0
@@ -52,6 +40,29 @@ rpn_float.bin: rpn_float.s
 	$(RAS_RUN) demos/rpn_float.s -I lib -o demos/rpn_float.user.o
 	$(RLD_RUN) demos/rpn_float.crt0.o demos/rpn_float.user.o -o demos/rpn_float.bin \
 	    --code-base $(CODE_BASE) --data-base $(DATA_BASE)
+
+# rlmath is a separate .c so float_sqrt is not pasted from a header (no TU inlining).
+rlmath.s: $(ROOT)/lib/rlmath.c $(ROOT)/lib/rlmath.h
+	cd $(RCC_DIR) && $(RCC) $(RPN_FLOAT_RCC_FLAGS) --omit-float-runtime \
+	    --preprocessor "cpp -P -I $(ROOT)/lib" \
+	    $(ROOT)/lib/rlmath.c -o $(ROOT)/demos/rlmath.s
+
+print_float.s: print_float.c $(ROOT)/lib/rlibc_float_calc.h $(ROOT)/lib/rlmath.h
+	cd $(RCC_DIR) && $(RCC) $(RPN_FLOAT_RCC_FLAGS) --embed-full-float-runtime \
+	    --preprocessor "cpp -P -I $(ROOT)/lib" \
+	    $(ROOT)/demos/print_float.c -o $(ROOT)/demos/print_float.s
+
+print_float.bin: print_float.s rlmath.s
+	$(RAS_RUN) lib/crt0.s -o demos/print_float.crt0.o \
+	    -D RCC_STACK_TOP=$(STACK_TOP)
+	$(RAS_RUN) demos/print_float.s -I lib -o demos/print_float.user.o
+	$(RAS_RUN) demos/rlmath.s -I lib -o demos/rlmath.user.o
+	$(RLD_RUN) demos/print_float.crt0.o demos/print_float.user.o demos/rlmath.user.o \
+	    -o demos/print_float.bin \
+	    --code-base $(CODE_BASE) --data-base $(DATA_BASE)
+
+run_print_float: print_float.bin
+	$(SIM) print_float.bin
 
 rpn_int.s: rpn_int.c $(ROOT)/lib/rlibc_float_calc.h
 	cd $(RCC_DIR) && $(RCC) $(RCC_FLAGS) \
@@ -75,4 +86,6 @@ clean:
 	rm -f rpn.s rpn.bin rpn_float.s rpn_float.bin \
 	    demos/rpn.crt0.o demos/rpn.user.o $(ROOT)/lib/rpn_err.o \
 	    demos/rpn_float.crt0.o demos/rpn_float.user.o \
-	    demos/forth.bin demos/forth.crt0.o demos/forth.user.o
+	    $(ROOT)/demos/print_float.s $(ROOT)/demos/print_float.bin \
+	    $(ROOT)/demos/rlmath.s $(ROOT)/demos/print_float.crt0.o \
+	    $(ROOT)/demos/print_float.user.o $(ROOT)/demos/rlmath.user.o

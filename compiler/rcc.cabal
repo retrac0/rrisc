@@ -43,6 +43,7 @@ library
         RCC.SSA.Optimize
         RCC.OptFrameworkSSA
         RCC.Codegen
+        RCC.Mach
     other-modules:
         RCC.RuntimeDeps
 

@@ -46,6 +46,8 @@ data Options = Options
   , optDumpSsa      :: Bool
   , optVerifySsa    :: Bool
   , optSsaFixpointMax :: Int
+  , optOmitFloatRuntime :: Bool
+  , optEmbedFullFloatRuntime :: Bool
   } deriving (Show)
 
 defaultOptions :: Options
@@ -63,6 +65,8 @@ defaultOptions = Options
   , optDumpSsa      = False
   , optVerifySsa    = False
   , optSsaFixpointMax = 1
+  , optOmitFloatRuntime = False
+  , optEmbedFullFloatRuntime = False
   }
 
 parseArgs :: [String] -> Either String Options
@@ -86,6 +90,8 @@ parseArgs = go defaultOptions
     go opts ("--verify-ssa" : rest) = go opts{ optVerifySsa = True } rest
     go opts ("--ssa-fixpoint-max" : a : rest) =
       either (\e -> Left ("--ssa-fixpoint-max: " <> e)) (\n -> go opts{ optSsaFixpointMax = clampSsaFixpoint n } rest) (parseIntArg a)
+    go opts ("--omit-float-runtime" : rest) = go opts{ optOmitFloatRuntime = True } rest
+    go opts ("--embed-full-float-runtime" : rest) = go opts{ optEmbedFullFloatRuntime = True } rest
     -- Compatibility flags (map onto -Os / -O0)
     go opts ("--no-optimize" : rest) = go opts{ optOptLevel = Pipe.O0 } rest
     go opts ("--optimize" : rest) = go opts{ optOptLevel = Pipe.Os } rest
@@ -122,6 +128,8 @@ usage prog =
     , "  --dump-ssa            print SSA (debug) and exit"
     , "  --verify-ssa          assert SSA invariants after optimization (debug)"
     , "  --ssa-fixpoint-max N  SSA pipeline sweeps until stable (max N, default 1; max 32)"
+    , "  --omit-float-runtime      omit auto-%include float lib (link another object that has it)"
+    , "  --embed-full-float-runtime  %include entire soft-float lib (primary TU in multi-object link)"
     , "  -V, --version         print version and exit"
     ]
 
@@ -231,6 +239,8 @@ main = do
         { Codegen.codeBase = optCodeBase opts
         , Codegen.dataBase = optDataBase opts
         , Codegen.stackTop = maybe (optDataBase opts) id (optStackTop opts)
+        , Codegen.omitFloatRuntime = optOmitFloatRuntime opts
+        , Codegen.embedFullFloatRuntime = optEmbedFullFloatRuntime opts
         }
   let asm = Codegen.codegen cgopts tac'
 
