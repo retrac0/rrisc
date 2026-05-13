@@ -8,8 +8,8 @@ module RCC.OptFrameworkSSA
 import Data.Map.Strict (Map)
 
 import RCC.Pass
-import qualified RCC.SSA.Optimize as SOpt
-import qualified RCC.SSA.Prog as SP
+import qualified RCC.Ir.SSA.Optimize as SOpt
+import qualified RCC.Ir.SSA.Prog as SP
 
 defaultSsaPasses :: [Pass SP.SSAProg]
 defaultSsaPasses =

@@ -181,30 +181,30 @@ def verify_rld_equivalence(
     return True, ""
 
 
-def verify_obj_roundtrip_pyras(
+def verify_obj_roundtrip_rras(
     src: Path,
     tmp: Path,
     include_dirs: Sequence[Path],
 ) -> tuple[bool, str]:
-    """Like :func:`verify_obj_roundtrip` using ``python -m pytools.pyras``."""
-    from rrisc_toolchain import pyras_emit_obj_cmd, pyras_flat_bin_cmd
+    """Like :func:`verify_obj_roundtrip` using ``python -m pytools.rras``."""
+    from rrisc_toolchain import rras_emit_obj_cmd, rras_flat_bin_cmd
 
     bin_path = tmp / (src.stem + ".py.bin")
     obj_path = tmp / (src.stem + ".py.o")
     r1 = subprocess.run(
-        pyras_emit_obj_cmd(src, obj_path, include_dirs=include_dirs),
+        rras_emit_obj_cmd(src, obj_path, include_dirs=include_dirs),
         capture_output=True,
         text=True,
     )
     if r1.returncode != 0:
-        return False, f"pyras (.o) failed: {(r1.stderr or r1.stdout or '').strip()}"
+        return False, f"rras (.o) failed: {(r1.stderr or r1.stdout or '').strip()}"
     r2 = subprocess.run(
-        pyras_flat_bin_cmd(src, bin_path, include_dirs=include_dirs),
+        rras_flat_bin_cmd(src, bin_path, include_dirs=include_dirs),
         capture_output=True,
         text=True,
     )
     if r2.returncode != 0:
-        return False, f"pyras (flat .bin) failed: {(r2.stderr or r2.stdout or '').strip()}"
+        return False, f"rras (flat .bin) failed: {(r2.stderr or r2.stdout or '').strip()}"
     bin_words = _trim_trailing_zeros(_read_bin(bin_path))
     obj_words = _trim_trailing_zeros(_parse_obj_text_section_words(obj_path))
     if bin_words != obj_words:
@@ -221,38 +221,38 @@ def verify_obj_roundtrip_pyras(
     return True, ""
 
 
-def verify_pyld_equivalence(
+def verify_rrld_equivalence(
     src: Path,
     tmp: Path,
     include_dirs: Sequence[Path],
 ) -> tuple[bool, str]:
-    """Single-object ``pyras`` flat image vs ``pyld`` link (Python toolchain)."""
-    from rrisc_toolchain import pyld_simple_cmd, pyras_emit_obj_cmd, pyras_flat_bin_cmd
+    """Single-object ``rras`` flat image vs ``rrld`` link (Python toolchain)."""
+    from rrisc_toolchain import rrld_simple_cmd, rras_emit_obj_cmd, rras_flat_bin_cmd
 
     bin_path = tmp / (src.stem + ".py2.bin")
     obj_path = tmp / (src.stem + ".py2.o")
     linked_path = tmp / (src.stem + ".py.linked.bin")
     r1 = subprocess.run(
-        pyras_emit_obj_cmd(src, obj_path, include_dirs=include_dirs),
+        rras_emit_obj_cmd(src, obj_path, include_dirs=include_dirs),
         capture_output=True,
         text=True,
     )
     if r1.returncode != 0:
-        return False, f"pyras (.o) failed: {(r1.stderr or r1.stdout or '').strip()}"
+        return False, f"rras (.o) failed: {(r1.stderr or r1.stdout or '').strip()}"
     r2 = subprocess.run(
-        pyras_flat_bin_cmd(src, bin_path, include_dirs=include_dirs),
+        rras_flat_bin_cmd(src, bin_path, include_dirs=include_dirs),
         capture_output=True,
         text=True,
     )
     if r2.returncode != 0:
-        return False, f"pyras (flat .bin) failed: {(r2.stderr or r2.stdout or '').strip()}"
+        return False, f"rras (flat .bin) failed: {(r2.stderr or r2.stdout or '').strip()}"
     res = subprocess.run(
-        pyld_simple_cmd([obj_path], linked_path),
+        rrld_simple_cmd([obj_path], linked_path),
         capture_output=True,
         text=True,
     )
     if res.returncode != 0:
-        return False, f"pyld failed: {(res.stderr or res.stdout or '').strip()}"
+        return False, f"rrld failed: {(res.stderr or res.stdout or '').strip()}"
     if not filecmp.cmp(bin_path, linked_path, shallow=False):
         a = bin_path.read_bytes()
         b = linked_path.read_bytes()
@@ -262,37 +262,37 @@ def verify_pyld_equivalence(
             ax = a[i] if i < len(a) else None
             bx = b[i] if i < len(b) else None
             if ax != bx:
-                diffs.append(f"  byte {i}: pyras-flat={ax} pyld={bx}")
+                diffs.append(f"  byte {i}: rras-flat={ax} rrld={bx}")
                 if len(diffs) >= 8:
                     break
         return False, "binary mismatch:\n" + "\n".join(diffs)
     return True, ""
 
 
-def verify_pyld_matches_rld(
-    rld: Path,
+def verify_rrld_matches_hs_rrld(
+    hs_rrld: Path,
     obj_path: Path,
     tmp: Path,
 ) -> tuple[bool, str]:
-    """Compare ``python -m pytools.pyld`` to Haskell ``rld`` on the same ``.o``."""
+    """Compare ``python -m pytools.rrld`` to Haskell ``rrld`` on the same ``.o``."""
     import sys
 
     linked_hs = tmp / "linked_hs.bin"
     linked_py = tmp / "linked_py.bin"
     r1 = subprocess.run(
-        [str(rld), str(obj_path), "-o", str(linked_hs)],
+        [str(hs_rrld), str(obj_path), "-o", str(linked_hs)],
         capture_output=True,
         text=True,
     )
     if r1.returncode != 0:
-        return False, f"rld failed: {(r1.stderr or r1.stdout or '').strip()}"
+        return False, f"rrld (Haskell) failed: {(r1.stderr or r1.stdout or '').strip()}"
     r2 = subprocess.run(
-        [sys.executable, "-m", "pytools.pyld", str(obj_path), "-o", str(linked_py)],
+        [sys.executable, "-m", "pytools.rrld", str(obj_path), "-o", str(linked_py)],
         capture_output=True,
         text=True,
     )
     if r2.returncode != 0:
-        return False, f"pyld failed: {(r2.stderr or r2.stdout or '').strip()}"
+        return False, f"rrld (Python) failed: {(r2.stderr or r2.stdout or '').strip()}"
     if not filecmp.cmp(linked_hs, linked_py, shallow=False):
-        return False, "pyld vs rld binary mismatch"
+        return False, "rrld (Python) vs rrld (Haskell) binary mismatch"
     return True, ""

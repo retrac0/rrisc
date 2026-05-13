@@ -5,28 +5,28 @@ CFLAGS  = -O2 -Wall
 CABAL  ?= cabal
 
 # Root `cabal.project` lists compiler/ and tools/ — build with:
-#   cabal build exe:rcc exe:ras exe:rld exe:rsim
+#   cabal build exe:rcc exe:rras exe:rrld exe:rrsim
 # Binaries live under dist-newstyle; use `cabal list-bin` or `cabal install`.
 
-.PHONY: all sim2 ras rld rsim rcc examples forth clean
+.PHONY: all sim2 rras rrld rrsim rcc examples forth clean
 
-all: sim2 ras rld rsim rcc
+all: sim2 rras rrld rrsim rcc
 
 sim2: sim2.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 # Print paths to cabal-built toolchain binaries (no repo-root symlinks).
-ras:
-	cd tools && $(CABAL) build exe:ras
-	@echo "$$(cd tools && $(CABAL) list-bin exe:ras)"
+rras:
+	cd tools && $(CABAL) build exe:rras
+	@echo "$$(cd tools && $(CABAL) list-bin exe:rras)"
 
-rld:
-	cd tools && $(CABAL) build exe:rld
-	@echo "$$(cd tools && $(CABAL) list-bin exe:rld)"
+rrld:
+	cd tools && $(CABAL) build exe:rrld
+	@echo "$$(cd tools && $(CABAL) list-bin exe:rrld)"
 
-rsim:
-	cd tools && $(CABAL) build exe:rsim
-	@echo "$$(cd tools && $(CABAL) list-bin exe:rsim)"
+rrsim:
+	cd tools && $(CABAL) build exe:rrsim
+	@echo "$$(cd tools && $(CABAL) list-bin exe:rrsim)"
 
 rcc:
 	cd compiler && $(CABAL) build exe:rcc

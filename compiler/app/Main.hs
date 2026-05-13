@@ -15,18 +15,19 @@ import System.Process (readProcess)
 import Paths_rcc (version)
 
 import RCC.CliParse (parseIntArg)
-import qualified RCC.Parser   as Parser
-import qualified RCC.Sema     as Sema
-import qualified RCC.LowerSSA as LowerSSA
-import qualified RCC.Codegen  as Codegen
+import qualified RCC.Frontend.C.Parser as Parser
+import qualified RCC.Frontend.C.Sema as Sema
+import qualified RCC.Frontend.C.Compile as CCompile
+import qualified RCC.Target as Target
+import qualified RCC.Target.Rrisc.Codegen as RCG
 import qualified RCC.OptFramework as OF
 import qualified RCC.OptFrameworkSSA as OFSSA
 import qualified RCC.Pass as Pass
 import qualified RCC.Pipeline as Pipe
-import qualified RCC.SSA.Prog as SSA
-import qualified RCC.SSA.Verify as SSAVerify
-import qualified RCC.SSA.ToTACProg as ToTACProg
-import qualified RCC.TAC as TAC
+import qualified RCC.Ir.SSA.Prog as SSA
+import qualified RCC.Ir.SSA.Verify as SSAVerify
+import qualified RCC.Ir.SSA.ToTACProg as ToTACProg
+import qualified RCC.Ir.TAC as TAC
 import RCC.Error (Diagnostic, formatDiagnostic)
 
 -- ---------------------------------------------------------------------------
@@ -181,11 +182,10 @@ main = do
     Left  d -> dieDiag d
     Right p -> return p
 
-  let ssa :: SSA.SSAProg
-      ssa =
-        case optOptLevel opts of
-          Pipe.O0 -> LowerSSA.lowerSSAPlain checked
-          _       -> LowerSSA.lowerSSA checked
+  let tgt = Target.rriscTarget
+      dl  = Target.targetDataLayout tgt
+      ssa :: SSA.SSAProg
+      ssa = CCompile.lowerCheckedToSSA dl (optOptLevel opts) checked
 
   when (optDumpSsa opts) $ print ssa >> exitSuccess
 
@@ -235,14 +235,14 @@ main = do
 
   when (optDumpTac opts) $ print tac' >> exitSuccess
 
-  let cgopts = Codegen.CodegenOpts
-        { Codegen.codeBase = optCodeBase opts
-        , Codegen.dataBase = optDataBase opts
-        , Codegen.stackTop = maybe (optDataBase opts) id (optStackTop opts)
-        , Codegen.omitFloatRuntime = optOmitFloatRuntime opts
-        , Codegen.embedFullFloatRuntime = optEmbedFullFloatRuntime opts
+  let cgopts = RCG.CodegenOpts
+        { RCG.codeBase = optCodeBase opts
+        , RCG.dataBase = optDataBase opts
+        , RCG.stackTop = maybe (optDataBase opts) id (optStackTop opts)
+        , RCG.omitFloatRuntime = optOmitFloatRuntime opts
+        , RCG.embedFullFloatRuntime = optEmbedFullFloatRuntime opts
         }
-  let asm = Codegen.codegen cgopts tac'
+  let asm = Target.emitTacProgramText tgt cgopts tac'
 
   case optOutput opts of
     Nothing -> TIO.putStr asm

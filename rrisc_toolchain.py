@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Shared path resolution, flags, and argv builders for RRISC tooling (tests, scripts).
 
-Haskell-first: prefer `ras` / `rld` / `rsim` from cabal-built binaries under
-`tools/`. Python mirrors: `python -m pytools.pyras`, `python -m pytools.pyld`,
-`python -m pytools.pyrsim`. The deprecated flat assembler is `python3 -m pytools.asm`.
+Haskell-first: prefer `rras` / `rrld` / `rrsim` from cabal-built binaries under
+`tools/`. Python mirrors: `python -m pytools.rras`, `python -m pytools.rrld`,
+`python -m pytools.rrsim`. The deprecated flat assembler is `python3 -m pytools.asm`.
 """
 
 from __future__ import annotations
@@ -106,7 +106,7 @@ def _usable_exe(p: Path | None) -> Path | None:
 
 
 def python_exe() -> str:
-    """Interpreter for ``pytools.asm`` / ``pytools.sim`` (avoid broken sys.executable in some IDEs)."""
+    """Interpreter for ``pytools.asm`` / ``pytools.rrsim`` (avoid broken sys.executable in some IDEs)."""
     if _usable_exe(Path(sys.executable)):
         return sys.executable
     w = shutil.which("python3") or shutil.which("python")
@@ -119,32 +119,32 @@ def py_asm_argv() -> list[str]:
 
 
 def py_sim_argv() -> list[str]:
-    """Argv prefix to run the Python simulator: ``python3 -m pytools.pyrsim``."""
-    return [python_exe(), "-m", "pytools.pyrsim"]
+    """Argv prefix to run the Python simulator: ``python3 -m pytools.rrsim``."""
+    return [python_exe(), "-m", "pytools.rrsim"]
 
 
-def pyrsim_argv() -> list[str]:
-    """Canonical Python simulator CLI (alias of :func:`py_sim_argv`)."""
+def rrsim_argv() -> list[str]:
+    """Argv prefix for ``python3 -m pytools.rrsim``."""
     return py_sim_argv()
 
 
-def pyras_argv() -> list[str]:
-    """Argv prefix for ``python3 -m pytools.pyras`` (mirrors Haskell ``ras`` CLI)."""
-    return [python_exe(), "-m", "pytools.pyras"]
+def rras_argv() -> list[str]:
+    """Argv prefix for ``python3 -m pytools.rras`` (mirrors Haskell ``rras`` CLI)."""
+    return [python_exe(), "-m", "pytools.rras"]
 
 
-def pyld_cmd(
+def rrld_cmd(
     objs: Sequence[Path],
     out_bin: Path,
     *,
     code_base: str,
     data_base: str | None,
 ) -> list[str]:
-    """Invoke Python ``pyld`` like :func:`rld_cmd` for ``rrisc_toolchain`` / tests."""
+    """Invoke Python ``rrld`` like :func:`rld_cmd` for ``rrisc_toolchain`` / tests."""
     argv = [
         python_exe(),
         "-m",
-        "pytools.pyld",
+        "pytools.rrld",
         *[str(o) for o in objs],
         "-o",
         str(out_bin),
@@ -170,30 +170,30 @@ def resolve_ras(root: Path, override: str | None) -> Path | None:
     w = _usable_exe(which_or_path(override))
     if w:
         return w
-    built = _usable_exe(cabal_list_bin(root / "tools", "exe:ras"))
+    built = _usable_exe(cabal_list_bin(root / "tools", "exe:rras"))
     if built:
         return built
-    return _usable_exe(which_or_path("ras"))
+    return _usable_exe(which_or_path("rras"))
 
 
 def resolve_rld(root: Path, override: str | None) -> Path | None:
     w = _usable_exe(which_or_path(override))
     if w:
         return w
-    built = _usable_exe(cabal_list_bin(root / "tools", "exe:rld"))
+    built = _usable_exe(cabal_list_bin(root / "tools", "exe:rrld"))
     if built:
         return built
-    return _usable_exe(which_or_path("rld"))
+    return _usable_exe(which_or_path("rrld"))
 
 
 def resolve_rsim(root: Path, override: str | None) -> Path | None:
     w = _usable_exe(which_or_path(override))
     if w:
         return w
-    built = _usable_exe(cabal_list_bin(root / "tools", "exe:rsim"))
+    built = _usable_exe(cabal_list_bin(root / "tools", "exe:rrsim"))
     if built:
         return built
-    return _usable_exe(root / "rsim")
+    return _usable_exe(root / "rrsim")
 
 
 def resolve_sim2(root: Path, override: str | None) -> Path | None:
@@ -265,15 +265,15 @@ def ras_emit_obj_cmd(
     return argv
 
 
-def pyras_emit_obj_cmd(
+def rras_emit_obj_cmd(
     src: Path,
     obj_out: Path,
     *,
     include_dirs: Sequence[Path] | None = None,
     cli_defines: Sequence[tuple[str, str]] | None = None,
 ) -> list[str]:
-    """Like :func:`ras_emit_obj_cmd` but invokes ``python -m pytools.pyras`` (relocatable ``.o``)."""
-    argv = [*pyras_argv(), str(src), "-o", str(obj_out)]
+    """Like :func:`ras_emit_obj_cmd` but invokes ``python -m pytools.rras`` (relocatable ``.o``)."""
+    argv = [*rras_argv(), str(src), "-o", str(obj_out)]
     for d in include_dirs or ():
         argv.extend(["-I", str(d)])
     for k, v in cli_defines or ():
@@ -281,25 +281,25 @@ def pyras_emit_obj_cmd(
     return argv
 
 
-def pyras_flat_bin_cmd(
+def rras_flat_bin_cmd(
     src: Path,
     out: Path,
     *,
     include_dirs: Sequence[Path] | None = None,
 ) -> list[str]:
-    """Flat ``.bin`` via ``pyras`` (same route as ``ras --format bin``)."""
-    argv = [*pyras_argv(), str(src), "--format", "bin", "-o", str(out)]
+    """Flat ``.bin`` via ``rras`` (same route as ``rras --format bin``)."""
+    argv = [*rras_argv(), str(src), "--format", "bin", "-o", str(out)]
     for d in include_dirs or ():
         argv.extend(["-I", str(d)])
     return argv
 
 
-def pyld_simple_cmd(objs: Sequence[Path], out_bin: Path) -> list[str]:
-    """Invoke ``pyld`` with default section bases (matches a bare ``rld … -o``)."""
+def rrld_simple_cmd(objs: Sequence[Path], out_bin: Path) -> list[str]:
+    """Invoke ``rrld`` with default section bases (matches a bare ``rrld … -o``)."""
     return [
         python_exe(),
         "-m",
-        "pytools.pyld",
+        "pytools.rrld",
         *[str(o) for o in objs],
         "-o",
         str(out_bin),

@@ -1,7 +1,7 @@
 ; crt0.s — RRISC C runtime startup (linked separately from rcc output).
 ;
-; The compiler does not %include this file. Build with ras -o crt0.o and link
-; with rld before the rcc-generated object (crt0.o first), using --code-base and
+; The compiler does not %include this file. Build with rras -o crt0.o and link
+; with rrld before the rcc-generated object (crt0.o first), using --code-base and
 ; --data-base matching the program's %define RCC_* lines.
 ;
 ; Defaults below suit standalone assembly; tests/build scripts pass -D RCC_STACK_TOP=...

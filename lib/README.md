@@ -2,7 +2,7 @@
 
 Everything the C compiler (`rcc`) needs at run time and everything that makes
 hand-written RRISC assembly pleasant lives here. Flat builds often `%include`
-supporting `.s` files; **relocatable** builds use **`ras`** (default `.o` output) +
+supporting `.s` files; **relocatable** builds use **`rras`** (default `.o` output) +
 **`rld`**, which resolves symbols across objects (see [`docs/toolchain.md`](../docs/toolchain.md)).
 
 ## Layout

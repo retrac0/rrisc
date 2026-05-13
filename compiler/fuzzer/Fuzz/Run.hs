@@ -49,13 +49,13 @@ data ToolPaths = ToolPaths
   , tpRoot :: !FilePath
   } deriving (Show)
 
--- | Resolve @rcc@, @ras@, @rld@, and @rsim@ via @cabal list-bin@ (run from repo root).
+-- | Resolve @rcc@, @rras@, @rrld@, and @rrsim@ via @cabal list-bin@ (run from repo root).
 resolveToolPaths :: FilePath -> IO (Either String ToolPaths)
 resolveToolPaths root = do
   ercc <- cabalListBin (root </> "compiler") "exe:rcc"
-  eras <- cabalListBin (root </> "tools") "exe:ras"
-  erld <- cabalListBin (root </> "tools") "exe:rld"
-  ersim <- cabalListBin (root </> "tools") "exe:rsim"
+  eras <- cabalListBin (root </> "tools") "exe:rras"
+  erld <- cabalListBin (root </> "tools") "exe:rrld"
+  ersim <- cabalListBin (root </> "tools") "exe:rrsim"
   case (ercc, eras, erld, ersim) of
     (Right a, Right b, Right c, Right d) ->
       pure $
@@ -75,7 +75,7 @@ resolveToolPaths root = do
       pure $
         Left
           ( unlines
-              ("resolveToolPaths: cabal list-bin failed (build exe:rcc exe:ras exe:rld exe:rsim):" : lefts [ercc, eras, erld, ersim])
+              ("resolveToolPaths: cabal list-bin failed (build exe:rcc exe:rras exe:rrld exe:rrsim):" : lefts [ercc, eras, erld, ersim])
           )
 
 cabalListBin :: FilePath -> String -> IO (Either String FilePath)
@@ -211,12 +211,12 @@ pipeline tp p =
   , Stage "ras-user" $ run (tpRas tp)
       [ apS p, "-o", apUserObj p
       , "-I", tpRoot tp </> "lib" ]
-  , Stage "rld"        $ run (tpRld tp)
+  , Stage "rrld"        $ run (tpRld tp)
       [ apCrt0Obj p, apUserObj p
       , "-o", apBin p
       , "--code-base", "0o100"
       , "--data-base", "0o6600" ]
-  , Stage "rsim"       $ run (tpRsim tp)
+  , Stage "rrsim"       $ run (tpRsim tp)
       [ "--mem", "ram:0:0o7770"
       , "--start", "0o100"
       , "--terminal"
@@ -237,7 +237,7 @@ pipeline tp p =
 
 -- | Run all stages in order.  Returns @(simStdout, hostStdout)@ on
 -- success, or the first 'StageError' encountered.  The two stdouts come
--- from the @rsim@ and @host@ stages respectively, identified by name.
+-- from the @rrsim@ and @host@ stages respectively, identified by name.
 runStages :: [Stage] -> IO (Either StageError (String, String))
 runStages = go Nothing Nothing
   where
@@ -252,17 +252,17 @@ runStages = go Nothing Nothing
       case r of
         Left e         -> pure (Left e { seStage = stageName s })
         Right (out, _) ->
-          let ms' = if stageName s == "rsim" then Just out else ms
+          let ms' = if stageName s == "rrsim" then Just out else ms
               mh' = if stageName s == "host" then Just out else mh
           in go ms' mh' ss
 
     finish name out ms mh =
-      let ms' = if name == "rsim" then Just out else ms
+      let ms' = if name == "rrsim" then Just out else ms
           mh' = if name == "host" then Just out else mh
       in case (ms', mh') of
            (Just a, Just b) -> pure (Right (a, b))
            _                -> pure $ Left $ StageError "internal" 1
-                                  ("missing rsim/host stdout") ""
+                                  ("missing rrsim/host stdout") ""
 
 -- ---------------------------------------------------------------------------
 -- Process helper
@@ -274,7 +274,7 @@ runStages = go Nothing Nothing
 
 cleanEnv :: [(String, String)]
 cleanEnv =
-  -- UTF-8 locale: ras reads source files via lazy Text, so a C locale
+  -- UTF-8 locale: rras reads source files via lazy Text, so a C locale
   -- chokes on non-ASCII bytes (e.g. comments in lib/crt0.s).
   [ ("PATH",   "/usr/local/sbin:/usr/local/bin:/usr/bin:/bin")
   , ("LANG",   "C.UTF-8")

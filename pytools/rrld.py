@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``pyld`` — Python linker (``RRISC.Link`` port). CLI matches Haskell ``rld``."""
+"""``rrld`` — Python linker (``RRISC.Link`` port). CLI matches Haskell ``rrld``."""
 
 from __future__ import annotations
 
@@ -39,10 +39,10 @@ def _parse_int_arg(s: str) -> int | None:
 def main(argv: list[str] | None = None) -> None:
     argv = argv if argv is not None else sys.argv[1:]
     if argv in (["-V"], ["--version"]):
-        print("pyld 1.0 (pytools)")
+        print("rrld 1.0 (pytools)")
         raise SystemExit(0)
 
-    ap = argparse.ArgumentParser(prog="pyld", description="RRISC linker (Python)")
+    ap = argparse.ArgumentParser(prog="rrld", description="RRISC linker (Python)")
     ap.add_argument("inputs", nargs="+", metavar="input.o")
     ap.add_argument("-o", "--output", dest="output")
     ap.add_argument("--format", choices=("bin", "readmemb"), default="bin")
@@ -55,13 +55,13 @@ def main(argv: list[str] | None = None) -> None:
     if args.code_base is not None:
         cb = _parse_int_arg(args.code_base)
         if cb is None:
-            print(f"pyld: bad --code-base {args.code_base!r}", file=sys.stderr)
+            print(f"rrld: bad --code-base {args.code_base!r}", file=sys.stderr)
             raise SystemExit(2)
         bases.append(("text", cb))
     if args.data_base is not None:
         db = _parse_int_arg(args.data_base)
         if db is None:
-            print(f"pyld: bad --data-base {args.data_base!r}", file=sys.stderr)
+            print(f"rrld: bad --data-base {args.data_base!r}", file=sys.stderr)
             raise SystemExit(2)
         bases.append(("data", db))
 

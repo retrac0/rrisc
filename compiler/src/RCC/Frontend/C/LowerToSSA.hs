@@ -1,6 +1,6 @@
 -- | Checked AST lowering: 'lowerToSSA' emits SSA-shaped basic blocks (no TAC in bodies).
 -- 'lower' derives flat TAC only via @ToTACProg . lowerToSSA@ for tools and codegen prep.
-module RCC.LowerToSSA
+module RCC.Frontend.C.LowerToSSA
   ( lower
   , lowerToSSA
   , lowerToSSAPlain
@@ -12,7 +12,6 @@ module RCC.LowerToSSA
 
 import Control.Monad (forM, forM_, when, unless)
 import Control.Monad.State.Strict
-import Data.Bits ((.&.), (.|.), shiftL, shiftR)
 import Data.List (foldl', nub)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -21,39 +20,17 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import qualified RCC.Sema   as Sema
-import qualified RCC.Syntax as Syn
-import qualified RCC.TAC    as TAC
-import qualified RCC.SSA.CFG as C
-import qualified RCC.SSA.Dom as Dom
-import qualified RCC.SSA.IR as Ssa
-import qualified RCC.SSA.Prog as SP
-import qualified RCC.SSA.ToTACProg as ToTACProg
-
--- ---------------------------------------------------------------------------
--- Float48 encoding
-
-doubleToF48 :: Double -> [Int]
-doubleToF48 x
-  | isNaN x      = [0x7FF, 0, 0x400, 0]
-  | isInfinite x = if x > 0 then [0x7FF, 0, 0, 0] else [0xFFF, 0, 0, 0]
-  | x == 0.0     = [0, 0, 0, 0]
-  | otherwise    =
-      let sign      = if x < 0 then 1 else 0
-          (m, n)    = decodeFloat (abs x)
-          -- m in [2^52, 2^53) for normal doubles; x = m * 2^n
-          -- float48: sig48 = top 36 bits of m; exp48 = n + 1076
-          sig48     = fromInteger m `shiftR` 17 :: Int
-          exp48     = n + 1076
-          w0        = (sign `shiftL` 11) .|. (exp48 .&. 0x7FF)
-          w1        = (sig48 `shiftR` 24) .&. 0xFFF
-          w2        = (sig48 `shiftR` 12) .&. 0xFFF
-          w3        = sig48 .&. 0xFFF
-      in if exp48 >= 0x7FF
-           then [(sign `shiftL` 11) .|. 0x7FF, 0, 0, 0]
-           else if exp48 <= 0
-                  then [0, 0, 0, 0]
-                  else [w0, w1, w2, w3]
+import qualified RCC.Frontend.C.Sema   as Sema
+import qualified RCC.Frontend.C.Syntax as Syn
+import qualified RCC.Ir.TAC    as TAC
+import qualified RCC.Ir.SSA.CFG as C
+import qualified RCC.Ir.SSA.Dom as Dom
+import qualified RCC.Ir.SSA.IR as Ssa
+import qualified RCC.Ir.SSA.Prog as SP
+import qualified RCC.Ir.SSA.ToTACProg as ToTACProg
+import RCC.Ir.DataLayout (DataLayout(..))
+import RCC.Frontend.C.Layout (cTySizeWords, structFieldOffsetWords)
+import RCC.Frontend.C.FloatWords (encodeFloatLiteralWords)
 
 -- ---------------------------------------------------------------------------
 -- Lowering monad
@@ -87,12 +64,13 @@ data LS = LS
   , lsProcs       :: [ProcBuild]                        -- reversed
   , lsGlobalDefs  :: [TAC.Global]                       -- reversed
   , lsConstLocals :: Map Text Ssa.Value                 -- const local aggregates -> rodata addr
+  , lsDataLayout  :: !DataLayout
   }
 
-emptyLS :: LS
-emptyLS = LS 0 0 []
+emptyLS :: DataLayout -> LS
+emptyLS dl = LS 0 0 []
     (RawBuilder (C.BlockId 0) Nothing []) 1
-    Map.empty Map.empty Map.empty Map.empty [] [] [] Map.empty
+    Map.empty Map.empty Map.empty Map.empty [] [] [] Map.empty dl
 
 type L = State LS
 
@@ -171,8 +149,9 @@ addConstLocal name v =
 
 structOffset :: Text -> Text -> L Int
 structOffset sname fname = do
+  dl <- gets lsDataLayout
   ss <- gets lsStructs
-  case Sema.structFieldOffset ss sname fname of
+  case structFieldOffsetWords dl ss sname fname of
     Just o  -> pure o
     Nothing -> pure 0
 
@@ -186,13 +165,13 @@ structFieldTy sname fname = do
 -- ---------------------------------------------------------------------------
 -- Top-level
 
-lower :: Sema.CheckedProg -> TAC.TACProg
-lower = ToTACProg.toTACProg . lowerToSSA
+lower :: DataLayout -> Sema.CheckedProg -> TAC.TACProg
+lower dl = ToTACProg.toTACProg . lowerToSSA dl
 
 -- | Lower checked AST to SSA (basic blocks from lowering + Cytron-style SSA on the CFG).
-lowerToSSA :: Sema.CheckedProg -> SP.SSAProg
-lowerToSSA (Syn.Prog decls) =
-  let final = execState (lowerProg decls) emptyLS
+lowerToSSA :: DataLayout -> Sema.CheckedProg -> SP.SSAProg
+lowerToSSA dl (Syn.Prog decls) =
+  let final = execState (lowerProg decls) (emptyLS dl)
       procs =
         [ SP.SSAProc
             { SP.spFunc =
@@ -206,9 +185,9 @@ lowerToSSA (Syn.Prog decls) =
    in SP.SSAProg (reverse (lsGlobalDefs final)) procs
 
 -- | Like 'lowerToSSA' but skips Cytron @phi@ insertion (CFG bodies stay in lowered form).
-lowerToSSAPlain :: Sema.CheckedProg -> SP.SSAProg
-lowerToSSAPlain (Syn.Prog decls) =
-  let final = execState (lowerProg decls) emptyLS
+lowerToSSAPlain :: DataLayout -> Sema.CheckedProg -> SP.SSAProg
+lowerToSSAPlain dl (Syn.Prog decls) =
+  let final = execState (lowerProg decls) (emptyLS dl)
       procs =
         [ SP.SSAProc
             { SP.spFunc =
@@ -234,15 +213,16 @@ collectTop (Syn.TDFunc fd) =
                                           (Syn.fdRetTy fd, Syn.fdParams fd)
                                           (lsFuncs s) }
 collectTop (Syn.TDVar vd) = do
+  dl <- gets lsDataLayout
   ss <- gets lsStructs
   let name  = Syn.vdName vd
       ty    = Syn.vdTy vd
-      sz    = Sema.tySize ss ty
+      sz    = cTySizeWords dl ss ty
       isC   = Syn.vdConst vd
       initVals = case ty of
         Syn.TyFloat -> case Syn.vdInit vd of
-          Just (Syn.IExpr (Syn.EFloatLit _ d)) -> doubleToF48 d
-          _                                    -> replicate 4 0
+          Just (Syn.IExpr (Syn.EFloatLit _ d)) -> encodeFloatLiteralWords dl d
+          _                                    -> replicate (dlFloatWords dl) 0
         _ -> case Syn.vdInit vd of
           Just (Syn.IExpr e)  -> [evalConst e]
           Just (Syn.IList es) -> map evalConst es
@@ -279,14 +259,15 @@ lowerTop (Syn.TDFunc fd) = case Syn.fdBody fd of
         then emitReturn Nothing
         else emitReturn (Just (Ssa.VConst 0))
     sg <- get
-    let ss        = lsStructs sg
+    let dl        = lsDataLayout sg
+        ss        = lsStructs sg
         paramSet  = Map.fromList (map (\(ty, n) -> (n, ty)) (Syn.fdParams fd))
         locSzs    = Map.fromList
           [ (name, sz)
           | (name, ty) <- Map.toList (lsLocals sg)
           , Map.notMember name paramSet
           , Map.notMember name (lsConstLocals sg)
-          , let sz = Sema.tySize ss ty
+          , let sz = cTySizeWords dl ss ty
           , sz > 1
           ]
         rbs = lsRawAcc sg
@@ -322,8 +303,9 @@ lowerStmt s@(Syn.SVarDecl vd) = do
     Just (Syn.IList es) ->
       if Syn.vdConst vd && all isLitExpr es
         then do  -- const aggregate with all-literal init -> rodata global
+          dl <- gets lsDataLayout
           ss <- gets lsStructs
-          let sz       = Sema.tySize ss ty
+          let sz       = cTySizeWords dl ss ty
               initVals = [n | Syn.ELit _ n <- es]
           synName <- freshLabel ("const_" <> name)
           modify $ \ls -> ls { lsGlobalDefs = TAC.Global synName sz initVals True
@@ -417,7 +399,7 @@ lowerStmt s@(Syn.SContinue _) = do
   case ls of
     ((lCont, _):_) -> emitGoto lCont
     []             -> pure ()
-lowerStmt (Syn.SAsmInline _ txt) = emitSsa (Ssa.IEffect (Ssa.OAsm txt))
+lowerStmt (Syn.SAsmInline _ txt) = emitSsa (Ssa.IEffect (Ssa.OTargetAsm txt))
 
 pushLoop :: (TAC.Label, TAC.Label) -> L ()
 pushLoop pair = modify $ \s -> s { lsLoopStack = pair : lsLoopStack s }
@@ -434,6 +416,7 @@ initAggrOnStack :: Text -> Syn.Ty -> [Syn.Expr] -> L ()
 initAggrOnStack name ty es = do
   emitSsa (Ssa.IComment ("alloclocal " <> name))
   ss <- gets lsStructs
+  dl <- gets lsDataLayout
   -- C99 6.7.8/19: an aggregate initialiser with fewer items than the
   -- aggregate has elements zero-fills the trailing positions.  We model
   -- that here by writing every slot explicitly, falling back to a zero
@@ -448,7 +431,7 @@ initAggrOnStack name ty es = do
   -- until @float@ arrays show up in the test corpus.
   case ty of
     Syn.TyArray inner n
-      | Sema.tySize ss inner == 1 -> do
+      | cTySizeWords dl ss inner == 1 -> do
           let nExpr = length es
           forM_ [0 .. n - 1] $ \i -> do
             val <- if i < nExpr
@@ -457,7 +440,7 @@ initAggrOnStack name ty es = do
             storeAtOff name i val
     _ -> do
       let elemSz = case ty of
-            Syn.TyArray inner _ -> Sema.tySize ss inner
+            Syn.TyArray inner _ -> cTySizeWords dl ss inner
             _                   -> 1
       forM_ (zip [0..] es) $ \(i, e) -> do
         ev <- lowerExpr e
@@ -575,8 +558,9 @@ prettyStmt (Syn.SBlock _ _)         = ""
 lowerExpr :: Syn.Expr -> L Ssa.Value
 lowerExpr (Syn.ELit _ n)       = pure (Ssa.VConst n)
 lowerExpr (Syn.EFloatLit _ d)  = do
+  dl <- gets lsDataLayout
   name <- freshLabel "flit"
-  modify $ \ls -> ls { lsGlobalDefs = TAC.Global name 4 (doubleToF48 d) True
+  modify $ \ls -> ls { lsGlobalDefs = TAC.Global name (dlFloatWords dl) (encodeFloatLiteralWords dl d) True
                                       : lsGlobalDefs ls }
   pure (Ssa.VAddr name)
 lowerExpr (Syn.EString _ txt)  = do
@@ -774,12 +758,13 @@ lowerExpr (Syn.ECast _ toTy e)  = do
       pure (Ssa.VLocalAddr t)
     _ -> lowerExpr e
 lowerExpr (Syn.ESizeof _ arg)   = do
+  dl <- gets lsDataLayout
   ss <- gets lsStructs
   case arg of
-    Left ty -> pure (Ssa.VConst (Sema.tySize ss ty))
+    Left ty -> pure (Ssa.VConst (cTySizeWords dl ss ty))
     Right e -> do
       ty <- inferTy e
-      pure (Ssa.VConst (Sema.tySize ss ty))
+      pure (Ssa.VConst (cTySizeWords dl ss ty))
 lowerExpr (Syn.EPostfix _ pop e) = do
   ov <- lowerExpr e
   orig <- freshTemp
@@ -812,9 +797,10 @@ indexAddr :: Syn.Expr -> Syn.Expr -> L Ssa.Value
 indexAddr arr idx = do
   arrTy <- inferTy arr
   ss    <- gets lsStructs
+  dl    <- gets lsDataLayout
   let elemSz = case arrTy of
-        Syn.TyPtr   inner   -> Sema.tySize ss inner
-        Syn.TyArray inner _ -> Sema.tySize ss inner
+        Syn.TyPtr   inner   -> cTySizeWords dl ss inner
+        Syn.TyArray inner _ -> cTySizeWords dl ss inner
         _                   -> 1
   baseAddr <- lowerExpr arr
   iv       <- lowerExpr idx
@@ -1182,7 +1168,7 @@ lowerLogicalOr l r = do
   pure (Ssa.VVar t)
 
 -- ---------------------------------------------------------------------------
--- TAC → SSA (CFG + dominance; inlined from former RCC.SSA.FromLower)
+-- TAC → SSA (CFG + dominance; inlined from former RCC.Ir.SSA.FromLower)
 
 type SsaBVar = TAC.Temp
 
@@ -1238,7 +1224,7 @@ renameOp (Ssa.OUn op a)      = Ssa.OUn op <$> renameValue a
 renameOp (Ssa.OCopy v)       = Ssa.OCopy <$> renameValue v
 renameOp (Ssa.OLoad v)       = Ssa.OLoad <$> renameValue v
 renameOp (Ssa.OCall f vs)    = Ssa.OCall f <$> mapM renameValue vs
-renameOp (Ssa.OAsm t)        = pure (Ssa.OAsm t)
+renameOp (Ssa.OTargetAsm t)        = pure (Ssa.OTargetAsm t)
 
 renameSsaInstr :: Ssa.Instr -> MSSA [Ssa.Instr]
 renameSsaInstr (Ssa.IComment t)    = pure [Ssa.IComment t]
@@ -1341,7 +1327,7 @@ phiInnerUnion = Map.unionWithKey mergePhiEdge
       | new == old = old
       | otherwise =
           error $
-            "RCC.LowerToSSA.phiInnerUnion: conflicting phi operand from predecessor "
+            "RCC.Frontend.C.LowerToSSA.phiInnerUnion: conflicting phi operand from predecessor "
               ++ show predBlk ++ ": " ++ show (new, old)
 
 ssaRenameAll :: C.CFG

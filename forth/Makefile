@@ -1,15 +1,15 @@
 # Loadable flat image: lib/crt0.s + Forth asm (CODE_BASE/DATA_BASE/STACK_TOP below).
 ROOT := $(abspath ..)
 CABAL ?= cabal
-RAS := cd $(ROOT) && $(CABAL) -v0 run ras --
-RLD := cd $(ROOT) && $(CABAL) -v0 run rld --
+RAS := cd $(ROOT) && $(CABAL) -v0 run rras --
+RLD := cd $(ROOT) && $(CABAL) -v0 run rrld --
 
 CODE_BASE  := 0o100
 DATA_BASE  := 0o6600
 STACK_TOP  := 0o7770
 SIM_MEM    := --mem ram:0:0o7770
 SIM_START  := --start $(CODE_BASE)
-SIM := env PYTHONPATH=$(ROOT) python3 -m pytools.sim --terminal $(SIM_MEM) $(SIM_START)
+SIM := env PYTHONPATH=$(ROOT) python3 -m pytools.rrsim --terminal $(SIM_MEM) $(SIM_START)
 
 CRT0 := $(ROOT)/lib/crt0.s
 FORTH_SRCS := $(wildcard $(CURDIR)/*.s)

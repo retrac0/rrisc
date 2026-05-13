@@ -18,7 +18,7 @@ import RRISC.Link
 usage :: String
 usage =
   unlines
-    [ "Usage: rld input.o [input2.o ...] [-o output] [--format bin|readmemb]"
+    [ "Usage: rrld input.o [input2.o ...] [-o output] [--format bin|readmemb]"
     , "             [--map output.map] [--code-base <addr>] [--data-base <addr>]"
     , "  -V, --version         print version and exit"
     ]
@@ -39,7 +39,7 @@ main :: IO ()
 main = do
   argv <- getArgs
   when (argv == ["--version"] || argv == ["-V"]) $ do
-    putStrLn $ "rld " ++ showVersion version
+    putStrLn $ "rrld " ++ showVersion version
     exitSuccess
   case parseArgs argv emptyArgs of
     Nothing -> hPutStrLn stderr usage >> exitFailure

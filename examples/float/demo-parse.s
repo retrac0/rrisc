@@ -9,7 +9,7 @@
 ;
 ; Build & run:
 ;   env PYTHONPATH=. python3 -m pytools.asm -I lib examples/float/demo-parse.s -o /tmp/f.bin
-;   env PYTHONPATH=. python3 -m pytools.sim /tmp/f.bin --terminal --start 0o1000
+;   env PYTHONPATH=. python3 -m pytools.rrsim /tmp/f.bin --terminal --start 0o1000
 
 %include "macros/uart_tx.inc"
 

@@ -588,7 +588,7 @@ def assign_addresses(lines: list, *, object_layout: bool = False) -> tuple:
     ``.section`` switches section without resetting ``addr``, ``.org`` does not
     emit a statement).
 
-    When ``object_layout`` is True, ``.base`` is rejected like ``ras`` (flat mode
+    When ``object_layout`` is True, ``.base`` is rejected like ``rras`` (flat mode
     may still use ``.base`` for register-relative addressing).
     """
     addr = 0
@@ -1215,8 +1215,8 @@ def format_listing(flat_lines, listing_entries):
 
 def main():
     print(
-        "pytools.asm: deprecated: use `python -m pytools.pyras --format bin …` "
-        "(flat assembly) or the Haskell `ras` binary for relocatable `.o`.",
+        "pytools.asm: deprecated: use `python -m pytools.rras --format bin …` "
+        "(flat assembly) or the Haskell `rras` binary for relocatable `.o`.",
         file=sys.stderr,
     )
     parser = argparse.ArgumentParser(description='RRISC assembler')

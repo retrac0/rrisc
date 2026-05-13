@@ -60,7 +60,7 @@ static int      T  = 0;
 static uint16_t pc = 0;
 static int      use_terminal = 0;
 static int      use_translate = 0;
-/* UART RX: one prefetched word for 0o7773 (matches pytools.sim pipe/stdin behavior). */
+/* UART RX: one prefetched word for 0o7773 (matches pytools.rrsim pipe/stdin behavior). */
 static int      uart_rx_have = 0;
 static uint16_t uart_rx_val = 0;
 
@@ -88,7 +88,7 @@ static uint16_t parse_addr(const char *s) {
     return (uint16_t)(strtoul(s, NULL, 0) & WORD_MASK);
 }
 
-/* Match pytools.sim: pc = int(args.start, 8) — bare digits are octal, not decimal. */
+/* Match pytools.rrsim: pc = int(args.start, 8) — bare digits are octal, not decimal. */
 static uint16_t parse_start_like_sim_py(const char *s) {
     if (s[0] == '0' && (s[1] == 'o' || s[1] == 'O'))
         return (uint16_t)(strtoul(s + 2, NULL, 8) & WORD_MASK);
@@ -119,7 +119,7 @@ static int parse_bank_spec(const char *spec) {
 }
 
 static void add_default_banks(void) {
-    /* Match pytools.sim DEFAULT_BANK_SPECS: ('ram', 0, 0o7770) */
+    /* Match pytools.rrsim DEFAULT_BANK_SPECS: ('ram', 0, 0o7770) */
     banks[num_banks++] = (Bank){BANK_RAM, 0, 07770, NULL};
 }
 

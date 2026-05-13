@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# pytools.sim — Python RRISC simulator (canonical CLI: ``python -m pytools.pyrsim``).
+# pytools.sim — Python RRISC simulator core (CLI: ``python -m pytools.rrsim``).
 
 # 12-bit word RISC-like architecture with 8 general-purpose registers
 
@@ -421,6 +421,3 @@ def main():
     cpu.pc = int(args.start, 8) & WORD_MASK
     cpu.max_cycles = args.maxcycle
     run(cpu, summary=args.summary)
-
-if __name__ == "__main__":
-    main()

@@ -1,10 +1,10 @@
-module RCC.SSA.ToTACProg
+module RCC.Ir.SSA.ToTACProg
   ( toTACProg
   ) where
 
-import qualified RCC.SSA.Prog as SP
-import qualified RCC.SSA.ToTAC as ToTAC
-import qualified RCC.TAC as TAC
+import qualified RCC.Ir.SSA.Prog as SP
+import qualified RCC.Ir.SSA.ToTAC as ToTAC
+import qualified RCC.Ir.TAC as TAC
 
 toTACProg :: SP.SSAProg -> TAC.TACProg
 toTACProg p =

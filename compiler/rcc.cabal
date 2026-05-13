@@ -1,4 +1,4 @@
-cabal-version:      3.0
+cabal-version:      3.4
 name:               rcc
 version:            0.1.0.0
 synopsis:           C-like compiler for the RRISC 12-bit word machine
@@ -18,34 +18,41 @@ common rcc-common
         , filepath   >= 1.4  && < 2
 
 library
-    import:          rcc-common
-    hs-source-dirs:  src
+    import:             rcc-common
+    hs-source-dirs:     src
+    build-depends:      rcc-ir == 0.1.*
+    reexported-modules:
+        RCC.Ir.TAC,
+        RCC.Ir.DataLayout,
+        RCC.Ir.Types,
+        RCC.Ir.SSA.IR,
+        RCC.Ir.SSA.Verify,
+        RCC.Ir.SSA.CFG,
+        RCC.Ir.SSA.Dom,
+        RCC.Ir.SSA.Prog,
+        RCC.Ir.SSA.ToTAC,
+        RCC.Ir.SSA.ToTACProg,
+        RCC.Ir.SSA.Optimize
     exposed-modules:
         RCC.Error
         RCC.CliParse
         RCC.Pass
         RCC.Pipeline
         RCC.OptFramework
-        RCC.Syntax
-        RCC.Parser
-        RCC.Sema
-        RCC.TAC
-        RCC.LowerToSSA
-        RCC.LowerEmitSSA
-        RCC.LowerSSA
-        RCC.SSA.IR
-        RCC.SSA.Verify
-        RCC.SSA.CFG
-        RCC.SSA.Dom
-        RCC.SSA.Prog
-        RCC.SSA.ToTAC
-        RCC.SSA.ToTACProg
-        RCC.SSA.Optimize
         RCC.OptFrameworkSSA
-        RCC.Codegen
-        RCC.Mach
-    other-modules:
-        RCC.RuntimeDeps
+        RCC.Frontend.C.Syntax
+        RCC.Frontend.C.Parser
+        RCC.Frontend.C.Sema
+        RCC.Frontend.C.Layout
+        RCC.Frontend.C.FloatWords
+        RCC.Frontend.C.LowerToSSA
+        RCC.Frontend.C.LowerEmitSSA
+        RCC.Frontend.C.LowerSSA
+        RCC.Frontend.C.Compile
+        RCC.Target
+        RCC.Target.Rrisc.Mach
+        RCC.Target.Rrisc.Codegen
+        RCC.Target.Rrisc.RuntimeDeps
 
 executable rcc
     import:          rcc-common

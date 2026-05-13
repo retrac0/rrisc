@@ -1,5 +1,5 @@
 -- | Three-address code → RRISC assembly text (with @%define RCC_*@ prelude).
-module RCC.Codegen
+module RCC.Target.Rrisc.Codegen
   ( codegen
   , CodegenOpts(..)
   , defaultOpts
@@ -15,9 +15,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Numeric (showOct)
 
-import qualified RCC.TAC as TAC
+import qualified RCC.Ir.TAC as TAC
 
-import RCC.Mach
+import RCC.Target.Rrisc.Mach
   ( AsmLine (..)
   , Imm12 (..)
   , MachInsn (..)
@@ -27,7 +27,7 @@ import RCC.Mach
   , reg
   , renderAsmProgram
   )
-import RCC.RuntimeDeps (asmCalleeName, floatRuntimeIncludeLines, floatRuntimeIncludeLinesAll)
+import RCC.Target.Rrisc.RuntimeDeps (asmCalleeName, floatRuntimeIncludeLines, floatRuntimeIncludeLinesAll)
 
 -- ---------------------------------------------------------------------------
 -- Options
@@ -64,7 +64,7 @@ pathFromPercentInclude :: Text -> Text
 pathFromPercentInclude t =
   let u = T.strip t
    in case T.stripPrefix "%include \"" u of
-        Nothing -> error ("RCC.Codegen.pathFromPercentInclude: " <> T.unpack t)
+        Nothing -> error ("RCC.Target.Rrisc.Codegen.pathFromPercentInclude: " <> T.unpack t)
         Just rest -> fst (T.breakOn "\"" rest)
 
 -- ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ slotOf t = do
   m <- gets cgSlots
   case Map.lookup t m of
     Just s  -> pure s
-    Nothing -> error ("RCC.Codegen.slotOf: missing stack slot for temp " <> T.unpack t)
+    Nothing -> error ("RCC.Target.Rrisc.Codegen.slotOf: missing stack slot for temp " <> T.unpack t)
 
 -- ---------------------------------------------------------------------------
 -- Top-level codegen
@@ -476,7 +476,7 @@ genInstr :: TAC.Instr -> CG ()
 genInstr (TAC.ILabel      lbl) = emitAsm (AsmLabelDef lbl)
 genInstr (TAC.IComment    txt) = emitAsm (AsmComment txt)
 genInstr (TAC.IAllocLocal _  ) = pure ()  -- slot reserved by buildSlotMap; no code needed
-genInstr (TAC.IAsmInline  txt) =
+genInstr (TAC.ITargetAsm  txt) =
   when (not (T.null txt)) (emitAsm (AsmUserAsmInline txt))
 
 genInstr (TAC.IAssign t op) = do
@@ -667,13 +667,13 @@ emitBinOp TAC.TShr  = emitShift False False  -- arithmetic right (sign-extending
 emitBinOp TAC.TUShr = emitShift False True   -- logical right (unsigned)
 emitBinOp TAC.TMul = emitMulLibraryAfterLoads -- r3=a, r2=b already loaded (rare direct path)
 emitBinOp TAC.TDiv =
-  error "RCC.Codegen.emitBinOp: TDiv lowered via genDivModOp only"
+  error "RCC.Target.Rrisc.Codegen.emitBinOp: TDiv lowered via genDivModOp only"
 emitBinOp TAC.TMod =
-  error "RCC.Codegen.emitBinOp: TMod lowered via genDivModOp only"
+  error "RCC.Target.Rrisc.Codegen.emitBinOp: TMod lowered via genDivModOp only"
 emitBinOp TAC.TUDiv =
-  error "RCC.Codegen.emitBinOp: TUDiv lowered via genDivModOp only"
+  error "RCC.Target.Rrisc.Codegen.emitBinOp: TUDiv lowered via genDivModOp only"
 emitBinOp TAC.TUMod =
-  error "RCC.Codegen.emitBinOp: TUMod lowered via genDivModOp only"
+  error "RCC.Target.Rrisc.Codegen.emitBinOp: TUMod lowered via genDivModOp only"
 emitBinOp TAC.TAnd = do
   -- Logical: should not appear (lowered to branches by TAC), but handle anyway.
   emitInstr (IAnd R2 R3 R2)
@@ -875,7 +875,7 @@ emitDivModLibrary op = case op of
   TAC.TMod  -> emitLibrcc "__mod"
   TAC.TUDiv -> emitLibrcc "__udiv"
   TAC.TUMod -> emitLibrcc "__umod"
-  _         -> error "RCC.Codegen.emitDivModLibrary: expected div/mod opcode"
+  _         -> error "RCC.Target.Rrisc.Codegen.emitDivModLibrary: expected div/mod opcode"
 
 emitLibrcc :: Text -> CG ()
 emitLibrcc sym = do

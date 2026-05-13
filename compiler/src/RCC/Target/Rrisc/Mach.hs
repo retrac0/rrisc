@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 -- | Typed RRISC machine instructions and assembly lines before textual rendering.
-module RCC.Mach
+module RCC.Target.Rrisc.Mach
   ( Reg (..)
   , reg
   , MachLabel
@@ -34,7 +34,7 @@ reg n = case n of
   5 -> R5
   6 -> R6
   7 -> R7
-  _ -> error ("RCC.Mach.reg: invalid register index " <> show n)
+  _ -> error ("RCC.Target.Rrisc.Mach.reg: invalid register index " <> show n)
 
 prettyReg :: Reg -> Text
 prettyReg r = "r" <> T.pack (show (fromEnum r))
@@ -54,7 +54,7 @@ newtype Imm6 = Imm6 { imm6Word :: Int }
 imm6 :: Int -> Imm6
 imm6 n
   | n >= 0 && n <= 63 = Imm6 n
-  | otherwise = error ("RCC.Mach.imm6: out of range " <> show n)
+  | otherwise = error ("RCC.Target.Rrisc.Mach.imm6: out of range " <> show n)
 
 prettyImm6 :: Imm6 -> Text
 prettyImm6 = T.pack . show . imm6Word

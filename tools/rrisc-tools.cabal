@@ -44,7 +44,7 @@ library
     build-depends: unix >= 2.8 && < 2.10
 
 
-executable ras
+executable rras
   main-is:          Main.hs
   hs-source-dirs:   app
   default-language: GHC2021
@@ -60,7 +60,7 @@ executable ras
     text
 
 
-executable rld
+executable rrld
   main-is:          RldMain.hs
   hs-source-dirs:   app
   default-language: GHC2021
@@ -74,7 +74,7 @@ executable rld
     text
 
 
-executable rsim
+executable rrsim
   main-is:          SimMain.hs
   hs-source-dirs:   app
   default-language: GHC2021

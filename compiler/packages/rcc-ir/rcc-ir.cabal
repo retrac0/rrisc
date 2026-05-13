@@ -1,0 +1,28 @@
+cabal-version:      3.4
+name:               rcc-ir
+version:            0.1.0.0
+synopsis:           Machine-independent IR (TAC + SSA) for rcc
+build-type:         Simple
+
+library
+    default-language:   GHC2021
+    default-extensions: OverloadedStrings
+    ghc-options:        -Wall -Wno-unused-do-bind
+    hs-source-dirs:     src
+    exposed-modules:
+        RCC.Ir.TAC
+        RCC.Ir.DataLayout
+        RCC.Ir.Types
+        RCC.Ir.SSA.IR
+        RCC.Ir.SSA.Verify
+        RCC.Ir.SSA.CFG
+        RCC.Ir.SSA.Dom
+        RCC.Ir.SSA.Prog
+        RCC.Ir.SSA.ToTAC
+        RCC.Ir.SSA.ToTACProg
+        RCC.Ir.SSA.Optimize
+    build-depends:
+          base       >= 4.18 && < 5
+        , text       >= 2.0  && < 3
+        , containers >= 0.6  && < 1
+        , mtl        >= 2.3  && < 3

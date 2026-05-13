@@ -1,4 +1,4 @@
-module RCC.Syntax
+module RCC.Frontend.C.Syntax
   ( Ty(..)
   , Prog(..)
   , TopDecl(..)

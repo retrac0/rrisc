@@ -24,7 +24,7 @@ Companion documents:
 - [`compiler/spec.md`](spec.md) — the language reference (precedence tables, EBNF
   grammar). Read it after this manual when you need a single-page lookup.
 - [`docs/toolchain.md`](../docs/toolchain.md) — building `rcc` and **rrisc-tools**
-  (`ras`, `rld`, `rsim`), the **`rcc` → `ras` → `rld`** contract, object-format
+  (`rras`, `rrld`, `rrsim`), the **`rcc` → `rras` → `rrld`** contract, object-format
   versioning, and how CI exercises the toolchain.
 
 ---
@@ -68,8 +68,8 @@ in the supported subset (copy fields or work through pointers).
 **One C translation unit per `rcc` run.** `rcc` reads one `.c` file (after optional
 host `cpp`) and emits one `.s`. There are no C-level `extern`/`static` or multi-file
 linking inside the compiler; combine C sources with `#include`. To join separately
-assembled **assembly** objects, use **`ras`** (default `.o` output) and **`rld`** (see
-[`docs/toolchain.md`](../docs/toolchain.md), [§14](#14-cli-ras-and-deprecated-asmpy),
+assembled **assembly** objects, use **`rras`** (default `.o` output) and **`rrld`** (see
+[`docs/toolchain.md`](../docs/toolchain.md) for assembler / linker wiring,
 and [compiler/spec.md §11b](spec.md#11b-rrisc-toolchain-rcc-and-rrisc-tools)).
 
 **No function pointers, no `goto`, no `switch`, no variadics, no dynamic allocation.**
@@ -130,33 +130,33 @@ A few RRISC-isms that bite C programmers:
                               │
               ┌───────────────┴───────────────┐
               ▼                               ▼
-    ras --format bin -o myprog.bin      ras -o myprog.o
+    rras --format bin -o myprog.bin      rras -o myprog.o
     (flat assemble)                          │
               │                               ▼
-              │                         rld  (link .o → .bin)
+              │                         rrld  (link .o → .bin)
               │                               │
               └───────────────┬───────────────┘
                               ▼
                           myprog.bin  (12-bit words, 2 bytes each)
                               │
                               ▼
-                  rsim (Haskell)  or  pytools.sim (Python)  or  sim2 (C)
+                  rrsim (Haskell)  or  pytools.rrsim (Python)  or  sim2 (C)
 ```
 
-The usual **flat** path is `rcc` → **`ras --format bin`** → `.bin` → simulator. The
-**relocatable** path (**`ras`** → **`.o`** → **`rld`**) is how you combine hand-written
+The usual **flat** path is `rcc` → **`rras --format bin`** → `.bin` → simulator. The
+**relocatable** path (**`rras`** → **`.o`** → **`rrld`**) is how you combine hand-written
 assembly objects with generated code or split asm across files; see
 [`docs/toolchain.md`](../docs/toolchain.md). The three simulator implementations and
-the two assembler implementations (`ras` vs deprecated `pytools.asm`) are
-**behaviourally identical** for our purposes. This manual uses `rcc` / `ras` / `rsim`
+the two assembler implementations (`rras` vs deprecated `pytools.asm`) are
+**behaviourally identical** for our purposes. This manual uses `rcc` / `rras` / `rrsim`
 by default.
 
 A typical full build is three commands:
 
 ```sh
 rcc  --preprocessor "cpp -P -I lib"  myprog.c        -o myprog.s
-ras  --format bin -I lib             myprog.s        -o myprog.bin
-rsim --terminal --start 0o1000       myprog.bin
+rras  --format bin -I lib             myprog.s        -o myprog.bin
+rrsim --terminal --start 0o1000       myprog.bin
 ```
 
 The `--preprocessor` flag tells `rcc` to run a host-side `cpp` over the source
@@ -195,13 +195,13 @@ Build it:
 
 ```sh
 rcc  --preprocessor "cpp -P -I lib"  hello.c  -o hello.s
-ras  --format bin -I lib             hello.s  -o hello.bin
+rras  --format bin -I lib             hello.s  -o hello.bin
 ```
 
 Run it under the simulator with the UART terminal attached:
 
 ```sh
-echo "hello, RRISC" | rsim --terminal --start 0o1000 hello.bin
+echo "hello, RRISC" | rrsim --terminal --start 0o1000 hello.bin
 ```
 
 You should see `hello, RRISC` echoed back.
@@ -212,7 +212,7 @@ A few notes on the invocation:
   on its own. Pipe through host `cpp` to get those. The `-P` flag suppresses
   linemarkers, which `rcc` would not understand.
 - **`-I` directories.** Both passed to `cpp` (so it can find `rlibc_io.h`) and to
-  `ras` (so it can find `crt0.s`, which the compiler-emitted assembly `%include`s).
+  `rras` (so it can find `crt0.s`, which the compiler-emitted assembly `%include`s).
 - **`--start 0o1000`.** This must match `rcc`'s `--code-base` (default `0o1000`).
   If you change the code base, change `--start` to match.
 - **`--terminal`.** Without this, reads from `0o7771`/`0o7773` return zero and
@@ -223,7 +223,7 @@ If something does not work, two debugging knobs:
 
 ```sh
 rcc --dump-tac hello.c          # print three-address IR (no asm output)
-rsim --trace hello.bin           # print every instruction as it executes
+rrsim --trace hello.bin           # print every instruction as it executes
 ```
 
 ---
@@ -469,23 +469,23 @@ octal, `0xFF` for hex, decimal otherwise. `rcc` itself does not implement `#incl
 or `#define`; pipe through `cpp -P` (or any other preprocessor that emits plain C
 without linemarkers).
 
-### 14. CLI: `ras`, `pyras`, `pyld`, and deprecated `pytools.asm`
+### 14. CLI: `rras`, `rrld`, and deprecated `pytools.asm`
 
-The canonical assembler implementation in this repository is the Haskell tool **`ras`**. **`pyras`** (**`python3 -m pytools.pyras`**, [`pytools/pyras.py`](../pytools/pyras.py)) exposes the same CLI: **relocatable `.o`** output (default) is produced by the **Python** assembler ([`pytools/asm.py`](../pytools/asm.py) plus [`pytools/asm_obj_emit.py`](../pytools/asm_obj_emit.py)), emitting the same textual object format as **`ras`**. Pass **`--format bin`** or **`--format readmemb`** for a **flat** image with the same encoder (same behaviour as deprecated **`pytools.asm`**). **`pyld`** (**`python3 -m pytools.pyld`**) is the Python linker and matches **`rld`** on textual `.o` files from **either** assembler.
+The canonical assembler implementation in this repository is the Haskell tool **`rras`**. The Python driver **`python3 -m pytools.rras`** ([`pytools/rras.py`](../pytools/rras.py)) exposes the same CLI: **relocatable `.o`** output (default) is produced by the **Python** assembler ([`pytools/asm.py`](../pytools/asm.py) plus [`pytools/asm_obj_emit.py`](../pytools/asm_obj_emit.py)), emitting the same textual object format as the Haskell **`rras`**. Pass **`--format bin`** or **`--format readmemb`** for a **flat** image with the same encoder (same behaviour as deprecated **`pytools.asm`**). **`python3 -m pytools.rrld`** is the Python linker and matches Haskell **`rrld`** on textual `.o` files from **either** assembler.
 
 The legacy Python flat assembler (**`python3 -m pytools.asm`**, [`pytools/asm.py`](../pytools/asm.py)) is **deprecated** (it prints a warning) and remains only for backward compatibility.
 
-**`ras`** / **`pyras`** (default): emits a relocatable **`.o`** (`-o` optional; otherwise `<source>.o`). For a **flat** image, pass **`--format bin`** or **`--format readmemb`**; then `-o` names the `.bin` or `.mem` file.
+**Haskell `rras`** / **`python3 -m pytools.rras`** (default): emits a relocatable **`.o`** (`-o` optional; otherwise `<source>.o`). For a **flat** image, pass **`--format bin`** or **`--format readmemb`**; then `-o` names the `.bin` or `.mem` file.
 
 `pytools.asm` keeps a legacy interface (flat output by default):
 
 ```
-ras  source.s  [-o file.o]  [-I dir]…  [--format bin|readmemb]  [--list]  [--dump-syms file.o]
-python3 -m pytools.pyras  source.s  [-o file.o]  [-I dir]…   # Python .o / flat with --format
+rras  source.s  [-o file.o]  [-I dir]…  [--format bin|readmemb]  [--list]  [--dump-syms file.o]
+python3 -m pytools.rras  source.s  [-o file.o]  [-I dir]…   # Python .o / flat with --format
 python3 -m pytools.asm  source.s  [-o output.bin]  [-I dir]…  [--format bin|readmemb]  [--list]
 ```
 
-| Flag | `ras` default | Effect |
+| Flag | `rras` default | Effect |
 |------|---------|--------|
 | `-o, --output <file>`           | `<source>.o` (no `--format`); with `--format`, `<source>.bin` or `.mem` | Output path |
 | `-I <dir>`                      | (cwd only)     | Add include search dir; repeatable. Search order is the source file's directory, then `-I` dirs in order |
@@ -500,15 +500,14 @@ Branch relaxation is automatic: `bt`/`bf` past the ±63-word direct range are
 rewritten into a three-instruction sequence by both implementations. You do not
 need to think about branch distance in source.
 
-### 15. CLI: `pyrsim`, `pytools.sim`, `rsim`, `sim2`
+### 15. CLI: `pytools.rrsim`, `rrsim` (Haskell), and `sim2`
 
-Use **`python3 -m pytools.pyrsim`** as the canonical Python simulator entry point (same implementation as **`python3 -m pytools.sim`**).
+Use **`python3 -m pytools.rrsim`** as the canonical Python simulator entry point (implementation in [`pytools/sim.py`](../pytools/sim.py)). The Haskell binary is **`rrsim`** from **`rrisc-tools`**.
 
 All three accept the same flags:
 
 ```
-python3 -m pytools.pyrsim <binary.bin>  [--start ADDR]  [--terminal]  [--uart-preload STR]
-python3 -m pytools.sim <binary.bin>  [--start ADDR]  [--terminal]  [--uart-preload STR]
+python3 -m pytools.rrsim <binary.bin>  [--start ADDR]  [--terminal]  [--uart-preload STR]
                   [--trace]  [--bustrace]  [--summary]  [--randomize]
                   [--maxcycle N]  [--mem TYPE:BASE:SIZE]…  [--translate]
 ```
@@ -533,7 +532,7 @@ exceeded.
 
 ### 16. Assembler directives
 
-The Haskell assembler (`ras`) is canonical; deprecated `pytools.asm` agrees on these forms:
+The Haskell assembler (`rras`) is canonical; deprecated `pytools.asm` agrees on these forms:
 
 | Directive | Form | Meaning |
 |-----------|------|---------|
@@ -541,7 +540,7 @@ The Haskell assembler (`ras`) is canonical; deprecated `pytools.asm` agrees on t
 | `%include` | `%include "file.s"` | Splice another source file inline. Searches the current source's directory, then `-I` dirs. Cycle detection. |
 | `%ifdef` / `%ifeq` / `%ifneq` | `%ifdef NAME` … | Conditional inclusion. Pair with `%endif` |
 | `%macro` / `%endm` | `%macro NAME [p1, p2]` … `%endm`  *or*  `%macro NAME N` … (positional `%1`..`%N`) | Macro definition. NASM-style positional or named parameters |
-| `.global` / `.globl` | `.global name [, name …]` | **Object / linking (`ras` → `.o`, `rld` only):** mark definitions as **global** (visible across `.o` files), like C file-scope symbols without `static`. Labels default to **local** (visible only within the same relocatable object). |
+| `.global` / `.globl` | `.global name [, name …]` | **Object / linking (`rras` → `.o`, `rrld` only):** mark definitions as **global** (visible across `.o` files), like C file-scope symbols without `static`. Labels default to **local** (visible only within the same relocatable object). |
 | `.local` | `.local name [, name …]` | **Linking:** force **local** linkage; later `.global` / `.globl` in the same file can still override for names listed again after `.local`. |
 | `.word` | `.word v1, v2, …` | Emit one raw 12-bit word per value |
 | `.float` | `.float f1, f2, …` | Emit four 12-bit words per float (48-bit float48 layout) |
@@ -747,8 +746,8 @@ clobber list). To pass a value in or out, take its address with `&` and use
 
 Most of `lib/` is pulled in by hand-written asm or by listing sources on the
 assembler / linker command line. Float helpers are **not** `%include`d by `rcc`;
-link `lib/float/*.s` (flat assembly) or the matching `.o` files (`ras -o …`,
-then `rld`). The Haskell package **`rrisc-tools`** under [`tools/`](../tools/) provides `rld` for relocatable
+link `lib/float/*.s` (flat assembly) or the matching `.o` files (`rras -o …`,
+then `rrld`). The Haskell package **`rrisc-tools`** under [`tools/`](../tools/) provides `rrld` for relocatable
 objects.
 
 | File | Purpose |
@@ -766,7 +765,7 @@ objects.
 
 Hand-written asm demos live under `examples/` (top level) and `examples/float/`
 for the soft-float walk-throughs (`demo-add`, `demo-mul`, `demo-div`, `demo-parse`).
-Assemble any of them with `cabal run ras -- --format bin -I lib examples/float/demo-add.s` (from the repo root, using [`cabal.project`](../cabal.project)) or a `ras` binary on your `PATH`.
+Assemble any of them with `cabal run rras -- --format bin -I lib examples/float/demo-add.s` (from the repo root, using [`cabal.project`](../cabal.project)) or a `rras` binary on your `PATH`.
 
 **Float / runtime symbol names.** Globals that the compiler or headers rely on use a `__` prefix (`__fadd`, `__atof`, …). That keeps a single reserved namespace for the flat-assembler world: your C code and prototypes stay conventional (`atof`, `ftoa`, `+` on floats), while emitted `jalr` targets and `%include` bodies cannot collide with a user-defined asm label `fadd` or `atof`. Labels *inside* each `lib/float/*.s` file also use that prefix (or a file-unique prefix) so local branches do not pick up the user’s `skip:` by accident. An alternative would be unprefixed public globals (`atof`, `fadd`) with only locals underscored; that reads nicely in isolation but makes duplicate-symbol mistakes much easier whenever user asm or a second `%include` reuses a libc name.
 
@@ -785,7 +784,7 @@ A non-exhaustive list of things a C programmer might reach for and not find:
 - **No `do…while`.**
 - **No C-level multi-file linking or `extern`/`static`.** One `.c` file per `rcc`
   invocation → one `.s`. Combine C with `#include`. **Assembly-level** linking is
-  supported: **`ras`** (`.o`) → **`rld`**. See [`docs/toolchain.md`](../docs/toolchain.md)
+  supported: **`rras`** (`.o`) → **`rrld`**. See [`docs/toolchain.md`](../docs/toolchain.md)
   and [spec §11b](spec.md#11b-rrisc-toolchain-rcc-and-rrisc-tools).
 - **No `extern` / `static` visibility modifiers.** Every top-level name is
   global to the translation unit.

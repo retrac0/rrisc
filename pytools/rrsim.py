@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``pyrsim`` — Python RRISC simulator (same implementation as ``pytools.sim``)."""
+"""``rrsim`` — Python RRISC simulator (same implementation as ``pytools.sim``)."""
 
 from __future__ import annotations
 

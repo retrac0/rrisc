@@ -9,7 +9,7 @@ module RCC.OptFramework
 import Data.Map.Strict (Map)
 
 import RCC.Pass
-import qualified RCC.TAC as TAC
+import qualified RCC.Ir.TAC as TAC
 
 -- | Drop @x = x@ three-address assignments (no-op after register allocation shapes).
 elimTrivialAssignsProc :: TAC.Proc -> (TAC.Proc, Bool)

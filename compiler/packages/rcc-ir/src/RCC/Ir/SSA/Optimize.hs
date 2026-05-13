@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module RCC.SSA.Optimize
+module RCC.Ir.SSA.Optimize
   ( normalizeCFGProg
   , simplifyCFGProg
   , dceProg
@@ -29,9 +29,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Bits
 
-import qualified RCC.SSA.IR as S
-import qualified RCC.SSA.Prog as SP
-import qualified RCC.TAC as TAC
+import qualified RCC.Ir.SSA.IR as S
+import qualified RCC.Ir.SSA.Prog as SP
+import qualified RCC.Ir.TAC as TAC
 
 -- ---------------------------------------------------------------------------
 -- Utilities
@@ -60,7 +60,7 @@ usesOp (S.OUn _ a) = usesValue a
 usesOp (S.OCopy a) = usesValue a
 usesOp (S.OLoad a) = usesValue a
 usesOp (S.OCall _ args) = concatMap usesValue args
-usesOp (S.OAsm _) = []
+usesOp (S.OTargetAsm _) = []
 
 defOfInstr :: S.Instr -> [Text]
 defOfInstr (S.IPhi nm _) = [nm]
@@ -656,7 +656,7 @@ copyPropFunc f =
           S.OBin o a b -> S.OBin o (rwVal a) (rwVal b)
           S.OLoad a -> S.OLoad (rwVal a)
           S.OCall fn args -> S.OCall fn (map rwVal args)
-          S.OAsm t -> S.OAsm t
+          S.OTargetAsm t -> S.OTargetAsm t
       rwInstr i =
         case i of
           S.IDef nm op -> S.IDef nm (rwOp op)
@@ -744,7 +744,7 @@ applySubstToOp m op =
     S.OBin o a b -> S.OBin o (applySubstToValue m a) (applySubstToValue m b)
     S.OLoad a -> S.OLoad (applySubstToValue m a)
     S.OCall fn args -> S.OCall fn (map (applySubstToValue m) args)
-    S.OAsm t -> S.OAsm t
+    S.OTargetAsm t -> S.OTargetAsm t
 
 applySubstToInstr :: Map Text Text -> S.Instr -> S.Instr
 applySubstToInstr m i =
@@ -905,7 +905,7 @@ fpOp (S.OCopy v) = T.concat ["C", sep, fpValue v]
 fpOp (S.OLoad v) = T.concat ["L", sep, fpValue v]
 fpOp (S.OCall fn args) =
   T.concat ["F", sep, fn, sep, T.intercalate rec (map fpValue args)]
-fpOp (S.OAsm t) = T.concat ["M", sep, t]
+fpOp (S.OTargetAsm t) = T.concat ["M", sep, t]
 
 fpPhiEdge :: (S.BlockId, S.Value) -> Text
 fpPhiEdge (bid, v) = fpBlockId bid <> sep <> fpValue v
@@ -1168,7 +1168,7 @@ substAddrProg m = mapProcOnly
         S.OCopy a -> S.OCopy (substVal a)
         S.OLoad a -> S.OLoad (substVal a)
         S.OCall fn args -> S.OCall fn (map substVal args)
-        S.OAsm t -> S.OAsm t
+        S.OTargetAsm t -> S.OTargetAsm t
     substInstr i =
       case i of
         S.IDef nm op -> S.IDef nm (substOp op)

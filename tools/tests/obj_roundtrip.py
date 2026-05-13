@@ -19,7 +19,7 @@ def main() -> int:
     root = repo_root()
     ras = resolve_ras(root, None)
     if not ras:
-        print("ras not found (build: cabal build exe:ras from repo root)", file=sys.stderr)
+        print("rras not found (build: cabal build exe:rras from repo root)", file=sys.stderr)
         return 2
     tmp = Path(tempfile.mkdtemp(prefix="rrisc-obj-roundtrip-"))
     ok_n = 0

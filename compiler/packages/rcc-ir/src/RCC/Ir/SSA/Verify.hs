@@ -1,12 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
-module RCC.SSA.Verify
+module RCC.Ir.SSA.Verify
   ( verifySSAProg
   ) where
 
 import Data.Text (Text)
 
-import qualified RCC.SSA.IR as S
-import qualified RCC.SSA.Prog as SP
+import qualified RCC.Ir.SSA.IR as S
+import qualified RCC.Ir.SSA.Prog as SP
 
 -- | Validate CFG shape for every procedure after optimization.
 verifySSAProg :: SP.SSAProg -> Either Text ()

@@ -70,7 +70,7 @@ popRx s =
 -- | Register UART at @0o7770@–@0o7773@. Returns an action to restore stdin buffering.
 --
 -- When @termReadStdin@ is true we spawn a reader thread (same role as Python's daemon
--- @terminal-rx@). It often blocks in @hGetChar@; we @killThread@ on shutdown so @rsim@
+-- @terminal-rx@). It often blocks in @hGetChar@; we @killThread@ on shutdown so @rrsim@
 -- exits after the CPU halts instead of waiting for interactive input.
 attachTerminal :: Bus -> TerminalOptions -> IO (IO ())
 attachTerminal bus opts = do

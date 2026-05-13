@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Parity checks: ``pyld`` vs Haskell ``rld``, ``objfmt`` round-trip."""
+"""Parity checks: Python ``rrld`` vs Haskell ``rrld``, ``objfmt`` round-trip."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def _ras_path() -> Path | None:
     r = subprocess.run(
-        ["cabal", "list-bin", "exe:ras"],
+        ["cabal", "list-bin", "exe:rras"],
         cwd=ROOT / "tools",
         capture_output=True,
         text=True,
@@ -28,7 +28,7 @@ def _ras_path() -> Path | None:
 
 def _rld_path() -> Path | None:
     r = subprocess.run(
-        ["cabal", "list-bin", "exe:rld"],
+        ["cabal", "list-bin", "exe:rrld"],
         cwd=ROOT / "tools",
         capture_output=True,
         text=True,
@@ -40,12 +40,12 @@ def _rld_path() -> Path | None:
     return p if p.is_file() else None
 
 
-class TestPyldParity(unittest.TestCase):
-    def test_pyld_matches_rld_on_toolchain_asm(self) -> None:
+class TestRrldParity(unittest.TestCase):
+    def test_rrld_matches_hs_rrld_on_toolchain_asm(self) -> None:
         ras = _ras_path()
         rld = _rld_path()
         if ras is None or rld is None:
-            self.skipTest("Haskell ras/rld not built (cd tools && cabal build exe:ras exe:rld)")
+            self.skipTest("Haskell rras/rrld not built (cd tools && cabal build exe:rras exe:rrld)")
 
         from pytools import link_core
 
@@ -78,7 +78,7 @@ class TestObjfmtRoundtrip(unittest.TestCase):
     def test_parse_render_roundtrip_on_ras_object(self) -> None:
         ras = _ras_path()
         if ras is None:
-            self.skipTest("Haskell ras not built")
+            self.skipTest("Haskell rras not built")
 
         from pytools import objfmt
 

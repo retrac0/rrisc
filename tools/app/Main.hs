@@ -29,10 +29,10 @@ import RRISC.Obj.Format
 usage :: String
 usage =
   unlines
-    [ "Usage: ras source.s [-o output] [-I dir]... [-D NAME=value]..."
+    [ "Usage: rras source.s [-o output] [-I dir]... [-D NAME=value]..."
     , "                      [--format bin|readmemb] [--list]"
     , "       (default: emit relocatable object .o; use --format for flat .bin/.mem)"
-    , "       ras --dump-syms file.o"
+    , "       rras --dump-syms file.o"
     , "  -V, --version         print version and exit"
     ]
 
@@ -51,7 +51,7 @@ main :: IO ()
 main = do
   args <- getArgs
   when (args == ["--version"] || args == ["-V"]) $ do
-    putStrLn $ "ras " ++ showVersion version
+    putStrLn $ "rras " ++ showVersion version
     exitSuccess
   case parseArgs args of
     Nothing -> hPutStrLn stderr usage >> exitFailure
@@ -63,7 +63,7 @@ runAssemble ModeDumpSyms{} = error "unreachable"
 runAssemble (ModeAssemble src outArg incDirs cliDefines mFmt doList) = do
   case mFmt of
     Nothing -> do
-      when doList $ hPutStrLn stderr "ras: --list requires --format bin|readmemb" >> exitFailure
+      when doList $ hPutStrLn stderr "rras: --list requires --format bin|readmemb" >> exitFailure
       eObj <- assembleFileToObject src incDirs cliDefines
       case eObj of
         Left err -> TIO.hPutStrLn stderr (formatAsmError err) >> exitFailure

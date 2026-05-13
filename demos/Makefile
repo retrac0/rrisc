@@ -6,8 +6,8 @@ CABAL  ?= cabal
 RCC := $(CABAL) -v0 run --project-file $(RCC_DIR)/cabal.project rcc --
 
 # Haskell assembler / linker (same stack as run_tests.py); run from repo root for cabal.project
-RAS_RUN := cd $(ROOT) && $(CABAL) -v0 run ras --
-RLD_RUN  := cd $(ROOT) && $(CABAL) -v0 run rld --
+RAS_RUN := cd $(ROOT) && $(CABAL) -v0 run rras --
+RLD_RUN  := cd $(ROOT) && $(CABAL) -v0 run rrld --
 
 # Full 0o7770-word flat RAM, IO page at 0o7770, code starting at 0o100.
 # Globals at 0o6600 (~65 words); stack grows down from 0o7770 (~580 words of stack).
@@ -17,7 +17,7 @@ DATA_BASE  := 0o6600
 STACK_TOP  := 0o7770
 SIM_MEM    := --mem ram:0:0o7770
 SIM_START  := --start $(CODE_BASE)
-SIM := env PYTHONPATH=$(ROOT) python3 -m pytools.sim --terminal $(SIM_MEM) $(SIM_START)
+SIM := env PYTHONPATH=$(ROOT) python3 -m pytools.rrsim --terminal $(SIM_MEM) $(SIM_START)
 
 RCC_FLAGS := --code-base $(CODE_BASE) --data-base $(DATA_BASE) --stack-top $(STACK_TOP)
 

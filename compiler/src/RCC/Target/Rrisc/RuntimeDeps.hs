@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- | Which @lib/*.s@ files to @%include@ after user code for a given TAC program.
-module RCC.RuntimeDeps
+module RCC.Target.Rrisc.RuntimeDeps
   ( asmCalleeName
   , floatRuntimeIncludeLines
   , floatRuntimeIncludeLinesAll
@@ -13,7 +13,7 @@ import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.Text (Text)
 
-import qualified RCC.TAC as TAC
+import qualified RCC.Ir.TAC as TAC
 
 -- | Assembly entry symbol for calls emitted from TAC (libc float I/O uses @__*@ names).
 asmCalleeName :: Text -> Text

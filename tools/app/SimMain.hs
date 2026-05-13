@@ -86,11 +86,11 @@ optsInfo =
   info (optsP <**> helper <**> versionOpt) $
     fullDesc
       <> progDesc "RRISC simulator (pytools/sim.py parity)"
-      <> header "rsim — RRISC simulator"
+      <> header "rrsim — RRISC simulator"
   where
     versionOpt =
       infoOption
-        ("rsim " ++ showVersion version)
+        ("rrsim " ++ showVersion version)
         (long "version" <> short 'V' <> help "print version and exit")
 
 -- | Match @int(args.start, 8)@ in pytools/sim.py (always octal base 8).

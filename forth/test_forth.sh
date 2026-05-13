@@ -7,7 +7,7 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BIN="$SCRIPT_DIR/forth.bin"
 SIM_MAXCYCLE="${SIM_MAXCYCLE:-500000}"
 SIM=(
-	env PYTHONPATH="$ROOT" python3 -m pytools.sim
+	env PYTHONPATH="$ROOT" python3 -m pytools.rrsim
 	--terminal
 	--mem ram:0:0o7770
 	--start 0o100
@@ -18,7 +18,7 @@ usage() {
 	cat <<EOF
 Usage: $(basename "$0") <command>
 
-  smoke       UART preload: 1 2 + then BYE; checks expected bytes vs pytools.sim.
+  smoke       UART preload: 1 2 + then BYE; checks expected bytes vs pytools.rrsim.
   run         Interactive UART (stdin/stdout); end session with BYE to halt.
   help        This text.
 

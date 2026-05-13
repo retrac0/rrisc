@@ -8,10 +8,10 @@ mkdir -p "$OUT"
 
 RAS="${RAS:-}"
 if [[ -z "$RAS" ]]; then
-  RAS="$(cd "$ROOT/tools" && cabal list-bin exe:ras 2>/dev/null | tail -1 || true)"
+  RAS="$(cd "$ROOT/tools" && cabal list-bin exe:rras 2>/dev/null | tail -1 || true)"
 fi
 if [[ -z "$RAS" || ! -x "$RAS" ]]; then
-  echo "ras not found; set RAS or run: cd tools && cabal build exe:ras" >&2
+  echo "rras not found; set RAS or run: cd tools && cabal build exe:rras" >&2
   exit 1
 fi
 

@@ -6,7 +6,7 @@
 ;
 ; Build & pipe input:
 ;   env PYTHONPATH=. python3 -m pytools.asm -I lib examples/echo.s -o /tmp/echo.bin
-;   echo 'hello' | env PYTHONPATH=. python3 -m pytools.sim /tmp/echo.bin --terminal --start 0o1000
+;   echo 'hello' | env PYTHONPATH=. python3 -m pytools.rrsim /tmp/echo.bin --terminal --start 0o1000
 
 %include "macros/uart_tx.inc"
 %include "macros/uart_rx.inc"

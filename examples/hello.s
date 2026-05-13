@@ -2,7 +2,7 @@
 ;
 ; Assemble and run:
 ;   env PYTHONPATH=. python3 -m pytools.asm examples/hello.s
-;   env PYTHONPATH=. python3 -m pytools.sim examples/hello.bin --terminal --start 1000
+;   env PYTHONPATH=. python3 -m pytools.rrsim examples/hello.bin --terminal --start 1000
 ;
 %include "macros/uart_tx.inc"
         .org 0o1000

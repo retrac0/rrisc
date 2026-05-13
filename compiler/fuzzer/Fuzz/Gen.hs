@@ -14,7 +14,7 @@
 --     individual loop runs at most 'cfgLoopCap' iterations ('genWhile' /
 --     'genFor'), and 'cfgMaxLoopDepth' bounds the nesting depth so total
 --     work is bounded by @cfgLoopCap ^ cfgMaxLoopDepth@.  Both bounds are
---     load-bearing; the rsim @--maxcycle@ check is the safety net, not
+--     load-bearing; the rrsim @--maxcycle@ check is the safety net, not
 --     the primary guarantee.
 --   * Pointers, when used, point only into the current function's locals.
 --
@@ -315,7 +315,7 @@ genStmt = do
       forW        = if loopAllowed then 1 else 0
       breakW      = if inLoop then 1 else 0
       -- rcc's lowered loops use a trailing tick; @continue@ would skip it
-      -- and spin (rsim maxcycle).  Comma in @for(;;)@ is not in rcc.
+      -- and spin (rrsim maxcycle).  Comma in @for(;;)@ is not in rcc.
       continueW   = 0
       blockW      = 1
       declW       = 1

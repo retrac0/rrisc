@@ -2,7 +2,7 @@
 ;
 ; Assemble and run:
 ;   env PYTHONPATH=. python3 -m pytools.asm examples/ascii.s
-;   env PYTHONPATH=. python3 -m pytools.sim examples/ascii.bin --terminal --start 1000
+;   env PYTHONPATH=. python3 -m pytools.rrsim examples/ascii.bin --terminal --start 1000
 ;
 %include "macros/uart_tx.inc"
         .org 0o1000

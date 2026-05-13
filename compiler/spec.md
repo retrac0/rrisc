@@ -34,7 +34,7 @@ see [`MANUAL.md`](MANUAL.md). The hardware ISA reference is [`Arch.md`](../Arch.
 runtime helper calls (`__fadd`, `__fsub`, `__fmul`, `__fdiv`, `__fcmp`, `__ftoi`,
 `__itof`, `__fcopy`, `__fneg`). Implementations live under `lib/float/`. The compiler
 does not embed those files; supply them when assembling (for example list the needed
-`.s` files or link prebuilt `.o` objects with `rld`).
+`.s` files or link prebuilt `.o` objects with `rrld`).
 
 ### Derived
 
@@ -418,9 +418,9 @@ The **language** is implemented by **`rcc`** ([`compiler/`](../compiler)), which
 assembly (`.s`) including the crt0 prelude above.
 
 The **`rrisc-tools`** package ([`tools/`](../tools)) provides the supported assembler, linker, and simulator:
-**`ras`** assembles `.s` to a relocatable **`.o`** by default (`-o` optional); **`--format bin`**
-or **`--format readmemb`** emits a flat **`.bin`** or **`.mem`** instead. **`rld`** links one or
-more `.o` files into a final image. **`rsim`** is the Haskell simulator (alternatives: `python3 -m pytools.sim`,
+**`rras`** assembles `.s` to a relocatable **`.o`** by default (`-o` optional); **`--format bin`**
+or **`--format readmemb`** emits a flat **`.bin`** or **`.mem`** instead. **`rrld`** links one or
+more `.o` files into a final image. **`rrsim`** is the Haskell simulator (alternatives: `python3 -m pytools.rrsim`,
 `sim2`). Bases and defines must stay consistent with the `%define` lines `rcc` emits — see
 [`docs/toolchain.md`](../docs/toolchain.md) for the contract, build commands, and object-format
 versioning.
@@ -597,7 +597,7 @@ yields **0** (12-bit). Link **`librcc.o`** after **`crt0.o`** and before the use
 The compiler emits calls to the symbols below when needed; assembly sources live in `lib/`.
 The compiler output `%include`s `lib/crt0.s` for `_start`. Soft-float and string helpers are
 **not** inlined into the generated `.s`; link `lib/float/*.s` (or prebuilt `.o` objects from
-`lib/float/`) so **`rld`** or flat **`ras --format bin`** resolves `__f*` symbols as documented in
+`lib/float/`) so **`rrld`** or flat **`rras --format bin`** resolves `__f*` symbols as documented in
 [`docs/toolchain.md`](../docs/toolchain.md).
 
 | Symbol     | Signature                                        | Description                              | Source                |

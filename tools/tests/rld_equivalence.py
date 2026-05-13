@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""rld vs flat ras equivalence: see toolchain_checks.verify_rld_equivalence."""
+"""rld vs flat rras equivalence: see toolchain_checks.verify_rld_equivalence."""
 
 from __future__ import annotations
 
@@ -21,11 +21,11 @@ def main() -> int:
     rld = resolve_rld(root, None)
     if not ras or not rld:
         print(
-            "ras and rld required (cabal build exe:ras exe:rld from repo root)",
+            "rras and rrld required (cabal build exe:rras exe:rrld from repo root)",
             file=sys.stderr,
         )
         return 2
-    tmp = Path(tempfile.mkdtemp(prefix="rrisc-rld-equivalence-"))
+    tmp = Path(tempfile.mkdtemp(prefix="rrisc-rrld-equivalence-"))
     ok_n = 0
     fail: list[str] = []
     for src, incs in collect_toolchain_asm_sources(root):

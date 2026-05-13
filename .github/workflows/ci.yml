@@ -27,7 +27,7 @@ jobs:
       - name: Build toolchain
         run: |
           cabal update
-          cabal build exe:rcc exe:ras exe:rld exe:rsim
+          cabal build exe:rcc exe:rras exe:rrld exe:rrsim
 
       - name: Haskell unit tests
         run: cabal test rcc-test rrisc-tools-test

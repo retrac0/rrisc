@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``pyras`` — Assembler CLI aligned with Haskell ``ras``.
+"""``rras`` — Assembler CLI aligned with Haskell ``rras``.
 
 Relocatable ``.o`` output (default) uses the Python assembler (``pytools.asm`` +
 ``asm_obj_emit``). Flat ``--format bin`` / ``readmemb`` uses the same tokenizer
@@ -45,7 +45,7 @@ def _flat_main(argv_tail: list[str]) -> None:
     ns, unknown = parser.parse_known_args(argv_tail)
     if unknown:
         print(
-            f"pyras: unknown arguments in flat mode: {' '.join(unknown)}",
+            f"rras: unknown arguments in flat mode: {' '.join(unknown)}",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -57,10 +57,10 @@ def _flat_main(argv_tail: list[str]) -> None:
         with open(ns.source, encoding="utf-8") as f:
             source = f.read()
     except UnicodeDecodeError:
-        print(f"pyras: {ns.source}: not a text file", file=sys.stderr)
+        print(f"rras: {ns.source}: not a text file", file=sys.stderr)
         raise SystemExit(1)
     except OSError as e:
-        print(f"pyras: {e}", file=sys.stderr)
+        print(f"rras: {e}", file=sys.stderr)
         raise SystemExit(1)
 
     try:
@@ -81,11 +81,11 @@ def _parse_cli_defines(defines: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for d in defines:
         if "=" not in d:
-            print("pyras: -D requires NAME=value", file=sys.stderr)
+            print("rras: -D requires NAME=value", file=sys.stderr)
             raise SystemExit(2)
         k, _, v = d.partition("=")
         if not k:
-            print("pyras: -D requires NAME=value", file=sys.stderr)
+            print("rras: -D requires NAME=value", file=sys.stderr)
             raise SystemExit(2)
         out[k] = v
     return out
@@ -133,10 +133,10 @@ def _object_main(argv_tail: list[str]) -> None:
         with open(ns.source, encoding="utf-8") as f:
             source = f.read()
     except UnicodeDecodeError:
-        print(f"pyras: {ns.source}: not a text file", file=sys.stderr)
+        print(f"rras: {ns.source}: not a text file", file=sys.stderr)
         raise SystemExit(1)
     except OSError as e:
-        print(f"pyras: {e}", file=sys.stderr)
+        print(f"rras: {e}", file=sys.stderr)
         raise SystemExit(1)
 
     cli = _parse_cli_defines(ns.defines)
@@ -180,19 +180,19 @@ def _dump_syms_main(path: str) -> None:
 def main(argv: list[str] | None = None) -> None:
     argv = argv if argv is not None else sys.argv[1:]
     if argv in (["-V"], ["--version"]):
-        print("pyras 1.0 (pytools)")
+        print("rras 1.0 (pytools)")
         raise SystemExit(0)
 
     if len(argv) >= 1 and argv[0] == "--dump-syms":
         if len(argv) != 2:
-            print("Usage: pyras --dump-syms file.o", file=sys.stderr)
+            print("Usage: rras --dump-syms file.o", file=sys.stderr)
             raise SystemExit(2)
         _dump_syms_main(argv[1])
         return
 
     if "--list" in argv and not _has_format_flag(argv):
         print(
-            "pyras: --list requires --format bin|readmemb",
+            "rras: --list requires --format bin|readmemb",
             file=sys.stderr,
         )
         raise SystemExit(1)

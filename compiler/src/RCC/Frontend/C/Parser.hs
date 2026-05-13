@@ -1,5 +1,5 @@
 -- | Megaparsec parser for the RCC input language. Entry point: 'parseProgram'.
-module RCC.Parser
+module RCC.Frontend.C.Parser
   ( parseProgram
   ) where
 
@@ -15,7 +15,7 @@ import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import RCC.Error (Pos(..), Span(..), Diagnostic(..), Severity(..))
-import RCC.Syntax
+import RCC.Frontend.C.Syntax
 
 -- ---------------------------------------------------------------------------
 -- Parser type

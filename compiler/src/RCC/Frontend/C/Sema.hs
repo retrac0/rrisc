@@ -1,5 +1,5 @@
 -- | Type checking and semantic validation of the untyped AST.
-module RCC.Sema
+module RCC.Frontend.C.Sema
   ( CheckedProg
   , check
   , tySize
@@ -15,7 +15,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import RCC.Error
-import qualified RCC.Syntax as Syn
+import qualified RCC.Frontend.C.Layout as Lay
+import qualified RCC.Frontend.C.Syntax as Syn
+import RCC.Ir.DataLayout (rrisc12DataLayout)
 
 -- | The checked AST.  Currently a type alias; types are re-derived in TAC.
 type CheckedProg = Syn.Prog
@@ -49,25 +51,10 @@ throwAt sp msg = lift (Left (mkError sp msg))
 -- Helpers: types and structs
 
 tySize :: Map Text [Syn.Field] -> Syn.Ty -> Int
-tySize _  Syn.TyInt          = 1
-tySize _  Syn.TyUint         = 1
-tySize _  Syn.TyVoid         = 0
-tySize _  Syn.TyFloat        = 4
-tySize _  (Syn.TyPtr _)      = 1
-tySize ss (Syn.TyArray t n)  = tySize ss t * n
-tySize ss (Syn.TyStruct _ n) = case Map.lookup n ss of
-  Just fs -> sum (map (tySize ss . Syn.fieldTy) fs)
-  Nothing -> 0   -- struct undefined: caller should have caught it earlier
+tySize = Lay.cTySizeWords rrisc12DataLayout
 
 structFieldOffset :: Map Text [Syn.Field] -> Text -> Text -> Maybe Int
-structFieldOffset ss sname fname = do
-  fs <- Map.lookup sname ss
-  go 0 fs
-  where
-    go _ [] = Nothing
-    go acc (f:fs)
-      | Syn.fieldName f == fname = Just acc
-      | otherwise = go (acc + tySize ss (Syn.fieldTy f)) fs
+structFieldOffset = Lay.structFieldOffsetWords rrisc12DataLayout
 
 structFieldType :: Map Text [Syn.Field] -> Text -> Text -> Maybe Syn.Ty
 structFieldType ss sname fname = do

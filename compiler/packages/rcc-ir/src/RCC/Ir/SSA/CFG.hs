@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module RCC.SSA.CFG
+module RCC.Ir.SSA.CFG
   ( buildCFG
   , cfgFromRawBlockList
   , cfgToSsaFunc
@@ -22,8 +22,8 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (mapMaybe)
 
-import qualified RCC.SSA.IR as S
-import qualified RCC.TAC as TAC
+import qualified RCC.Ir.SSA.IR as S
+import qualified RCC.Ir.TAC as TAC
 
 newtype BlockId = BlockId { unBlockId :: Int }
   deriving (Show, Eq, Ord)
@@ -218,7 +218,7 @@ tacOperandToValue (TAC.OTemp t)      = S.VVar t
 
 tacInstrToSsa :: TAC.Instr -> Maybe S.Instr
 tacInstrToSsa (TAC.IComment t) = Just (S.IComment t)
-tacInstrToSsa (TAC.IAsmInline t) = Just (S.IEffect (S.OAsm t))
+tacInstrToSsa (TAC.ITargetAsm t) = Just (S.IEffect (S.OTargetAsm t))
 tacInstrToSsa (TAC.IAllocLocal t) = Just (S.IComment ("alloclocal " <> t))
 tacInstrToSsa (TAC.IStore a b) =
   Just (S.IStore (tacOperandToValue a) (tacOperandToValue b))

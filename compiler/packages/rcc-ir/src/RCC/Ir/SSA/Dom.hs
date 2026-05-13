@@ -1,4 +1,4 @@
-module RCC.SSA.Dom
+module RCC.Ir.SSA.Dom
   ( DomInfo(..)
   , computeDominators
   , dominanceFrontiers
@@ -11,7 +11,7 @@ import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import qualified RCC.SSA.CFG as C
+import qualified RCC.Ir.SSA.CFG as C
 
 data DomInfo = DomInfo
   { doms :: Map C.BlockId (Set C.BlockId)

@@ -1,4 +1,4 @@
-module RCC.TAC
+module RCC.Ir.TAC
   ( Temp
   , Label
   , Operand(..)
@@ -60,7 +60,8 @@ data Instr
   | ICall    (Maybe Temp) Label [Operand]
   | IReturn  (Maybe Operand)
   | IAllocLocal Temp    -- reserve stack space for a local array/struct; no code emitted
-  | IAsmInline Text     -- verbatim assembly string
+  | -- | Verbatim assembly for backends that support this extension (RRISC today).
+    ITargetAsm Text
   deriving (Show, Eq)
 
 data Global = Global

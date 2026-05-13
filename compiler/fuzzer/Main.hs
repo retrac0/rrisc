@@ -2,7 +2,7 @@
 -- | rcc-fuzz: differential fuzzer for the RRISC C compiler.
 --
 -- Generates random programs in the rcc subset of C, compiles each one
--- through the full RRISC toolchain ('rcc' → 'ras' → 'rld' → 'rsim') and
+-- through the full RRISC toolchain ('rcc' → 'rras' → 'rrld' → 'rrsim') and
 -- through host 'gcc -DRRISC_IO_TEST_HOST', and reports any cases where the
 -- two stdouts differ (that's a likely 'rcc' bug, with the no-UB contract
 -- in "Fuzz.Gen" carrying the burden of "this program means the same thing
@@ -461,7 +461,7 @@ isFailure _  = True
 -- | True if @r@ is the same kind of failure as @orig@.  A 'Mismatch' is
 -- the same kind as another 'Mismatch'; a 'StageFail' is the same kind
 -- only when both occur in the same stage (so we don't accept an
--- unrelated link-error candidate when triaging an rsim mismatch).
+-- unrelated link-error candidate when triaging an rrsim mismatch).
 sameFailureKind :: RunOutcome -> RunOutcome -> Bool
 sameFailureKind OK              _               = False
 sameFailureKind _               OK              = False

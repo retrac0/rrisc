@@ -1,12 +1,12 @@
-module RCC.SSA.Prog
+module RCC.Ir.SSA.Prog
   ( SSAProc(..)
   , SSAProg(..)
   ) where
 
 import Data.Map.Strict (Map)
 
-import qualified RCC.SSA.IR as S
-import qualified RCC.TAC as TAC
+import qualified RCC.Ir.SSA.IR as S
+import qualified RCC.Ir.TAC as TAC
 
 data SSAProc = SSAProc
   { spFunc   :: S.Func

@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module RCC.SSA.ToTAC
+module RCC.Ir.SSA.ToTAC
   ( fromSSA
   ) where
 
@@ -9,8 +9,8 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import qualified RCC.SSA.IR as S
-import qualified RCC.TAC as TAC
+import qualified RCC.Ir.SSA.IR as S
+import qualified RCC.Ir.TAC as TAC
 
 -- | Lower SSA back to TAC by eliminating phi nodes via edge-splitting.
 fromSSA :: Map TAC.Temp Int -> S.Func -> TAC.Proc
@@ -108,7 +108,7 @@ instrToTAC (S.IStore a b) = [TAC.IStore (valToOp a) (valToOp b)]
 instrToTAC (S.IEffect op) =
   case op of
     S.OCall f args -> [TAC.ICall Nothing f (map valToOp args)]
-    S.OAsm t       -> [TAC.IAsmInline t]
+    S.OTargetAsm t       -> [TAC.ITargetAsm t]
     _              -> []
 instrToTAC (S.IDef dst op) =
   case op of
@@ -117,7 +117,7 @@ instrToTAC (S.IDef dst op) =
     S.OUn uop a      -> [TAC.IUnOp dst uop (valToOp a)]
     S.OLoad a        -> [TAC.ILoad dst (valToOp a)]
     S.OCall f args   -> [TAC.ICall (Just dst) f (map valToOp args)]
-    S.OAsm t         -> [TAC.IAsmInline t]
+    S.OTargetAsm t         -> [TAC.ITargetAsm t]
 
 termToTAC :: Map S.BlockId TAC.Label -> S.Term -> [TAC.Instr]
 termToTAC lbl (S.TGoto b) =

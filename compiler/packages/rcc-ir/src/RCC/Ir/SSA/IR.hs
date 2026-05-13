@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module RCC.SSA.IR
+module RCC.Ir.SSA.IR
   ( BlockId(..)
   , Value(..)
   , Op(..)
@@ -17,7 +17,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 
-import qualified RCC.TAC as TAC
+import qualified RCC.Ir.TAC as TAC
 
 newtype BlockId = BlockId { unBlockId :: Int }
   deriving (Show, Eq, Ord)
@@ -36,10 +36,11 @@ data Op
   | OCopy Value
   | OLoad Value          -- load from address value
   | OCall TAC.Label [Value]
-  | OAsm Text            -- barrier
+  | -- | Opaque assembly text; only backends that understand this extension may interpret it.
+    OTargetAsm Text
   deriving (Show, Eq)
 
-data Effect = Pure | MayLoad | MayStore | CallLike | AsmBarrier
+data Effect = Pure | MayLoad | MayStore | CallLike | TargetAsmBarrier
   deriving (Show, Eq, Ord)
 
 effectOf :: Op -> Effect
@@ -48,7 +49,7 @@ effectOf (OUn _ _)    = Pure
 effectOf (OCopy _)    = Pure
 effectOf (OLoad _)    = MayLoad
 effectOf (OCall _ _)  = CallLike
-effectOf (OAsm _)     = AsmBarrier
+effectOf (OTargetAsm _) = TargetAsmBarrier
 
 -- | SSA instruction: optional definition.
 data Instr

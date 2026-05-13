@@ -14,10 +14,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BIN="$SCRIPT_DIR/rpn.bin"
 # Cap simulator cycles so UART/getchar bugs cannot hang CI or your shell (loop errors).
-# Interactive use: SIM_MAXCYCLE=0 ./demos/test_rpn.sh run  (0 = unlimited in pytools.sim)
+# Interactive use: SIM_MAXCYCLE=0 ./demos/test_rpn.sh run  (0 = unlimited in pytools.rrsim)
 SIM_MAXCYCLE="${SIM_MAXCYCLE:-2000000}"
 SIM=(
-	env PYTHONPATH="$ROOT" python3 -m pytools.sim
+	env PYTHONPATH="$ROOT" python3 -m pytools.rrsim
 	--terminal
 	--mem ram:0:0o7770
 	--start 0o100
@@ -35,8 +35,8 @@ Usage: $(basename "$0") <command>
   help        This text.
 
 Environment:
-  SIM_MAXCYCLE   Cycle limit for pytools.sim (default 2000000). Set to 0 for no limit (mainly for run).
-  SIM_EXTRA      Extra arguments passed to pytools.sim before the binary (after built-in flags).
+  SIM_MAXCYCLE   Cycle limit for pytools.rrsim (default 2000000). Set to 0 for no limit (mainly for run).
+  SIM_EXTRA      Extra arguments passed to pytools.rrsim before the binary (after built-in flags).
 
 Examples (from repo root after make -C demos):
 
@@ -44,10 +44,10 @@ Examples (from repo root after make -C demos):
   ./demos/test_rpn.sh equations
 
   # One-off: stack holds 3 and 4, add, print top, quit (UART includes guest echo of typed lines)
-  printf '%s\\n' '3 4 +' p q | env PYTHONPATH=. python3 -m pytools.sim --terminal --mem ram:0:0o7770 --start 0o100 --maxcycle 2000000 demos/rpn.bin
+  printf '%s\\n' '3 4 +' p q | env PYTHONPATH=. python3 -m pytools.rrsim --terminal --mem ram:0:0o7770 --start 0o100 --maxcycle 2000000 demos/rpn.bin
 
   # Interactive (same UART flags): type lines, then q to exit
-  SIM_MAXCYCLE=0 env PYTHONPATH=. python3 -m pytools.sim --terminal --mem ram:0:0o7770 --start 0o100 demos/rpn.bin
+  SIM_MAXCYCLE=0 env PYTHONPATH=. python3 -m pytools.rrsim --terminal --mem ram:0:0o7770 --start 0o100 demos/rpn.bin
 EOF
 }
 
@@ -130,7 +130,7 @@ cmd_equations() {
 		echo "equations: $fails failure(s) out of $n" >&2
 		exit 1
 	fi
-	echo "equations ok ($n UART checks, expected hex vs pytools.sim UART)"
+	echo "equations ok ($n UART checks, expected hex vs pytools.rrsim UART)"
 }
 
 cmd_smoke() {
@@ -149,13 +149,13 @@ make -C demos
 
 # --- Same UART checks as:  ./demos/test_rpn.sh equations  (20 expected hex vs stdout) ---
 printf '%s' \$'3 4 + p\\nq\\n' | \\
-  env PYTHONPATH=. python3 -m pytools.sim --terminal --mem ram:0:0o7770 --start 0o100 --maxcycle 2000000 demos/rpn.bin
+  env PYTHONPATH=. python3 -m pytools.rrsim --terminal --mem ram:0:0o7770 --start 0o100 --maxcycle 2000000 demos/rpn.bin
 
 # --- Interactive session (no cycle cap) ---
-env PYTHONPATH=. python3 -m pytools.sim --terminal --mem ram:0:0o7770 --start 0o100 --maxcycle 0 demos/rpn.bin
+env PYTHONPATH=. python3 -m pytools.rrsim --terminal --mem ram:0:0o7770 --start 0o100 --maxcycle 0 demos/rpn.bin
 
 # --- Haskell simulator (if built): add --maxcycle as supported ---
-# rsim --terminal --mem ram:0:0o7770 --start 0o100 --maxcycle 2000000 demos/rpn.bin
+# rrsim --terminal --mem ram:0:0o7770 --start 0o100 --maxcycle 2000000 demos/rpn.bin
 EOF
 }
 

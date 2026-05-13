@@ -1,5 +1,5 @@
 -- Build the RRISC toolchain from the repository root:
---   cabal build exe:rcc exe:ras exe:rld exe:rsim
+--   cabal build exe:rcc exe:rras exe:rrld exe:rrsim
 -- Per-package settings remain in compiler/cabal.project (compiler-only)
 -- and tools/rrisc-tools.cabal.
 packages: compiler/, tools/
