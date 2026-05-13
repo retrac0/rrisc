@@ -21,7 +21,7 @@ SIM := env PYTHONPATH=$(ROOT) python3 -m pytools.rrsim --terminal $(SIM_MEM) $(S
 
 RCC_FLAGS := --code-base $(CODE_BASE) --data-base $(DATA_BASE) --stack-top $(STACK_TOP)
 
-.PHONY: all run rpn_float print_float run_print_float clean
+.PHONY: all run rpn_float print_float run_print_float mandelbrot.bin run_mandelbrot clean
 
 all: rpn.bin
 
@@ -64,6 +64,21 @@ print_float.bin: print_float.s rlmath.s
 run_print_float: print_float.bin
 	$(SIM) print_float.bin
 
+mandelbrot.s: mandelbrot.c $(ROOT)/lib/rlibc_float_calc.h
+	cd $(RCC_DIR) && $(RCC) $(RPN_FLOAT_RCC_FLAGS) --embed-full-float-runtime \
+	    --preprocessor "cpp -P -I $(ROOT)/lib" \
+	    $(ROOT)/demos/mandelbrot.c -o $(ROOT)/demos/mandelbrot.s
+
+mandelbrot.bin: mandelbrot.s
+	$(RAS_RUN) lib/crt0.s -o demos/mandelbrot.crt0.o \
+	    -D RCC_STACK_TOP=$(STACK_TOP)
+	$(RAS_RUN) demos/mandelbrot.s -I lib -o demos/mandelbrot.user.o
+	$(RLD_RUN) demos/mandelbrot.crt0.o demos/mandelbrot.user.o -o demos/mandelbrot.bin \
+	    --code-base $(CODE_BASE) --data-base $(DATA_BASE)
+
+run_mandelbrot: mandelbrot.bin
+	$(SIM) mandelbrot.bin
+
 rpn_int.s: rpn_int.c $(ROOT)/lib/rlibc_float_calc.h
 	cd $(RCC_DIR) && $(RCC) $(RCC_FLAGS) \
 	    --preprocessor "cpp -P -I $(ROOT)/lib" \
@@ -88,4 +103,6 @@ clean:
 	    demos/rpn_float.crt0.o demos/rpn_float.user.o \
 	    $(ROOT)/demos/print_float.s $(ROOT)/demos/print_float.bin \
 	    $(ROOT)/demos/rlmath.s $(ROOT)/demos/print_float.crt0.o \
-	    $(ROOT)/demos/print_float.user.o $(ROOT)/demos/rlmath.user.o
+	    $(ROOT)/demos/print_float.user.o $(ROOT)/demos/rlmath.user.o \
+	    $(ROOT)/demos/mandelbrot.s $(ROOT)/demos/mandelbrot.bin \
+	    demos/mandelbrot.crt0.o demos/mandelbrot.user.o
